@@ -1,10 +1,17 @@
 <svg width="420" height="104" viewBox="0 0 420 104" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
   <title id="title">RabbitTech Mail</title>
   <desc id="desc">RabbitTech Mail logo</desc>
-  <rect width="104" height="104" rx="24" fill="#0F172A"/>
-  <path d="M30 30H75C82.732 30 89 36.268 89 44V74C89 81.732 82.732 88 75 88H29C21.268 88 15 81.732 15 74V45C15 36.716 21.716 30 30 30Z" fill="#18C29C"/>
-  <path d="M20 43L48.277 61.578C50.542 63.066 53.458 63.066 55.723 61.578L84 43" stroke="#0F172A" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M49 19L38 38H60L49 19Z" fill="#38BDF8"/>
-  <text x="126" y="48" fill="#0F172A" font-family="Noto Sans, Arial, sans-serif" font-size="34" font-weight="700">RabbitTech</text>
-  <text x="128" y="78" fill="#475569" font-family="Noto Sans, Arial, sans-serif" font-size="22" font-weight="400">Mail Console</text>
+  <rect width="104" height="104" rx="26" fill="#08090D"/>
+  <rect x="1" y="1" width="102" height="102" rx="25" stroke="url(#frame)" stroke-opacity=".55" stroke-width="2"/>
+  <path d="M31 37c-4.6-14.3-1.6-25.4 5.1-25.4 8.3 0 13.9 13.1 15 26.5 2.5-.5 5.3-.5 8 0 .7-14.3 6-27.9 14.5-27.9 7.4 0 10.1 12.7 4.6 28.6 9.4 6.4 15.4 17.2 15.4 29.4 0 18.6-15.9 29.2-40.5 29.2S12.8 86.8 12.8 68.2c0-13.1 7.1-24.8 18.2-31.2Z" fill="none" stroke="#A78BFA" stroke-width="5.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M45.1 64.1a4.8 4.8 0 1 0 0-9.6 4.8 4.8 0 0 0 0 9.6Zm20.7 0a4.8 4.8 0 1 0 0-9.6 4.8 4.8 0 0 0 0 9.6Zm-18.4 14.5c3.4 3.9 11.2 3.9 14.7 0" stroke="#34D399" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="126" y="47" fill="#F7F7FB" font-family="DM Sans, Noto Sans, Arial, sans-serif" font-size="34" font-weight="700">Rabbit<tspan fill="#A78BFA">Tech</tspan></text>
+  <text x="128" y="78" fill="#969BAA" font-family="DM Mono, Consolas, monospace" font-size="20" font-weight="400">secure mail console</text>
+  <defs>
+    <linearGradient id="frame" x1="0" y1="0" x2="104" y2="104" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A78BFA"/>
+      <stop offset=".55" stop-color="#34D399"/>
+      <stop offset="1" stop-color="#5EEAD4"/>
+    </linearGradient>
+  </defs>
 </svg>

@@ -221,28 +221,49 @@ legend {
 
 /* RabbitTech theme layer. Keep this isolated so upstream Mailcow changes stay easy to merge. */
 :root {
-  --rt-ink: #0f172a;
-  --rt-muted: #64748b;
-  --rt-surface: #ffffff;
-  --rt-border: #dbe4ee;
-  --rt-primary: #0f766e;
-  --rt-primary-strong: #115e59;
-  --rt-accent: #18c29c;
-  --rt-accent-soft: #d9fff5;
+  --rt-bg: #08090d;
+  --rt-bg-2: #0c0e14;
+  --rt-surface: rgba(18, 20, 29, .74);
+  --rt-surface-strong: #12151e;
+  --rt-text: #f7f7fb;
+  --rt-muted: #969baa;
+  --rt-muted-2: #6d7280;
+  --rt-border: rgba(255,255,255,.10);
+  --rt-border-strong: rgba(255,255,255,.18);
+  --rt-purple: #a78bfa;
+  --rt-purple-strong: #7c3aed;
+  --rt-green: #34d399;
+  --rt-cyan: #5eead4;
+  --rt-shadow: 0 30px 80px rgba(0,0,0,.35);
 }
 
 body {
-  color: var(--rt-ink);
+  color: var(--rt-text);
   background:
-    radial-gradient(circle at top left, rgba(24, 194, 156, 0.14), transparent 32rem),
-    linear-gradient(135deg, #f8fbfc 0%, #eef7f5 100%);
+    radial-gradient(circle at 16% 4%, rgba(124,58,237,.26), transparent 34rem),
+    radial-gradient(circle at 86% 14%, rgba(52,211,153,.14), transparent 28rem),
+    linear-gradient(180deg, var(--rt-bg), var(--rt-bg-2));
+  font-family: "DM Sans", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255,255,255,.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.028) 1px, transparent 1px);
+  background-size: 54px 54px;
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,.85), transparent 65%);
+  z-index: -1;
 }
 
 .navbar.bg-light {
-  background: rgba(255, 255, 255, 0.92) !important;
-  border-bottom: 1px solid rgba(15, 118, 110, 0.12);
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
-  backdrop-filter: blur(14px);
+  background: rgba(8,9,13,.82) !important;
+  border-bottom: 1px solid var(--rt-border);
+  box-shadow: 0 20px 60px rgba(0,0,0,.28);
+  backdrop-filter: blur(18px);
 }
 
 .navbar .navbar-brand {
@@ -251,74 +272,202 @@ body {
 }
 
 .navbar .navbar-brand img {
-  height: 46px;
+  height: 50px;
 }
 
 .mailcow-logo img {
-  max-width: 320px;
+  max-width: 360px;
 }
 
 .card {
+  background: linear-gradient(145deg, rgba(18,20,29,.88), rgba(12,14,20,.78));
   border: 1px solid var(--rt-border);
-  border-radius: 8px;
-  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  box-shadow: var(--rt-shadow);
+  color: var(--rt-text);
 }
 
 .card-header {
-  background: linear-gradient(135deg, rgba(15, 118, 110, 0.08), rgba(24, 194, 156, 0.08));
-  border-bottom-color: var(--rt-border);
-  color: var(--rt-ink);
+  background: linear-gradient(135deg, rgba(167,139,250,.08), rgba(52,211,153,.04));
+  border-bottom: 1px solid var(--rt-border);
+  color: var(--rt-text);
+  font-weight: 600;
+}
+
+legend {
+  color: var(--rt-text);
+  font-weight: 700;
+}
+
+hr {
+  border-color: var(--rt-border);
+  opacity: 1;
 }
 
 .form-control,
 .input-group-text,
 .bootstrap-select > .dropdown-toggle {
   border-color: var(--rt-border);
+  background-color: rgba(255,255,255,.035);
+  color: var(--rt-text);
+}
+
+.input-group-text {
+  color: #c4b5fd;
+}
+
+.form-control::placeholder {
+  color: #555b68;
 }
 
 .form-control:focus {
-  border-color: var(--rt-accent);
-  box-shadow: 0 0 0 .2rem rgba(24, 194, 156, 0.18);
+  background-color: rgba(255,255,255,.05);
+  color: var(--rt-text);
+  border-color: rgba(167,139,250,.55);
+  box-shadow: 0 0 0 .2rem rgba(167,139,250,.12);
 }
 
 .btn-primary,
 .btn-success {
-  background-color: var(--rt-primary);
-  border-color: var(--rt-primary);
+  color: #fff;
+  background: linear-gradient(110deg, var(--rt-purple-strong), #a855f7 45%, #d946ef 100%);
+  border-color: rgba(255,255,255,.12);
+  box-shadow: 0 14px 34px rgba(124,58,237,.23), inset 0 1px 0 rgba(255,255,255,.15);
 }
 
 .btn-primary:hover,
 .btn-primary:focus,
 .btn-success:hover,
 .btn-success:focus {
-  background-color: var(--rt-primary-strong);
-  border-color: var(--rt-primary-strong);
+  color: #fff;
+  filter: brightness(1.06);
+  border-color: rgba(255,255,255,.24);
 }
 
 .btn-secondary {
-  color: var(--rt-ink);
-  background-color: #f8fafc;
-  border-color: var(--rt-border);
+  color: #e5e7eb;
+  background-color: rgba(255,255,255,.035);
+  border-color: var(--rt-border-strong);
 }
 
 .btn-secondary:hover,
 .btn-secondary:focus {
-  color: var(--rt-ink);
-  background-color: var(--rt-accent-soft);
-  border-color: rgba(15, 118, 110, 0.24);
+  color: #fff;
+  background-color: rgba(167,139,250,.10);
+  border-color: rgba(167,139,250,.40);
 }
 
 a {
-  color: var(--rt-primary);
+  color: #c4b5fd;
 }
 
 a:hover {
-  color: var(--rt-primary-strong);
+  color: var(--rt-green);
 }
 
 .nav-tabs .nav-link.active,
 .nav-tabs .nav-item.show .nav-link {
-  border-top-color: var(--rt-accent);
+  color: var(--rt-text);
+  background-color: rgba(255,255,255,.04);
+  border-color: var(--rt-border);
+  border-top-color: var(--rt-purple);
+}
+
+.nav-tabs .nav-link {
+  color: var(--rt-muted);
+}
+
+.dropdown-menu {
+  background: #0d0f15;
+  border-color: var(--rt-border);
+  box-shadow: 0 18px 48px rgba(0,0,0,.34);
+}
+
+.dropdown-item {
+  color: #b0b4c1;
+}
+
+.dropdown-item:hover,
+.dropdown-item:focus,
+.dropdown-item.active {
+  color: #fff;
+  background: rgba(167,139,250,.12);
+}
+
+.table,
+.table-striped > tbody > tr:nth-of-type(odd) > *,
+.table-striped > tbody > tr:nth-of-type(even) > * {
+  color: var(--rt-text);
+}
+
+.table {
+  --bs-table-bg: transparent;
+  --bs-table-striped-bg: rgba(255,255,255,.025);
+  --bs-table-border-color: var(--rt-border);
+}
+
+.text-muted,
+small,
+.small {
+  color: var(--rt-muted) !important;
+}
+
+.alert-info {
+  color: #b5f5de;
+  background: rgba(52,211,153,.07);
+  border-color: rgba(52,211,153,.22);
+}
+
+.alert-warning {
+  color: #fde68a;
+  background: rgba(250,204,21,.07);
+  border-color: rgba(250,204,21,.22);
+}
+
+.alert-danger {
+  color: #fecdd3;
+  background: rgba(251,113,133,.08);
+  border-color: rgba(251,113,133,.24);
+}
+
+.hr-title {
+  color: var(--rt-muted-2);
+  font-family: "DM Mono", Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.hr-title:not(:empty)::before,
+.hr-title:not(:empty)::after {
+  border-top-color: var(--rt-border);
+}
+
+.row.mb-4[style*="margin-top: 60px"] {
+  margin-top: 90px !important;
+}
+
+.row.mb-4[style*="margin-top: 60px"] .card::before {
+  content: "RabbitTech Mail";
+  display: inline-flex;
+  width: max-content;
+  margin: 24px auto 0;
+  padding: 8px 12px;
+  border: 1px solid rgba(52,211,153,.20);
+  border-radius: 999px;
+  background: rgba(52,211,153,.055);
+  color: #b5f5de;
+  font: 500 11px/1 "DM Mono", Consolas, monospace;
+  letter-spacing: .04em;
+}
+
+.row.mb-4[style*="margin-top: 60px"] .card-body::after {
+  content: "Secure mailbox management for rabbittech.com.np";
+  display: block;
+  margin-top: 24px;
+  color: var(--rt-muted-2);
+  text-align: center;
+  font: 11px/1.6 "DM Mono", Consolas, monospace;
 }
 .haveibeenpwned {
   cursor: pointer;
