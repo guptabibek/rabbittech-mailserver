@@ -2,7 +2,7 @@
 
 {% block content %}
 <div id="mail-content" class="responsive-tabs">
-  <ul class="nav nav-tabs" role="tablist">
+  <ul class="nav nav-tabs rt-managed-tabs" role="tablist">
     {% if mailcow_cc_role == 'admin' %}
     <li class="nav-item dropdown" role="presentation">
       <a class="nav-link dropdown-toggle active" data-bs-toggle="dropdown" href="#">{{ lang.mailbox.domains }}</a>
@@ -36,7 +36,7 @@
     <li class="nav-item" role="presentation"><button class="nav-link" aria-selected="false" aria-controls="tab-syncjobs" role="tab" data-bs-toggle="tab" data-bs-target="#tab-syncjobs">{{ lang.mailbox.sync_jobs }}</button></li>
     <li class="nav-item" role="presentation"><button class="nav-link" aria-selected="false" aria-controls="tab-filters" role="tab" data-bs-toggle="tab" data-bs-target="#tab-filters">{{ lang.mailbox.filters }}</button></li>
     <li class="nav-item" role="presentation"><button class="nav-link" aria-selected="false" aria-controls="tab-bcc" role="tab" data-bs-toggle="tab" data-bs-target="#tab-bcc">{{ lang.mailbox.address_rewriting }}</button></li>
-    <li class="nav-item" role="presentation"{% if mailcow_cc_role != 'admin' %} class="d-none"{% endif %}><button class="nav-link" aria-selected="false" aria-controls="tab-tls-policy" role="tab" data-bs-toggle="tab" data-bs-target="#tab-tls-policy">{{ lang.mailbox.tls_policy_maps }}</button></li>
+    <li class="nav-item{% if mailcow_cc_role != 'admin' %} d-none{% endif %}" role="presentation"><button class="nav-link" aria-selected="false" aria-controls="tab-tls-policy" role="tab" data-bs-toggle="tab" data-bs-target="#tab-tls-policy">{{ lang.mailbox.tls_policy_maps }}</button></li>
   </ul>
 
   <div class="row">

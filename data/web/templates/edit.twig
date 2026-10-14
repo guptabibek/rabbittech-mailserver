@@ -1,13 +1,11 @@
 {% extends 'base.twig' %}
 
 {% block content %}
-<a href="{{ return_to }}">&#8592; {{ lang.edit.previous }}</a>
-<div class="row my-4">
+{# The page header shows the back link (014-rabbittech.js reads return_to from here) #}
+<a class="rt-edit-return" id="rt-edit-return" href="{{ return_to }}" hidden>&#8592; {{ lang.edit.previous }}</a>
+<div class="row">
   <div class="col-md-12">
-    <div class="card">
-      <div class="card-header fs-5">
-        <span>{{ lang.edit.title }}</span>
-      </div>
+    <div class="card rt-edit-card">
       <div class="card-body">
         {% block inner_content %}
           {% if access_denied %}
@@ -20,7 +18,6 @@
     </div>
   </div>
 </div>
-<a href="{{ return_to }}">&#8592; {{ lang.edit.previous }}</a>
 
 <script type='text/javascript'>
   var lang_user = {{ lang_user|raw }};

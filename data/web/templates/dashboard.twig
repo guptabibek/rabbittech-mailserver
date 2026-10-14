@@ -1,7 +1,7 @@
 {% extends 'base.twig' %}
 
 {% block content %}
-<ul class="nav nav-tabs" role="tablist">
+<ul class="nav nav-tabs rt-managed-tabs" role="tablist">
   <li role="presentation" class="nav-item"><button class="nav-link active" data-bs-target="#tab-containers" aria-controls="tab-containers" role="tab" data-bs-toggle="tab">{{ lang.debug.system_containers }}</button></li>
   <li class="nav-item dropdown">
     <a class="nav-link dropdown-toggle" data-bs-toggle="dropdown" href="#">{{ lang.debug.logs }}</a>
@@ -33,22 +33,44 @@
         {% set rt_containers_running = containers|filter(c => c.State.Running == 1)|length %}
         {% set rt_containers_total = containers|length %}
 
-        <div class="card rt-overview mb-4">
-          <div class="card-body">
-            <div class="rt-overview-head">
-              <span class="rt-container-icon rt-overview-icon"><i class="bi bi-hdd-stack"></i></span>
-              <div class="rt-overview-title">
-                <span class="rt-eyebrow">{{ ui_texts.title_name|raw }}</span>
-                <h2>{{ hostname }}</h2>
-                <div class="rt-meta">
-                  <span><i class="bi bi-globe2"></i>{{ timezone }}</span>
-                  <span><i class="bi bi-cpu"></i><span id="host_architecture">-</span></span>
+        {# Live counts, loaded by 014-rabbittech.js from the API #}
+        <div class="rt-kpi-grid mb-4" id="rt-kpis">
+          {% for kpi in [
+            { key: 'domains', label: lang.mailbox.domains, icon: 'globe2', href: '/admin/mailbox#/domains' },
+            { key: 'mailboxes', label: lang.mailbox.mailboxes, icon: 'inbox', href: '/admin/mailbox#/mailboxes' },
+            { key: 'aliases', label: lang.mailbox.aliases, icon: 'at', href: '/admin/mailbox#/mbox-aliases' },
+            { key: 'queue', label: 'Mail queue', icon: 'hourglass-split', href: '/admin/queue' },
+            { key: 'quarantine', label: lang.header.quarantine, icon: 'shield-exclamation', href: '/quarantine' },
+          ] %}
+          <a class="rt-kpi" href="{{ kpi.href }}" data-rt-kpi="{{ kpi.key }}">
+            <span class="rt-kpi-head">
+              <span class="rt-kpi-label">{{ kpi.label }}</span>
+              <span class="rt-kpi-icon" aria-hidden="true"><i class="bi bi-{{ kpi.icon }}"></i></span>
+            </span>
+            <span class="rt-kpi-value"><span class="rt-skeleton" aria-hidden="true"></span></span>
+            <span class="rt-kpi-sub">&nbsp;</span>
+          </a>
+          {% endfor %}
+        </div>
+
+        <div class="row g-4 mb-4">
+          <div class="col-xl-8">
+            <div class="card rt-overview h-100">
+              <div class="card-body">
+                <div class="rt-overview-head">
+                  <span class="rt-container-icon rt-overview-icon"><i class="bi bi-hdd-stack"></i></span>
+                  <div class="rt-overview-title">
+                    <span class="rt-eyebrow">Server</span>
+                    <h2>{{ hostname }}</h2>
+                    <div class="rt-meta">
+                      <span><i class="bi bi-globe2"></i>{{ timezone }}</span>
+                      <span><i class="bi bi-cpu"></i><span id="host_architecture">-</span></span>
+                    </div>
+                  </div>
+                  <a class="rt-status {% if rt_containers_running == rt_containers_total %}rt-status-running{% else %}rt-status-stopped{% endif %}" href="#rt-services">
+                    {% if rt_containers_running == rt_containers_total %}All services running{% else %}{{ rt_containers_total - rt_containers_running }} {{ lang.debug.container_stopped|lower }}{% endif %}
+                  </a>
                 </div>
-              </div>
-              <span class="rt-status {% if rt_containers_running == rt_containers_total %}rt-status-running{% else %}rt-status-stopped{% endif %}">
-                {{ rt_containers_running }} / {{ rt_containers_total }} {{ lang.debug.container_running|lower }}
-              </span>
-            </div>
 
             <div class="rt-stat-grid">
               <div class="rt-stat">
@@ -93,6 +115,44 @@
                 </div>
               </div>
             </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-xl-4">
+            <div class="card h-100">
+              <div class="card-header d-flex">
+                <span><i class="bi bi-lightning-charge me-2"></i>Quick actions</span>
+              </div>
+              <div class="card-body rt-quick-list">
+                <a class="rt-quick-item" href="/admin/mailbox#/domains" data-rt-open-modal="addDomainModal">
+                  <span class="rt-quick-icon"><i class="bi bi-globe2"></i></span>
+                  <span class="rt-quick-text"><strong>{{ lang.mailbox.add_domain }}</strong><small>Start receiving mail for a new domain</small></span>
+                  <i class="bi bi-chevron-right rt-quick-go" aria-hidden="true"></i>
+                </a>
+                <a class="rt-quick-item" href="/admin/mailbox#/mailboxes" data-rt-open-modal="addMailboxModal">
+                  <span class="rt-quick-icon"><i class="bi bi-person-plus"></i></span>
+                  <span class="rt-quick-text"><strong>{{ lang.mailbox.add_mailbox }}</strong><small>Create an account for a person or team</small></span>
+                  <i class="bi bi-chevron-right rt-quick-go" aria-hidden="true"></i>
+                </a>
+                <a class="rt-quick-item" href="/admin/mailbox#/mbox-aliases" data-rt-open-modal="addAliasModal">
+                  <span class="rt-quick-icon"><i class="bi bi-at"></i></span>
+                  <span class="rt-quick-text"><strong>{{ lang.mailbox.add_alias }}</strong><small>Forward an address to one or more mailboxes</small></span>
+                  <i class="bi bi-chevron-right rt-quick-go" aria-hidden="true"></i>
+                </a>
+                {% if not skip_sogo %}
+                <a class="rt-quick-item" href="/SOGo/">
+                  <span class="rt-quick-icon"><i class="bi bi-envelope-open"></i></span>
+                  <span class="rt-quick-text"><strong>Open webmail</strong><small>Read and send mail in SOGo</small></span>
+                  <i class="bi bi-box-arrow-up-right rt-quick-go" aria-hidden="true"></i>
+                </a>
+                {% endif %}
+                <a class="rt-quick-item" href="#" data-bs-toggle="modal" data-container="sogo-mailcow" data-bs-target="#RestartContainer">
+                  <span class="rt-quick-icon"><i class="bi bi-arrow-repeat"></i></span>
+                  <span class="rt-quick-text"><strong>{{ lang.header.restart_sogo }}</strong><small>Apply webmail configuration changes</small></span>
+                  <i class="bi bi-chevron-right rt-quick-go" aria-hidden="true"></i>
+                </a>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -122,7 +182,7 @@
         </div>
 
         <!-- container info -->
-        <div class="card mb-4">
+        <div class="card mb-4" id="rt-services">
           <div class="card-header d-flex rt-section-head">
             <span><i class="bi bi-boxes me-2"></i>{{ lang.debug.containers_info }}</span>
             <span class="rt-count">

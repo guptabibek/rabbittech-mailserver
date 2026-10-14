@@ -17,157 +17,170 @@
       if (theme === 'dark') {
         document.documentElement.setAttribute('data-theme', 'dark');
       }
+      try {
+        if (localStorage.getItem('rt_sidebar') === 'collapsed') {
+          document.documentElement.classList.add('rt-sidebar-collapsed');
+        }
+        // A #/<pane> URL picks the tab; stop mailcow from first reopening the last one,
+        // which would run two tab transitions at once
+        if (location.hash.indexOf('#/') === 0) {
+          localStorage.removeItem('lastTag');
+        }
+      } catch (e) {}
     })();
   </script>
 
   <link rel="shortcut icon" href="/favicon.png" type="image/png">
   <link rel="icon" href="/favicon.png" type="image/png">
 </head>
-<body class="{% block body_class %}{% endblock %}">
+<body class="{% block body_class %}{% if mailcow_cc_role %}rt-has-shell{% else %}rt-public-page{% endif %}{% endblock %}">
 <div class="overlay"></div>
 {% block navbar %}
-<nav class="navbar navbar-expand-lg sticky-top rt-navbar" aria-label="Main">
-  <div class="container-fluid">
-    <a class="navbar-brand" href="/">
-      {% include 'rabbittech/brand.twig' %}
-    </a>
-    <button class="navbar-toggler rt-icon-btn" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
-      <i class="bi bi-list"></i>
+{% if mailcow_cc_role %}
+<aside class="rt-sidebar" id="rt-sidebar" aria-label="Sidebar">
+  <div class="rt-sidebar-head">
+    <a class="rt-sidebar-brand" href="/" aria-label="Home">{% include 'rabbittech/brand.twig' %}</a>
+    <button type="button" class="rt-icon-btn rt-sidebar-close" id="rt-sidebar-close" aria-label="Close navigation"><i class="bi bi-x-lg"></i></button>
+  </div>
+  <div class="rt-sidebar-body">
+    {% include 'rabbittech/nav.twig' %}
+  </div>
+  <div class="rt-sidebar-foot">
+    <button type="button" class="rt-nav-link rt-collapse-toggle" id="rt-collapse-toggle" aria-label="Collapse sidebar" title="Collapse sidebar">
+      <i class="bi bi-chevron-bar-left" aria-hidden="true"></i>
+      <span class="rt-nav-label">Collapse</span>
     </button>
-    <div id="navbar" class="navbar-collapse collapse">
-      <ul class="navbar-nav rt-nav-main me-auto">
-        {% if mailcow_cc_role %}
-        {% if mailcow_cc_role == 'admin' %}
-        <li class="nav-item dropdown">
-          <a href="#" class="nav-link dropdown-toggle{% if is_uri('dashboard') or is_uri('system') %} active{% endif %}" data-bs-toggle="dropdown" role="button" aria-expanded="false"><i class="bi bi-hdd-stack"></i>{{ lang.header.mailcow_system }}</a>
-          <ul class="dropdown-menu">
-            <li><a href="/admin/dashboard" class="dropdown-item {% if is_uri('dashboard') %}active{% endif %}"><i class="bi bi-activity"></i>{{ lang.header.debug }}</a></li>
-            <li><a href="/admin/system" class="dropdown-item {% if is_uri('system') %}active{% endif %}"><i class="bi bi-sliders"></i>{{ lang.header.mailcow_config }}</a></li>
-          </ul>
-        </li>
-        <li class="nav-item dropdown">
-          <a href="#" class="nav-link dropdown-toggle{% if is_uri('mailbox') or is_uri('quarantine') or is_uri('queue') %} active{% endif %}" data-bs-toggle="dropdown" role="button" aria-expanded="false"><i class="bi bi-envelope"></i>{{ lang.header.email }}</a>
-          <ul class="dropdown-menu">
-            <li><a href="/admin/mailbox" class="dropdown-item {% if is_uri('mailbox') %}active{% endif %}"><i class="bi bi-inbox"></i>{{ lang.header.mailcow_config }}</a></li>
-            <li><a href="/quarantine" class="dropdown-item {% if is_uri('quarantine') %}active{% endif %}"><i class="bi bi-shield-check"></i>{{ lang.header.quarantine }}</a></li>
-            <li><a href="/admin/queue" class="dropdown-item {% if is_uri('queue') %}active{% endif %}"><i class="bi bi-hourglass-split"></i>{{ lang.queue.queue_manager }}</a></li>
-            <li><hr class="dropdown-divider"></li>
-            <li><a href="#" class="dropdown-item" data-bs-toggle="modal" data-container="sogo-mailcow" data-bs-target="#RestartContainer"><i class="bi bi-arrow-repeat"></i>{{ lang.header.restart_sogo }}</a></li>
-          </ul>
-        </li>
-        {% endif %}
-        {% if mailcow_cc_role == 'domainadmin' %}
-        <li class="nav-item">
-          <a href="/domainadmin/user" class="nav-link{% if is_uri('domainadmin.user') %} active{% endif %}"><i class="bi bi-person-circle"></i>{{ lang.header.user_settings }}</a>
-        </li>
-        <li class="nav-item dropdown">
-          <a href="#" class="nav-link dropdown-toggle{% if is_uri('mailbox') or is_uri('quarantine') %} active{% endif %}" data-bs-toggle="dropdown" role="button" aria-expanded="false"><i class="bi bi-envelope"></i>{{ lang.header.email }}</a>
-          <ul class="dropdown-menu">
-            <li><a href="/domainadmin/mailbox" class="dropdown-item {% if is_uri('mailbox') %}active{% endif %}"><i class="bi bi-inbox"></i>{{ lang.header.mailcow_config }}</a></li>
-            <li><a href="/quarantine" class="dropdown-item {% if is_uri('quarantine') %}active{% endif %}"><i class="bi bi-shield-check"></i>{{ lang.header.quarantine }}</a></li>
-          </ul>
-        </li>
-        {% elseif mailcow_cc_role == 'user' %}
-        <li class="nav-item">
-          <a href="/user" class="nav-link{% if is_uri('user') %} active{% endif %}"><i class="bi bi-person-circle"></i>{{ lang.header.user_settings }}</a>
-        </li>
-        <li class="nav-item">
-          <a href="/quarantine" class="nav-link{% if is_uri('quarantine') %} active{% endif %}"><i class="bi bi-shield-check"></i>{{ lang.header.quarantine }}</a>
-        </li>
-        {% endif %}
-        {% endif %}
+  </div>
+</aside>
+<div class="rt-sidebar-backdrop" id="rt-sidebar-backdrop"></div>
 
-        {% if mailcow_apps_processed or app_links %}
-        <li class="nav-item dropdown">
-          <a href="#" class="nav-link dropdown-toggle" data-bs-toggle="dropdown" role="button" aria-expanded="false"><i class="bi bi-grid-3x3-gap"></i>{{ ui_texts.apps_name|raw }}</a>
-          <ul class="dropdown-menu">
-            {% for app in mailcow_apps_processed %}
-              {% if not skip_sogo or not is_uri('SOGo', app.user_link) %}
-              <li {% if app.description %}title="{{ app.description }}"{% endif %}>
-                <a href="{{ app.user_link }}" class="dropdown-item"><i class="bi bi-box-arrow-up-right"></i>{{ app.name }}</a>
-              </li>
-              {% endif %}
-            {% endfor %}
-            {% for row in app_links_processed %}
-              {% for key, val in row %}
-              <li><a href="{{ val.user_link }}" class="dropdown-item"><i class="bi bi-box-arrow-up-right"></i>{{ key }}</a></li>
-              {% endfor %}
-            {% endfor %}
-          </ul>
-        </li>
-        {% endif %}
-      </ul>
+<header class="rt-topbar">
+  <button type="button" class="rt-icon-btn rt-menu-toggle" id="rt-menu-toggle" aria-controls="rt-sidebar" aria-expanded="false" aria-label="Open navigation">
+    <i class="bi bi-list"></i>
+  </button>
+  <a class="rt-topbar-brand" href="/" aria-label="Home">{% include 'rabbittech/brand.twig' %}</a>
 
-      <ul class="navbar-nav rt-nav-actions">
-        {% if not is_master %}
-        <li class="nav-item d-flex align-items-center me-1"><span class="rt-slave-badge"><i class="bi bi-diagram-3"></i>slave</span></li>
-        {% endif %}
-        <li class="nav-item d-flex align-items-center">
-          <label class="rt-icon-btn rt-theme-toggle" title="Toggle dark mode">
-            <input type="checkbox" id="dark-mode-toggle" aria-label="Dark mode">
-            <i class="bi bi-moon-stars rt-icon-moon"></i>
-            <i class="bi bi-sun rt-icon-sun"></i>
-          </label>
-        </li>
-        {% if mailcow_locale %}
-        <li class="nav-item dropdown rt-lang{% if available_languages|length == 1 %} lang-link-disabled{% endif %}">
-          <a href="#" class="nav-link dropdown-toggle" data-bs-toggle="dropdown" role="button" aria-expanded="false" aria-label="Language"><span class="flag-icon flag-icon-{{ mailcow_locale[-2:] }}"></span></a>
-          <ul class="dropdown-menu dropdown-menu-end" role="menu" aria-labelledby="languageDropdown">
-            {% for key, val in available_languages %}
-            <li>
-              <a class="dropdown-item {% if mailcow_locale == key %}active{% endif %}" href="?{{ query_string({'lang': key}) }}">
-                <span class="flag-icon flag-icon-{{ key[-2:] }}"></span>{{ val }}
-              </a>
-            </li>
-            {% endfor %}
-          </ul>
-        </li>
-        {% endif %}
-        {% if mailcow_cc_username %}
-        <li class="nav-item d-none d-lg-flex"><span class="rt-nav-divider" aria-hidden="true"></span></li>
-        <li class="nav-item dropdown rt-user logged-in-as">
-          <a href="#" class="nav-link rt-user-chip" data-bs-toggle="dropdown" role="button" aria-expanded="false">
-            <span class="rt-avatar" aria-hidden="true">{{ mailcow_cc_username|first }}</span>
-            <span class="rt-user-name username-lia">{{ mailcow_cc_username }}</span>
+  {% if mailcow_cc_role %}
+  <button type="button" class="rt-search" id="rt-search-trigger" aria-haspopup="dialog" aria-controls="rt-palette">
+    <i class="bi bi-search" aria-hidden="true"></i>
+    <span class="rt-search-text">Search or jump to…</span>
+    <kbd class="rt-search-kbd" data-rt-shortcut>Ctrl K</kbd>
+  </button>
+  {% endif %}
+
+  <div class="rt-topbar-actions">
+    {% if not is_master %}
+    <span class="rt-slave-badge" title="This server is a replica"><i class="bi bi-diagram-3"></i>slave</span>
+    {% endif %}
+    <label class="rt-icon-btn rt-theme-toggle" title="Toggle dark mode">
+      <input type="checkbox" id="dark-mode-toggle" aria-label="Dark mode">
+      <i class="bi bi-moon-stars rt-icon-moon"></i>
+      <i class="bi bi-sun rt-icon-sun"></i>
+    </label>
+    {% if mailcow_locale %}
+    <div class="dropdown rt-lang{% if available_languages|length == 1 %} lang-link-disabled{% endif %}">
+      <button type="button" class="rt-icon-btn" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Language" title="Language">
+        <span class="flag-icon flag-icon-{{ mailcow_locale[-2:] }}"></span>
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end rt-lang-menu">
+        {% for key, val in available_languages %}
+        <li>
+          <a class="dropdown-item {% if mailcow_locale == key %}active{% endif %}" href="?{{ query_string({'lang': key}) }}">
+            <span class="flag-icon flag-icon-{{ key[-2:] }}"></span>{{ val }}
           </a>
-          <ul class="dropdown-menu dropdown-menu-end">
-            <li class="rt-user-menu-head">
-              <span class="rt-avatar rt-avatar-lg" aria-hidden="true">{{ mailcow_cc_username|first }}</span>
-              <span class="rt-user-meta">
-                <strong>{{ mailcow_cc_username }}</strong>
-                {% if dual_login %}<span>via {{ dual_login.username }}</span>{% endif %}
-                <span class="rt-role-badge">{{ mailcow_cc_role }}</span>
-              </span>
-            </li>
-            <li><hr class="dropdown-divider"></li>
-            {% if mailcow_cc_role == 'user' %}
-            <li><a href="/user" class="dropdown-item"><i class="bi bi-person-circle"></i>{{ lang.header.user_settings }}</a></li>
-            {% elseif mailcow_cc_role == 'domainadmin' %}
-            <li><a href="/domainadmin/user" class="dropdown-item"><i class="bi bi-person-circle"></i>{{ lang.header.user_settings }}</a></li>
-            {% elseif mailcow_cc_role == 'admin' %}
-            <li><a href="/admin/system" class="dropdown-item"><i class="bi bi-sliders"></i>{{ lang.header.mailcow_config }}</a></li>
-            {% endif %}
-            <li><a href="#" onclick="logout.submit(); return false;" class="dropdown-item"><i class="bi bi-box-arrow-right"></i>{{ lang.header.logout|default('Sign out') }}</a></li>
-          </ul>
         </li>
-        {% endif %}
+        {% endfor %}
       </ul>
-    </div><!--/.nav-collapse -->
-  </div><!--/.container-fluid -->
-</nav>
+    </div>
+    {% endif %}
+    {% if mailcow_cc_username %}
+    <div class="dropdown rt-user logged-in-as">
+      <button type="button" class="rt-user-chip" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Account menu">
+        <span class="rt-avatar" aria-hidden="true">{{ mailcow_cc_username|first }}</span>
+        <span class="rt-user-name username-lia">{{ mailcow_cc_username }}</span>
+        <i class="bi bi-chevron-down rt-user-caret" aria-hidden="true"></i>
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li class="rt-user-menu-head">
+          <span class="rt-avatar rt-avatar-lg" aria-hidden="true">{{ mailcow_cc_username|first }}</span>
+          <span class="rt-user-meta">
+            <strong>{{ mailcow_cc_username }}</strong>
+            {% if dual_login %}<span>via {{ dual_login.username }}</span>{% endif %}
+            <span class="rt-role-badge">{{ mailcow_cc_role }}</span>
+          </span>
+        </li>
+        <li><hr class="dropdown-divider"></li>
+        {% if mailcow_cc_role == 'user' %}
+        <li><a href="/user#/user-auth" class="dropdown-item"><i class="bi bi-person-circle"></i>{{ lang.header.user_settings }}</a></li>
+        {% elseif mailcow_cc_role == 'domainadmin' %}
+        <li><a href="/domainadmin/user" class="dropdown-item"><i class="bi bi-person-circle"></i>{{ lang.header.user_settings }}</a></li>
+        {% elseif mailcow_cc_role == 'admin' %}
+        <li><a href="/admin/system#/config-admins" class="dropdown-item"><i class="bi bi-shield-lock"></i>Security &amp; 2FA</a></li>
+        <li><a href="#" class="dropdown-item" data-bs-toggle="modal" data-container="sogo-mailcow" data-bs-target="#RestartContainer"><i class="bi bi-arrow-repeat"></i>{{ lang.header.restart_sogo }}</a></li>
+        {% endif %}
+        <li><hr class="dropdown-divider"></li>
+        <li><a href="#" onclick="logout.submit(); return false;" class="dropdown-item"><i class="bi bi-box-arrow-right"></i>{{ lang.header.logout|default('Sign out') }}</a></li>
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+</header>
+
+{% if mailcow_cc_role %}
+<div class="rt-palette" id="rt-palette" role="dialog" aria-modal="true" aria-label="Search" hidden>
+  <div class="rt-palette-backdrop" data-rt-palette-close></div>
+  <div class="rt-palette-panel">
+    <div class="rt-palette-search">
+      <i class="bi bi-search" aria-hidden="true"></i>
+      <input type="text" id="rt-palette-input" placeholder="Search pages and actions…" autocomplete="off" spellcheck="false"
+             role="combobox" aria-expanded="true" aria-controls="rt-palette-list" aria-autocomplete="list">
+      <kbd>Esc</kbd>
+    </div>
+    <ul class="rt-palette-list" id="rt-palette-list" role="listbox" aria-label="Results"></ul>
+    <div class="rt-palette-foot">
+      <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+      <span><kbd>↵</kbd> open</span>
+      <span><kbd>Esc</kbd> close</span>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% else %}
+{# Pages reachable without signing in, e.g. quarantine release links from notification mails #}
+<header class="rt-public-header">
+  <a class="rt-public-brand" href="/" aria-label="Home">{% include 'rabbittech/brand.twig' %}</a>
+  <div class="rt-topbar-actions">
+    <label class="rt-icon-btn rt-theme-toggle" title="Toggle dark mode">
+      <input type="checkbox" id="dark-mode-toggle" aria-label="Dark mode">
+      <i class="bi bi-moon-stars rt-icon-moon"></i>
+      <i class="bi bi-sun rt-icon-sun"></i>
+    </label>
+    <a class="btn btn-sm btn-secondary" href="/"><i class="bi bi-box-arrow-in-right"></i>{{ lang.login.login }}</a>
+  </div>
+</header>
+{% endif %}
 {% endblock navbar %}
 
 <form action="/" method="post" id="logout"><input type="hidden" name="logout"></form>
 
-{% if ui_texts.ui_announcement_text and ui_texts.ui_announcement_active and not is_root_uri and mailcow_cc_username %}
-<div class="container mt-4">
-  <div class="alert alert-{{ ui_texts.ui_announcement_type }}">{{ ui_texts.ui_announcement_text }}</div>
-</div>
-{% endif %}
+<main class="rt-content flex-grow-1" id="rt-content">
+  {% if ui_texts.ui_announcement_text and ui_texts.ui_announcement_active and not is_root_uri and mailcow_cc_username %}
+  <div class="alert alert-{{ ui_texts.ui_announcement_type }} rt-announcement">{{ ui_texts.ui_announcement_text }}</div>
+  {% endif %}
 
-<div class="container flex-grow-1 my-4">
-{% block content %}{% endblock %}
-</div>
+  {# Filled in by js/build/014-rabbittech.js from the active sidebar entry #}
+  <div class="rt-page-header" id="rt-page-header">
+    <div class="rt-page-heading">
+      <a class="rt-page-eyebrow" id="rt-page-eyebrow"></a>
+      <h1 class="rt-page-title" id="rt-page-title"></h1>
+      <p class="rt-page-desc" id="rt-page-desc"></p>
+    </div>
+    <div class="rt-page-actions" id="rt-page-actions"></div>
+  </div>
+  <nav class="rt-subnav" id="rt-subnav" aria-label="Section" hidden></nav>
+
+  {% block content %}{% endblock %}
+</main>
 
 {% include 'modals/footer.twig' %}
 
@@ -686,7 +699,7 @@ function recursiveBase64StrToArrayBuffer(obj) {
 </script>
 
 <footer class="rt-footer">
-  <div class="container">
+  <div class="rt-footer-inner">
     <div class="footer">
       <span class="rt-footer-brand"><span class="rt-dot" aria-hidden="true"></span>RabbitTech Mail</span>
       {% if ui_texts.ui_footer %}

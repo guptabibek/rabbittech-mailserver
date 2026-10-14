@@ -4,6 +4,9 @@
 {% block body_class %}rt-auth-page{% endblock %}
 
 {% block content %}
+<div class="rt-auth-split">
+{% include 'rabbittech/auth-hero.twig' %}
+<section class="rt-auth-main">
 <div class="rt-auth">
   <div>
     <div class="rt-auth-brand">{% include 'rabbittech/brand.twig' with {brand_size: 'xl'} %}</div>
@@ -137,4 +140,6 @@
   </div>
 </div>
 {% endif %}
+</section>
+</div>
 {% endblock %}

@@ -110,6 +110,58 @@ if [ "${#restart[@]}" -gt 0 ]; then
   docker compose restart "${restart[@]}"
 fi
 
+# Some services write config into the bind-mounted data/ tree when they start, e.g.
+# Dovecot creates the master user and the SOGo single sign-on password that webmail
+# needs to open mailboxes. If those files are missing (deleted by the rsync --delete
+# deploys before scripts/sync-release.sh), restart the service so it writes them again.
+declare -A generated=(
+  [dovecot-mailcow]="data/conf/dovecot/dovecot-master.passwd data/conf/dovecot/sogo-sso.conf data/conf/phpfpm/sogo-sso/sogo-sso.pass data/conf/sogo/sieve.creds data/conf/sogo/cron.creds"
+  [postfix-mailcow]="data/conf/postfix/custom_transport.pcre data/conf/postfix/sql/mysql_virtual_alias_maps.cf"
+)
+
+# Prints the files of the given services that do not exist. Runs as root: some of the
+# directories involved belong to container users and are not readable by the deploy user.
+missing_generated() {
+  local service file files=()
+  for service in "$@"; do
+    for file in ${generated[$service]}; do
+      files+=("$APP_DIR/$file")
+    done
+  done
+  as_root sh -c 'for f in "$@"; do [ -e "$f" ] || echo "$f"; done' sh "${files[@]}"
+}
+
+# Waits up to $1 seconds for the files of the remaining services to appear
+wait_for_generated() {
+  local seconds=$1 waited=0
+  shift
+  while [ -n "$(missing_generated "$@")" ]; do
+    [ "$waited" -ge "$seconds" ] && return 1
+    sleep 2
+    waited=$((waited + 2))
+  done
+}
+
+# Containers created by "up -d" write these files within seconds of starting
+wait_for_generated 20 "${!generated[@]}" || true
+heal=()
+for service in "${!generated[@]}"; do
+  missing=$(missing_generated "$service")
+  if [ -n "$missing" ]; then
+    echo "Missing runtime files from $service:" $missing
+    heal+=("$service")
+  fi
+done
+if [ "${#heal[@]}" -gt 0 ]; then
+  echo "Restarting to regenerate them: ${heal[*]}"
+  docker compose restart "${heal[@]}"
+  if ! wait_for_generated 90 "${heal[@]}"; then
+    echo "Still missing after the restart:" $(missing_generated "${heal[@]}") >&2
+    echo "Check the logs: docker compose logs --tail=100 ${heal[*]}" >&2
+    exit 1
+  fi
+fi
+
 docker compose ps
 
 # Keep the newest releases for reference; older ones only use disk space.
