@@ -4,52 +4,115 @@
   <meta charset="utf-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
-  <meta name="theme-color" content="#0F766E"/>
+  <meta name="theme-color" content="#7C3AED"/>
   <meta http-equiv="Referrer-Policy" content="same-origin">
   <title>{{ ui_texts.title_name|raw }}</title>
 
   <link rel="stylesheet" href="{{ css_path }}">
   <script>
-    // check if darkmode is preferred by OS or set by localStorage
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches && localStorage.getItem("mailcow_theme") !== "light" ||
-        localStorage.getItem("mailcow_theme") === "dark") {
-      var head  = document.getElementsByTagName('head')[0];
-      var link  = document.createElement('link');
-      link.id   = 'dark-mode-theme';
-      link.rel  = 'stylesheet';
-      link.type = 'text/css';
-      link.href = '/css/themes/mailcow-darkmode.css';
-      head.appendChild(link);
-    }
+    // RabbitTech theme: light by default, dark once chosen with the toggle (stored in localStorage)
+    (function () {
+      var theme = null;
+      try { theme = localStorage.getItem('mailcow_theme'); } catch (e) {}
+      if (theme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
   </script>
 
   <link rel="shortcut icon" href="/favicon.png" type="image/png">
   <link rel="icon" href="/favicon.png" type="image/png">
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
 <div class="overlay"></div>
 {% block navbar %}
-<nav class="navbar navbar-expand-lg navbar-light bg-light sticky-top p-0">
+<nav class="navbar navbar-expand-lg sticky-top rt-navbar" aria-label="Main">
   <div class="container-fluid">
     <a class="navbar-brand" href="/">
-      <img class="main-logo" alt="RabbitTech Mail logo" src="{{ logo|default('/img/rabbittech_mailcow.svg') }}">
-      <img class="main-logo-dark" alt="RabbitTech Mail logo dark" src="{{ logo_dark|default('/img/rabbittech_mailcow.svg') }}">
+      {% include 'rabbittech/brand.twig' %}
     </a>
-    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
-      <i class="bi bi-list fs-3"></i>
+    <button class="navbar-toggler rt-icon-btn" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
+      <i class="bi bi-list"></i>
     </button>
     <div id="navbar" class="navbar-collapse collapse">
-      <ul class="navbar-nav ms-auto">
+      <ul class="navbar-nav rt-nav-main me-auto">
+        {% if mailcow_cc_role %}
+        {% if mailcow_cc_role == 'admin' %}
+        <li class="nav-item dropdown">
+          <a href="#" class="nav-link dropdown-toggle{% if is_uri('dashboard') or is_uri('system') %} active{% endif %}" data-bs-toggle="dropdown" role="button" aria-expanded="false"><i class="bi bi-hdd-stack"></i>{{ lang.header.mailcow_system }}</a>
+          <ul class="dropdown-menu">
+            <li><a href="/admin/dashboard" class="dropdown-item {% if is_uri('dashboard') %}active{% endif %}"><i class="bi bi-activity"></i>{{ lang.header.debug }}</a></li>
+            <li><a href="/admin/system" class="dropdown-item {% if is_uri('system') %}active{% endif %}"><i class="bi bi-sliders"></i>{{ lang.header.mailcow_config }}</a></li>
+          </ul>
+        </li>
+        <li class="nav-item dropdown">
+          <a href="#" class="nav-link dropdown-toggle{% if is_uri('mailbox') or is_uri('quarantine') or is_uri('queue') %} active{% endif %}" data-bs-toggle="dropdown" role="button" aria-expanded="false"><i class="bi bi-envelope"></i>{{ lang.header.email }}</a>
+          <ul class="dropdown-menu">
+            <li><a href="/admin/mailbox" class="dropdown-item {% if is_uri('mailbox') %}active{% endif %}"><i class="bi bi-inbox"></i>{{ lang.header.mailcow_config }}</a></li>
+            <li><a href="/quarantine" class="dropdown-item {% if is_uri('quarantine') %}active{% endif %}"><i class="bi bi-shield-check"></i>{{ lang.header.quarantine }}</a></li>
+            <li><a href="/admin/queue" class="dropdown-item {% if is_uri('queue') %}active{% endif %}"><i class="bi bi-hourglass-split"></i>{{ lang.queue.queue_manager }}</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a href="#" class="dropdown-item" data-bs-toggle="modal" data-container="sogo-mailcow" data-bs-target="#RestartContainer"><i class="bi bi-arrow-repeat"></i>{{ lang.header.restart_sogo }}</a></li>
+          </ul>
+        </li>
+        {% endif %}
+        {% if mailcow_cc_role == 'domainadmin' %}
         <li class="nav-item">
-          <div class="nav-link form-check form-switch my-auto d-flex align-items-center">
-            <label class="form-check-label"><i class="bi bi-moon-fill"></i></label>
-            <input class="form-check-input ms-2" type="checkbox" id="dark-mode-toggle">
-          </div>
+          <a href="/domainadmin/user" class="nav-link{% if is_uri('domainadmin.user') %} active{% endif %}"><i class="bi bi-person-circle"></i>{{ lang.header.user_settings }}</a>
+        </li>
+        <li class="nav-item dropdown">
+          <a href="#" class="nav-link dropdown-toggle{% if is_uri('mailbox') or is_uri('quarantine') %} active{% endif %}" data-bs-toggle="dropdown" role="button" aria-expanded="false"><i class="bi bi-envelope"></i>{{ lang.header.email }}</a>
+          <ul class="dropdown-menu">
+            <li><a href="/domainadmin/mailbox" class="dropdown-item {% if is_uri('mailbox') %}active{% endif %}"><i class="bi bi-inbox"></i>{{ lang.header.mailcow_config }}</a></li>
+            <li><a href="/quarantine" class="dropdown-item {% if is_uri('quarantine') %}active{% endif %}"><i class="bi bi-shield-check"></i>{{ lang.header.quarantine }}</a></li>
+          </ul>
+        </li>
+        {% elseif mailcow_cc_role == 'user' %}
+        <li class="nav-item">
+          <a href="/user" class="nav-link{% if is_uri('user') %} active{% endif %}"><i class="bi bi-person-circle"></i>{{ lang.header.user_settings }}</a>
+        </li>
+        <li class="nav-item">
+          <a href="/quarantine" class="nav-link{% if is_uri('quarantine') %} active{% endif %}"><i class="bi bi-shield-check"></i>{{ lang.header.quarantine }}</a>
+        </li>
+        {% endif %}
+        {% endif %}
+
+        {% if mailcow_apps_processed or app_links %}
+        <li class="nav-item dropdown">
+          <a href="#" class="nav-link dropdown-toggle" data-bs-toggle="dropdown" role="button" aria-expanded="false"><i class="bi bi-grid-3x3-gap"></i>{{ ui_texts.apps_name|raw }}</a>
+          <ul class="dropdown-menu">
+            {% for app in mailcow_apps_processed %}
+              {% if not skip_sogo or not is_uri('SOGo', app.user_link) %}
+              <li {% if app.description %}title="{{ app.description }}"{% endif %}>
+                <a href="{{ app.user_link }}" class="dropdown-item"><i class="bi bi-box-arrow-up-right"></i>{{ app.name }}</a>
+              </li>
+              {% endif %}
+            {% endfor %}
+            {% for row in app_links_processed %}
+              {% for key, val in row %}
+              <li><a href="{{ val.user_link }}" class="dropdown-item"><i class="bi bi-box-arrow-up-right"></i>{{ key }}</a></li>
+              {% endfor %}
+            {% endfor %}
+          </ul>
+        </li>
+        {% endif %}
+      </ul>
+
+      <ul class="navbar-nav rt-nav-actions">
+        {% if not is_master %}
+        <li class="nav-item d-flex align-items-center me-1"><span class="rt-slave-badge"><i class="bi bi-diagram-3"></i>slave</span></li>
+        {% endif %}
+        <li class="nav-item d-flex align-items-center">
+          <label class="rt-icon-btn rt-theme-toggle" title="Toggle dark mode">
+            <input type="checkbox" id="dark-mode-toggle" aria-label="Dark mode">
+            <i class="bi bi-moon-stars rt-icon-moon"></i>
+            <i class="bi bi-sun rt-icon-sun"></i>
+          </label>
         </li>
         {% if mailcow_locale %}
-        <li class="nav-item dropdown{% if available_languages|length == 1 %}lang-link-disabled{% endif %}">
-          <a href="#" class="nav-link dropdown-toggle" data-bs-toggle="dropdown" role="button" aria-expanded="false"><span class="flag-icon flag-icon-{{ mailcow_locale[-2:] }}"></span></a>
-          <ul class="dropdown-menu" role="menu "aria-labelledby="languageDropdown">
+        <li class="nav-item dropdown rt-lang{% if available_languages|length == 1 %} lang-link-disabled{% endif %}">
+          <a href="#" class="nav-link dropdown-toggle" data-bs-toggle="dropdown" role="button" aria-expanded="false" aria-label="Language"><span class="flag-icon flag-icon-{{ mailcow_locale[-2:] }}"></span></a>
+          <ul class="dropdown-menu dropdown-menu-end" role="menu" aria-labelledby="languageDropdown">
             {% for key, val in available_languages %}
             <li>
               <a class="dropdown-item {% if mailcow_locale == key %}active{% endif %}" href="?{{ query_string({'lang': key}) }}">
@@ -60,81 +123,33 @@
           </ul>
         </li>
         {% endif %}
-
-        {% if mailcow_cc_role %}
-        {% if mailcow_cc_role == 'admin' %}
-        <li class="nav-item dropdown">
-          <a href="#" class="nav-link dropdown-toggle" data-bs-toggle="dropdown" role="button" aria-expanded="false">{{ lang.header.mailcow_system }}</a>
-          <ul class="dropdown-menu">
-            <li><a href="/admin/dashboard" class="dropdown-item {% if is_uri('dashboard') %}active{% endif %}">{{ lang.header.debug }}</a></li>
-            <li><a href="/admin/system" class="dropdown-item {% if is_uri('system') %}active{% endif %}">{{ lang.header.mailcow_config }}</a></li>
+        {% if mailcow_cc_username %}
+        <li class="nav-item d-none d-lg-flex"><span class="rt-nav-divider" aria-hidden="true"></span></li>
+        <li class="nav-item dropdown rt-user logged-in-as">
+          <a href="#" class="nav-link rt-user-chip" data-bs-toggle="dropdown" role="button" aria-expanded="false">
+            <span class="rt-avatar" aria-hidden="true">{{ mailcow_cc_username|first }}</span>
+            <span class="rt-user-name username-lia">{{ mailcow_cc_username }}</span>
+          </a>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li class="rt-user-menu-head">
+              <span class="rt-avatar rt-avatar-lg" aria-hidden="true">{{ mailcow_cc_username|first }}</span>
+              <span class="rt-user-meta">
+                <strong>{{ mailcow_cc_username }}</strong>
+                {% if dual_login %}<span>via {{ dual_login.username }}</span>{% endif %}
+                <span class="rt-role-badge">{{ mailcow_cc_role }}</span>
+              </span>
+            </li>
+            <li><hr class="dropdown-divider"></li>
+            {% if mailcow_cc_role == 'user' %}
+            <li><a href="/user" class="dropdown-item"><i class="bi bi-person-circle"></i>{{ lang.header.user_settings }}</a></li>
+            {% elseif mailcow_cc_role == 'domainadmin' %}
+            <li><a href="/domainadmin/user" class="dropdown-item"><i class="bi bi-person-circle"></i>{{ lang.header.user_settings }}</a></li>
+            {% elseif mailcow_cc_role == 'admin' %}
+            <li><a href="/admin/system" class="dropdown-item"><i class="bi bi-sliders"></i>{{ lang.header.mailcow_config }}</a></li>
+            {% endif %}
+            <li><a href="#" onclick="logout.submit(); return false;" class="dropdown-item"><i class="bi bi-box-arrow-right"></i>{{ lang.header.logout|default('Sign out') }}</a></li>
           </ul>
         </li>
-        <li class="nav-item dropdown">
-          <a href="#" class="nav-link dropdown-toggle" data-bs-toggle="dropdown" role="button" aria-expanded="false">{{ lang.header.email }}</a>
-          <ul class="dropdown-menu">
-            <li><a href="/admin/mailbox" class="dropdown-item {% if is_uri('mailbox') %}active{% endif %}">{{ lang.header.mailcow_config }}</a></li>
-            <li><a href="/quarantine" class="dropdown-item {% if is_uri('quarantine') %}active{% endif %}">{{ lang.header.quarantine }}</a></li>
-            <li><a href="/admin/queue" class="dropdown-item {% if is_uri('queue') %}active{% endif %}">{{ lang.queue.queue_manager }}</a></li>
-            <li><a href="#" class="dropdown-item" data-bs-toggle="modal" data-container="sogo-mailcow" data-bs-target="#RestartContainer">{{ lang.header.restart_sogo }}</a></li>
-          </ul>
-        </li>
-        {% endif %}
-        {% if mailcow_cc_role == 'domainadmin' %}
-        <li class="nav-item dropdown">
-          <a href="/domainadmin/user" class="nav-link" role="button" aria-expanded="false">{{ lang.header.user_settings }}</a>
-        </li>
-        {% elseif mailcow_cc_role == 'user' %}
-        <li class="nav-item dropdown">
-          <a href="/user" class="nav-link" role="button" aria-expanded="false">{{ lang.header.user_settings }}</a>
-        </li>
-        {% endif %}
-
-        {% if mailcow_cc_role == 'domainadmin' %}
-        <li class="nav-item dropdown">
-          <a href="#" class="nav-link dropdown-toggle" data-bs-toggle="dropdown" role="button" aria-expanded="false">{{ lang.header.email }}</a>
-          <ul class="dropdown-menu">
-            <li><a href="/domainadmin/mailbox" class="dropdown-item {% if is_uri('mailbox') %}active{% endif %}">{{ lang.header.mailcow_config }}</a></li>
-            <li><a href="/quarantine" class="dropdown-item {% if is_uri('quarantine') %}active{% endif %}">{{ lang.header.quarantine }}</a></li>
-          </ul>
-        </li>
-        {% endif %}
-
-        {% if mailcow_cc_role == 'user' %}
-        <li class="nav-item dropdown">
-          <a href="/quarantine" class="nav-link">{{ lang.header.quarantine }}</a>
-        </li>
-        {% endif %}
-        {% endif %}
-
-        {% if mailcow_apps_processed or app_links %}
-        <li class="nav-item dropdown">
-          <a href="#" class="nav-link dropdown-toggle" data-bs-toggle="dropdown" role="button" aria-expanded="false"><i class="bi bi-link-45deg me-2"></i> {{ ui_texts.apps_name|raw }}</a>
-          <ul class="dropdown-menu">
-            {% for app in mailcow_apps_processed %}
-              {% if not skip_sogo or not is_uri('SOGo', app.user_link) %}
-              <li {% if app.description %}title="{{ app.description }}"{% endif %}>
-                <a href="{{ app.user_link }}" class="dropdown-item">{{ app.name }}</a>
-              </li>
-              {% endif %}
-            {% endfor %}
-            {% for row in app_links_processed %}
-              {% for key, val in row %}
-              <li><a href="{{ val.user_link }}" class="dropdown-item">{{ key }}</a></li>
-              {% endfor %}
-            {% endfor %}
-          </ul>
-        </li>
-        {% endif %}
-        {% if not dual_login and mailcow_cc_username %}
-        <li class="logged-in-as nav-item"><a href="#" onclick="logout.submit()" class="nav-link"><b class="username-lia">{{ mailcow_cc_username }}</b> <i class="bi bi-power ms-2"></i></a></li>
-        {% elseif dual_login %}
-        <li class="logged-in-as nav-item"><a href="#" onclick="logout.submit()" class="nav-link"><b class="username-lia">{{ mailcow_cc_username }} <span class="text-info">({{ dual_login.username }})</span> </b><i class="bi bi-power ms-2"></i></a></li>
-        {% endif %}
-        {% if not is_master %}
-        <div class="nav-link form-check form-switch my-auto d-flex align-items-center">
-            <li class="slave-info">[ slave ]</li>
-        </div>
         {% endif %}
       </ul>
     </div><!--/.nav-collapse -->
@@ -670,33 +685,32 @@ function recursiveBase64StrToArrayBuffer(obj) {
   });
 </script>
 
-<div class="container footer">
-  {% if ui_texts.ui_footer %}
-  <hr><span class="rot-enc">{{ ui_texts.ui_footer|rot13|raw }}</span>
-  {% endif %}
-  {% if mailcow_cc_username and mailcow_info.mailcow_branch|lower == "master" and mailcow_info.version_tag|default %}
-  <span class="version">
-    🐮 + 🐋 = 💕
-        Version: <a href="{{ mailcow_info.git_project_url }}/releases/tag/{{ mailcow_info.version_tag }}" target="_blank">{{ mailcow_info.version_tag }}
-    </a>
-  </span>
-  {% endif %}
-  {% if mailcow_cc_username and mailcow_info.mailcow_branch|lower == "nightly" and mailcow_info.version_tag|default %}
-  <span class="version">
-    🛠️🐮 + 🐋 = 💕
-        Nightly: <a href="{{ mailcow_info.git_project_url }}/commit/{{ mailcow_info.git_commit }}" target="_blank">{{ mailcow_info.version_tag }}
-    </a><br>
-    <span style="text-align:right;display:block;">Build: {{ mailcow_info.git_commit_date }}</span>
-  </span>
-  {% endif %}
-  {% if mailcow_cc_username and mailcow_info.mailcow_branch|lower == "legacy" and mailcow_info.version_tag|default %}
-  <span class="version">
-    ⚰️🐮 + 🐋 = 💕
-        Legacy: <a href="{{ mailcow_info.git_project_url }}/commit/{{ mailcow_info.git_commit }}" target="_blank">{{ mailcow_info.version_tag }}
-    </a><br>
-    <span style="text-align:right;display:block;">Build: {{ mailcow_info.git_commit_date }}</span>
-  </span>
-  {% endif %}
-</div>
+<footer class="rt-footer">
+  <div class="container">
+    <div class="footer">
+      <span class="rt-footer-brand"><span class="rt-dot" aria-hidden="true"></span>RabbitTech Mail</span>
+      {% if ui_texts.ui_footer %}
+      <span class="rot-enc">{{ ui_texts.ui_footer|rot13|raw }}</span>
+      {% endif %}
+      {% if mailcow_cc_username and mailcow_info.mailcow_branch|lower == "master" and mailcow_info.version_tag|default %}
+      <span class="version">
+        Version <a href="{{ mailcow_info.git_project_url }}/releases/tag/{{ mailcow_info.version_tag }}" target="_blank">{{ mailcow_info.version_tag }}</a>
+      </span>
+      {% endif %}
+      {% if mailcow_cc_username and mailcow_info.mailcow_branch|lower == "nightly" and mailcow_info.version_tag|default %}
+      <span class="version">
+        Nightly <a href="{{ mailcow_info.git_project_url }}/commit/{{ mailcow_info.git_commit }}" target="_blank">{{ mailcow_info.version_tag }}</a>
+        <span>Build {{ mailcow_info.git_commit_date }}</span>
+      </span>
+      {% endif %}
+      {% if mailcow_cc_username and mailcow_info.mailcow_branch|lower == "legacy" and mailcow_info.version_tag|default %}
+      <span class="version">
+        Legacy <a href="{{ mailcow_info.git_project_url }}/commit/{{ mailcow_info.git_commit }}" target="_blank">{{ mailcow_info.version_tag }}</a>
+        <span>Build {{ mailcow_info.git_commit_date }}</span>
+      </span>
+      {% endif %}
+    </div>
+  </div>
+</footer>
 </body>
 </html>

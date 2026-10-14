@@ -1516,8 +1516,8 @@ function createReadWriteChart(chart_id, read_lable, write_lable){
     labels: [],
     datasets: [{
       label: read_lable,
-      backgroundColor: "rgba(41, 187, 239, 0.3)",
-      borderColor: "rgba(41, 187, 239, 0.6)",
+      backgroundColor: "rgba(124, 58, 237, 0.12)",
+      borderColor: "rgba(124, 58, 237, 0.85)",
       pointRadius: 1,
       pointHitRadius: 6,
       borderWidth: 2,
@@ -1526,8 +1526,8 @@ function createReadWriteChart(chart_id, read_lable, write_lable){
       data: []
     }, {
       label: write_lable,
-      backgroundColor: "rgba(239, 60, 41, 0.3)",
-      borderColor: "rgba(239, 60, 41, 0.6)",
+      backgroundColor: "rgba(20, 184, 166, 0.12)",
+      borderColor: "rgba(20, 184, 166, 0.85)",
       pointRadius: 1,
       pointHitRadius: 6,
       borderWidth: 2,
@@ -1590,8 +1590,8 @@ function createHostCpuAndMemChart(){
     labels: [],
     datasets: [{
       label: "CPU %",
-      backgroundColor: "rgba(41, 187, 239, 0.3)",
-      borderColor: "rgba(41, 187, 239, 0.6)",
+      backgroundColor: "rgba(124, 58, 237, 0.12)",
+      borderColor: "rgba(124, 58, 237, 0.85)",
       pointRadius: 1,
       pointHitRadius: 6,
       borderWidth: 2,
@@ -1628,8 +1628,8 @@ function createHostCpuAndMemChart(){
     labels: [],
     datasets: [{
       label: "MEM %",
-      backgroundColor: "rgba(41, 187, 239, 0.3)",
-      borderColor: "rgba(41, 187, 239, 0.6)",
+      backgroundColor: "rgba(124, 58, 237, 0.12)",
+      borderColor: "rgba(124, 58, 237, 0.85)",
       pointRadius: 1,
       pointHitRadius: 6,
       borderWidth: 2,

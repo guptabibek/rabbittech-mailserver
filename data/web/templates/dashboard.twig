@@ -30,213 +30,189 @@
   <div class="col-md-12">
     <div class="tab-content" style="padding-top:20px">
       <div role="tabpanel" class="tab-pane active" id="tab-containers">
+        {% set rt_containers_running = containers|filter(c => c.State.Running == 1)|length %}
+        {% set rt_containers_total = containers|length %}
 
-        <div class="card mb-4">
-          <div class="card-header fs-5">
-            <span>{{ ui_texts.title_name|raw }}</span>
-          </div>
+        <div class="card rt-overview mb-4">
           <div class="card-body">
-            <div class="row">
-              <div class="col-sm-12 col-md-4 d-flex flex-column">
-                <img class="main-logo img-responsive my-auto m-auto" alt="RabbitTech Mail logo" style="max-width: 85%; max-height: 85%;" src="{{ logo|default('/img/rabbittech_mailcow.svg') }}">
-                <img class="main-logo-dark img-responsive my-auto m-auto" alt="RabbitTech Mail logo dark" style="max-width: 85%; max-height: 85%;" src="{{ logo_dark|default('/img/rabbittech_mailcow.svg') }}">
-              </div>
-              <div class="col-sm-12 col-md-8">
-                <div style="margin-top: 10px;">
-                  <table class="table table-striped w-100">
-                    <tbody>
-                      <tr>
-                        <td>Hostname</td>
-                        <td class="text-break"><div>
-                          <p><b>{{ hostname }}</b></p>
-                        </div></td>
-                      </tr>
-                      <tr>
-                        <td>{{ lang.debug.architecture }}</td>
-                        <td class="text-break"><div>
-                          <p id="host_architecture">-</p>
-                        </div></td>
-                      </tr>
-                      <tr>
-                        <td>IPs</td>
-                        <td class="text-break">
-                          {% if ip_check == 1 %}
-                            <span class="d-none" id="host_ipv4">-</span>
-                            <span class="d-none mb-2" id="host_ipv6">-</span>
-                            <button class="d-block btn btn-primary btn-sm" id="host_show_ip">
-                              <span class="text">{{ lang.debug.show_ip }}</span>
-                              <div class="spinner-border spinner-border-sm d-none" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                              </div>
-                            </button>
-                          {% else %}
-                            <span class="d-block">{{ lang.admin.ip_check_disabled|raw }}</span>
-                          {% endif %}
-                        </td>
-                      </tr>
-                      <tr>
-                        <td>Version</td>
-                        <td class="text-break">
-                          <div class="fw-bolder">
-                            <p ><a href="#" id="mailcow_version">{{ mailcow_info.version_tag }}</a></p>
-                            <p id="mailcow_update"></p>
-                          </div>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td>{{ lang.debug.current_time }}</td>
-                        <td id="host_date" class="text-break">-</td>
-                      </tr>
-                      <tr>
-                        <td>{{ lang.debug.timezone }}</td>
-                        <td class="text-break">{{ timezone }}</td>
-                      </tr>
-                      <tr>
-                        <td>{{ lang.debug.uptime }}</td>
-                        <td id="host_uptime" class="text-break">-</td>
-                      </tr>
-                      <tr>
-                        <td>{{ lang.debug.disk_usage }}</td>
-                        <td class="text-break">
-                          <div>
-                            <span class="d-block"><i class="bi bi-hdd-fill"></i> {{ vmail_df[0] }}</span>
-                            <span class="d-block">{{ vmail_df[2] }} / {{ vmail_df[1] }} ({{ vmail_df[4] }})</span>
-                          </div>
-                          <div class="mt-2 mb-4">
-                            <div class="progress">
-                              <div class="progress-bar bg-info" role="progressbar" style="width:{{ vmail_df[4] }}"></div>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
+            <div class="rt-overview-head">
+              <span class="rt-container-icon rt-overview-icon"><i class="bi bi-hdd-stack"></i></span>
+              <div class="rt-overview-title">
+                <span class="rt-eyebrow">{{ ui_texts.title_name|raw }}</span>
+                <h2>{{ hostname }}</h2>
+                <div class="rt-meta">
+                  <span><i class="bi bi-globe2"></i>{{ timezone }}</span>
+                  <span><i class="bi bi-cpu"></i><span id="host_architecture">-</span></span>
                 </div>
               </div>
+              <span class="rt-status {% if rt_containers_running == rt_containers_total %}rt-status-running{% else %}rt-status-stopped{% endif %}">
+                {{ rt_containers_running }} / {{ rt_containers_total }} {{ lang.debug.container_running|lower }}
+              </span>
+            </div>
 
-              <div class="col-sm-6 mt-4">
-                <h3>CPU</h3>
-                <h5><span id="host_cpu_cores">-</span> {{ lang.debug.cores }} @ <span id="host_cpu_usage"></span></h5>
-                <canvas id="host_cpu_chart" width="400" height="200"></canvas>
+            <div class="rt-stat-grid">
+              <div class="rt-stat">
+                <div class="rt-stat-label"><i class="bi bi-tag"></i>Version</div>
+                <div class="rt-stat-value">
+                  <a href="#" id="mailcow_version">{{ mailcow_info.version_tag }}</a>
+                  <p id="mailcow_update" class="rt-stat-sub"></p>
+                </div>
               </div>
-              <div class="col-sm-6 mt-4">
-                <h3>{{ lang.debug.memory|upper}}</h3>
-                <h5><span id="host_memory_total">-</span> @ <span id="host_memory_usage"></span></h5>
-                <canvas id="host_mem_chart" width="400" height="200"></canvas>
+              <div class="rt-stat">
+                <div class="rt-stat-label"><i class="bi bi-clock-history"></i>{{ lang.debug.uptime }}</div>
+                <div class="rt-stat-value">
+                  <span id="host_uptime">-</span>
+                  <span class="rt-stat-sub">{{ lang.debug.current_time }}: <span id="host_date">-</span></span>
+                </div>
               </div>
-
-              <div class="col-sm-12">
-                <legend class="mt-4">
-                  {{ lang.admin.guid_and_license }}
-                </legend>
-                <hr />
-                <div id="license">
-                  <form class="form-horizontal" autocapitalize="none" autocorrect="off" role="form" method="post">
-                    <div class="row">
-                      <label class="control-label col-sm-3" for="guid">{{ lang.admin.guid }}:</label>
-                      <div class="col-sm-9">
-                        <div class="input-group">
-                          <span class="input-group-text">
-                            <i class="bi bi-suit-heart{% if gal.valid == true %}-fill text-danger{% endif %}"></i>
-                          </span>
-                          <input type="text" id="guid" class="form-control" value="{{ license_guid }}" readonly>
-                        </div>
-                        <p class="text-muted">
-                          {{ lang.admin.customer_id }}: {{ gal.c|default('?')|raw }} -
-                          {{ lang.admin.service_id }}: {{ gal.s|default('?')|raw }} -
-                          {{ lang.admin.sal_level }}: {{ gal.m|default('?')|raw }}
-                        </p>
+              <div class="rt-stat">
+                <div class="rt-stat-label"><i class="bi bi-hdd"></i>{{ lang.debug.disk_usage }}</div>
+                <div class="rt-stat-value">
+                  {{ vmail_df[2] }} / {{ vmail_df[1] }}
+                  <span class="rt-stat-sub">{{ vmail_df[0] }} &middot; {{ vmail_df[4] }}</span>
+                </div>
+                <div class="progress">
+                  <div class="progress-bar bg-info" role="progressbar" style="width:{{ vmail_df[4] }}"></div>
+                </div>
+              </div>
+              <div class="rt-stat">
+                <div class="rt-stat-label"><i class="bi bi-diagram-3"></i>IPs</div>
+                <div class="rt-stat-value">
+                  {% if ip_check == 1 %}
+                    <span class="d-none" id="host_ipv4">-</span>
+                    <span class="d-none rt-stat-sub" id="host_ipv6">-</span>
+                    <button class="d-block btn btn-secondary btn-sm" id="host_show_ip">
+                      <span class="text">{{ lang.debug.show_ip }}</span>
+                      <div class="spinner-border spinner-border-sm d-none" role="status">
+                        <span class="visually-hidden">Loading...</span>
                       </div>
-                    </div>
-                    <div class="row">
-                      <div class="offset-sm-3 col-sm-9">
-                        <p class="text-muted">{{ lang.admin.license_info|raw }}</p>
-                        <div class="btn-group">
-                          <button class="btn btn-sm d-block d-sm-inline btn-success" name="license_validate_now" type="submit" href="#">{{ lang.admin.validate_license_now }}</button>
-                        </div>
-                      </div>
-                    </div>
-                  </form>
+                    </button>
+                  {% else %}
+                    <span class="rt-stat-sub">{{ lang.admin.ip_check_disabled|raw }}</span>
+                  {% endif %}
                 </div>
               </div>
             </div>
           </div>
         </div>
+
+        <div class="row g-4 mb-4">
+          <div class="col-lg-6">
+            <div class="card rt-chart-card h-100">
+              <div class="card-header d-flex">
+                <span><i class="bi bi-cpu me-2"></i>CPU</span>
+                <span class="rt-chart-meta"><strong><span id="host_cpu_cores">-</span> {{ lang.debug.cores }}</strong> @ <span id="host_cpu_usage"></span></span>
+              </div>
+              <div class="card-body">
+                <canvas id="host_cpu_chart" width="400" height="200"></canvas>
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-6">
+            <div class="card rt-chart-card h-100">
+              <div class="card-header d-flex">
+                <span><i class="bi bi-memory me-2"></i>{{ lang.debug.memory }}</span>
+                <span class="rt-chart-meta"><strong id="host_memory_total">-</strong> @ <span id="host_memory_usage"></span></span>
+              </div>
+              <div class="card-body">
+                <canvas id="host_mem_chart" width="400" height="200"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- container info -->
         <div class="card mb-4">
-          <div class="card-header fs-5">
-            <span>{{ lang.debug.containers_info }}</span>
+          <div class="card-header d-flex rt-section-head">
+            <span><i class="bi bi-boxes me-2"></i>{{ lang.debug.containers_info }}</span>
+            <span class="rt-count">
+              <span class="badge bg-success">{{ rt_containers_running }} {{ lang.debug.container_running|lower }}</span>
+              {% if rt_containers_running != rt_containers_total %}
+              <span class="badge bg-danger">{{ rt_containers_total - rt_containers_running }} {{ lang.debug.container_stopped|lower }}</span>
+              {% endif %}
+            </span>
           </div>
           <div class="card-body p-0">
-            <div class="row mx-0">
-              <!-- rest of the containers -->
+            <div class="rt-container-grid">
               {% for container, container_info in containers %}
-                  <div class="col-md-6 col-sm-12 p-2">
-                    <div class="list-group-item p-0">
-                      <div class="d-flex p-2 list-group-header">
-                        <div>
-                          <span class="fw-bold">{{ container }}</span>
-                          <span class="d-block d-md-inline">({{ container_info.Config.Image }})</span>
-                          <small class="d-block">({{ lang.debug.started_on }} <span class="parse_date">{{ container_info.State.StartedAtHR }}</span>)</small>
-                          {% if container_info.State.Running == 1 %}
-                            <span class="badge fs-7 bg-success loader" style="min-width:100px">
-                              {{ lang.debug.container_running }}
-                              <span class="loader-dot">.</span>
-                              <span class="loader-dot">.</span>
-                              <span class="loader-dot">.</span>
-                            </span>
-                          {% elseif container_info.State %}
-                            <span class="badge fs-7 bg-danger" style="min-width:100px">
-                              {{ lang.debug.container_stopped }}
-                              <i class="bi-x ms-1"></i>
-                            </span>
-                          {% endif %}
-                        </div>
-                        <div class="mt-auto ms-auto">
-                          <button class="btn btn-light" type="button" data-bs-toggle="collapse" data-bs-target="#{{ container }}Collapse" aria-expanded="false" aria-controls="{{ container }}Collapse">
-                            <i class="bi bi-caret-down-fill caret"></i>
-                          </button>
-                        </div>
+                {% set rt_running = container_info.State.Running == 1 %}
+                <div class="rt-container{% if not rt_running %} is-stopped{% endif %}">
+                  <div class="rt-container-head">
+                    <span class="rt-container-icon"><i class="bi bi-box-seam"></i></span>
+                    <div class="rt-container-body">
+                      <div class="rt-container-name"><span>{{ container }}</span></div>
+                      <div class="rt-container-meta">
+                        <span class="rt-image-tag" title="{{ container_info.Config.Image }}">{{ container_info.Config.Image }}</span>
+                        <span title="{{ lang.debug.started_on }}"><i class="bi bi-clock-history me-1"></i><span class="parse_date">{{ container_info.State.StartedAtHR }}</span></span>
                       </div>
-                      <div class="collapse p-0 list-group-details container-details-collapse" id="{{ container }}Collapse" data-id="{{ container_info.Id }}">
-                        <div class="row p-2 pt-4">
-                          <div class="mt-4 col-sm-12 col-md-6 d-flex flex-column">
-                            <h6>Disk I/O</h6>
-                            <div class="spinner-border my-4 mx-auto" role="status">
-                              <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <canvas class="d-none" id="{{ container }}_DiskIOChart" width="400" height="200"></canvas>
-                          </div>
-                          <div class="mt-4 col-sm-12 col-md-6 d-flex flex-column">
-                            <h6>Net I/O</h6>
-                            <div class="spinner-border my-4 mx-auto" role="status">
-                              <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <canvas class="d-none" id="{{ container }}_NetIOChart" width="400" height="200"></canvas>
-                          </div>
-                          <div class="col-12 d-flex" style="height: 40px">
-                            <a href data-bs-toggle="modal"
-                              data-container="{{ container }}"
-                              data-bs-target="#RestartContainer"
-                              class="btn btn-sm btn-secondary d-flex align-items-center justify-content-center mb-2 ms-auto"
-                              style="height: 30px;">{{ lang.debug.restart_container }}
-                                <i class="ms-1 bi
-                                {% if container_info.State.Running == 1 %}
-                                bi-record-fill text-success
-                                {% elseif container_info.State %}
-                                bi-record-fill text-danger
-                                {% else %}
-                                default
-                                {% endif %}
-                                "
-                              ></i>
-                            </a>
-                          </div>
+                    </div>
+                    {% if rt_running %}
+                      <span class="rt-status rt-status-running">{{ lang.debug.container_running }}</span>
+                    {% elseif container_info.State %}
+                      <span class="rt-status rt-status-stopped">{{ lang.debug.container_stopped }}</span>
+                    {% endif %}
+                    <button class="rt-icon-btn rt-container-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#{{ container }}Collapse" aria-expanded="false" aria-controls="{{ container }}Collapse" aria-label="{{ container }}">
+                      <i class="bi bi-chevron-down caret"></i>
+                    </button>
+                  </div>
+                  <div class="collapse rt-container-details container-details-collapse" id="{{ container }}Collapse" data-id="{{ container_info.Id }}">
+                    <div class="row g-3 p-3">
+                      <div class="col-sm-12 col-md-6 d-flex flex-column">
+                        <h6>Disk I/O</h6>
+                        <div class="spinner-border my-4 mx-auto" role="status">
+                          <span class="visually-hidden">Loading...</span>
                         </div>
+                        <canvas class="d-none" id="{{ container }}_DiskIOChart" width="400" height="200"></canvas>
+                      </div>
+                      <div class="col-sm-12 col-md-6 d-flex flex-column">
+                        <h6>Net I/O</h6>
+                        <div class="spinner-border my-4 mx-auto" role="status">
+                          <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <canvas class="d-none" id="{{ container }}_NetIOChart" width="400" height="200"></canvas>
+                      </div>
+                      <div class="col-12 d-flex">
+                        <a href data-bs-toggle="modal"
+                          data-container="{{ container }}"
+                          data-bs-target="#RestartContainer"
+                          class="btn btn-sm btn-secondary ms-auto">
+                          <i class="bi bi-arrow-repeat"></i>{{ lang.debug.restart_container }}
+                        </a>
                       </div>
                     </div>
                   </div>
+                </div>
               {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        <div class="card mb-4">
+          <div class="card-header d-flex">
+            <span><i class="bi bi-suit-heart me-2"></i>{{ lang.admin.guid_and_license }}</span>
+          </div>
+          <div class="card-body">
+            <div id="license">
+              <form class="form-horizontal" autocapitalize="none" autocorrect="off" role="form" method="post">
+                <div class="row g-3 align-items-start">
+                  <label class="control-label col-md-3 pt-md-2" for="guid">{{ lang.admin.guid }}</label>
+                  <div class="col-md-9">
+                    <div class="input-group">
+                      <span class="input-group-text">
+                        <i class="bi bi-suit-heart{% if gal.valid == true %}-fill text-danger{% endif %}"></i>
+                      </span>
+                      <input type="text" id="guid" class="form-control" value="{{ license_guid }}" readonly>
+                    </div>
+                    <p class="text-muted small mt-2 mb-3">
+                      {{ lang.admin.customer_id }}: {{ gal.c|default('?')|raw }} &middot;
+                      {{ lang.admin.service_id }}: {{ gal.s|default('?')|raw }} &middot;
+                      {{ lang.admin.sal_level }}: {{ gal.m|default('?')|raw }}
+                    </p>
+                    <p class="text-muted">{{ lang.admin.license_info|raw }}</p>
+                    <button class="btn btn-sm btn-secondary" name="license_validate_now" type="submit" href="#">{{ lang.admin.validate_license_now }}</button>
+                  </div>
+                </div>
+              </form>
             </div>
           </div>
         </div>
