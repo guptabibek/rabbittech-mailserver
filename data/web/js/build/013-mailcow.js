@@ -326,36 +326,34 @@ $(document).ready(function() {
   });
 
   // Dark Mode Loader
-  $('#dark-mode-toggle').click(toggleDarkMode);
-  if ($('#dark-mode-theme').length) {
-    $('#dark-mode-toggle').prop('checked', true);
-    $('.main-logo').addClass('d-none');
-    $('.main-logo-dark').removeClass('d-none');
-    if ($('#rspamd_logo').length) $('#rspamd_logo').attr('src', '/img/rspamd_logo_light.png');
-    if ($('#rspamd_logo_sm').length) $('#rspamd_logo_sm').attr('src', '/img/rspamd_logo_light.png');
-  } else {
-    $('.main-logo').removeClass('d-none');
-    $('.main-logo-dark').addClass('d-none');
+  // The RabbitTech theme (css/build/016-rabbittech.css) switches tokens on <html data-theme="dark">,
+  // which the inline script in base.twig sets before first paint.
+  function isDarkMode() {
+    return document.documentElement.getAttribute('data-theme') === 'dark';
+  }
+  function applyDarkModeState() {
+    var dark = isDarkMode();
+    var rspamd_logo = dark ? '/img/rspamd_logo_light.png' : '/img/rspamd_logo_dark.png';
+    $('#dark-mode-toggle').prop('checked', dark);
+    $('.main-logo').toggleClass('d-none', dark);
+    $('.main-logo-dark').toggleClass('d-none', !dark);
+    if ($('#rspamd_logo').length) $('#rspamd_logo').attr('src', rspamd_logo);
+    if ($('#rspamd_logo_sm').length) $('#rspamd_logo_sm').attr('src', rspamd_logo);
   }
   function toggleDarkMode(){
-    if($('#dark-mode-theme').length){
-      $('#dark-mode-theme').remove();
-      $('#dark-mode-toggle').prop('checked', false);
-      $('.main-logo').removeClass('d-none');
-      $('.main-logo-dark').addClass('d-none');
-      if ($('#rspamd_logo').length) $('#rspamd_logo').attr('src', '/img/rspamd_logo_dark.png');
-      if ($('#rspamd_logo_sm').length) $('#rspamd_logo_sm').attr('src', '/img/rspamd_logo_dark.png');
-      localStorage.setItem('mailcow_theme', 'light');
-    }else{
-      $('head').append('<link id="dark-mode-theme" rel="stylesheet" type="text/css" href="/css/themes/mailcow-darkmode.css">');
-      $('#dark-mode-toggle').prop('checked', true);
-      $('.main-logo').addClass('d-none');
-      $('.main-logo-dark').removeClass('d-none');
-      if ($('#rspamd_logo').length) $('#rspamd_logo').attr('src', '/img/rspamd_logo_light.png');
-      if ($('#rspamd_logo_sm').length) $('#rspamd_logo_sm').attr('src', '/img/rspamd_logo_light.png');
-      localStorage.setItem('mailcow_theme', 'dark');
+    var dark = !isDarkMode();
+    if (dark) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
     }
+    try {
+      localStorage.setItem('mailcow_theme', dark ? 'dark' : 'light');
+    } catch (e) {}
+    applyDarkModeState();
   }
+  $('#dark-mode-toggle').click(toggleDarkMode);
+  applyDarkModeState();
 
   // Reveal Password Input
   $(".reveal-password-input").on('click', '.toggle-password', function() {

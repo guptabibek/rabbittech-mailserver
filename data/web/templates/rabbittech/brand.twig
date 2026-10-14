@@ -1,0 +1,27 @@
+{# RabbitTech brand mark. Logos uploaded under System > Configuration > Customize take precedence.
+   Optional: brand_size ('xl' for the stacked login lockup). #}
+{% if logo %}
+  <img class="main-logo" alt="{{ ui_texts.main_name|default('RabbitTech Mail')|striptags }}" src="{{ logo }}">
+  <img class="main-logo-dark" alt="{{ ui_texts.main_name|default('RabbitTech Mail')|striptags }}" src="{{ logo_dark|default(logo) }}">
+{% else %}
+  {% set rt_gradient_id = 'rt-mark-' ~ random() %}
+  <span class="rt-brand{% if brand_size|default('') %} rt-brand-{{ brand_size }}{% endif %}">
+    <svg class="rt-brand-mark" viewBox="0 0 104 104" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id="{{ rt_gradient_id }}" x1="0" y1="0" x2="104" y2="104" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#9F7AFA"/>
+          <stop offset="1" stop-color="#6D28D9"/>
+        </linearGradient>
+      </defs>
+      <rect width="104" height="104" rx="26" fill="url(#{{ rt_gradient_id }})"/>
+      <path d="M31 37c-4.6-14.3-1.6-25.4 5.1-25.4 8.3 0 13.9 13.1 15 26.5 2.5-.5 5.3-.5 8 0 .7-14.3 6-27.9 14.5-27.9 7.4 0 10.1 12.7 4.6 28.6 9.4 6.4 15.4 17.2 15.4 29.4 0 18.6-15.9 29.2-40.5 29.2S12.8 86.8 12.8 68.2c0-13.1 7.1-24.8 18.2-31.2Z" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="45.1" cy="59.3" r="5.6" fill="#6EE7B7"/>
+      <circle cx="65.8" cy="59.3" r="5.6" fill="#6EE7B7"/>
+      <path d="M47.4 74.6c3.4 3.9 11.2 3.9 14.7 0" fill="none" stroke="#6EE7B7" stroke-width="5" stroke-linecap="round"/>
+    </svg>
+    <span class="rt-brand-text">
+      <span class="rt-brand-name">Rabbit<em>Tech</em></span>
+      <span class="rt-brand-sub">Mail Console</span>
+    </span>
+  </span>
+{% endif %}
