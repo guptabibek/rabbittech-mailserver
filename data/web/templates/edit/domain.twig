@@ -2,6 +2,7 @@
 
 {% block inner_content %}
 {% if result %}
+{% include 'rabbittech/summary-domain.twig' %}
 <div id="domain-content" class="responsive-tabs">
     <ul class="nav nav-tabs" role="tablist">
       <li role="presentation" class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#dedit">{{ lang.edit.domain }}</button></li>
@@ -144,12 +145,6 @@
                   <div class="row mb-2">
                     <div class="offset-sm-2 col-sm-10">
                       <button class="btn btn-xs-lg d-block d-sm-inline btn-success" data-action="edit_selected" data-id="editdomain" data-item="{{ domain }}" data-api-url='edit/domain' data-api-attr='{}' href="#">{{ lang.admin.save }}</button>
-                    </div>
-                  </div>
-                  <div class="row">
-                    <div class="offset-sm-2 col-sm-10">
-                      <small class="fst-italic d-block">{{ lang.edit.created_on }}: {{ result.created }}</small>
-                      <small class="fst-italic d-block">{{ lang.edit.last_modified }}: {{ result.modified|default(lang.user.never) }}</small>
                     </div>
                   </div>
                 </form>

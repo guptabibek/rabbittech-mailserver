@@ -65,6 +65,39 @@ How it works:
 - **`inc/header.inc.php`** exposes the session ACL as `rt_acl`, so the sidebar shows only the
   modules a user may use.
 
+### Page designs
+
+The content of every page follows the same patterns, so the console reads as one product:
+
+- **Tables** (all DataTables, `js/build/014-rabbittech.js`):
+  - Search and page size without label clutter.
+  - A select-all checkbox in the header replaces "Toggle all", and the toolbar shows "N selected".
+  - Row actions are icon buttons with tooltips.
+  - Mailboxes, domains and aliases show an avatar or icon with the name, usage bars for storage and
+    limits, "last active 2 hours ago via IMAP" and alias targets as chips. The renderers
+    (`window.rt.identity`, `rt.usage`, `rt.lastActive`, `rt.chips`) are used from `js/site/mailbox.js`.
+  - After the row actions shrink to icons, the responsive columns are measured again, so more
+    columns fit.
+- **Forms** (CSS only, no template changes):
+  - Dialogs stack their labels above the fields.
+  - Settings pages use a fixed label column with a divider between rows.
+  - On/off checkboxes are switches.
+  - On long forms, the save button stays visible at the bottom.
+- **Edit pages** for a mailbox or domain open with a summary (`templates/rabbittech/summary-*.twig`):
+  - Mailbox: avatar, name, status, storage, messages, last login and dates, plus "Log in as".
+  - Domain: mailboxes, aliases and quota used against their limits, and stored mail.
+- **User pages:**
+  - Overview: account summary with the webmail button, then sign-in security (password, recovery
+    email, 2FA, FIDO2), mail apps and devices (protocol access, Apple profiles, setup guides) and
+    recent sign-ins.
+  - Addresses: grouped into "Receiving" and "Sending".
+  - Preferences: grouped into "Mail handling", "Quarantine" and "Reset", with segmented controls.
+- **Administrators** lists administrators and domain administrators first. Your own 2FA/FIDO2 is
+  in its own card, and the API keys are a collapsible card. The 2FA/FIDO2 rows are shared with the
+  user overview and the domain-admin account page (`templates/rabbittech/security-settings.twig`).
+- **DKIM** shows one bordered row per domain. This also fixes an upstream bug: domains without a
+  key were hidden although the "Key missing" filter was on.
+
 ### Assets
 
 - `data/web/img/rabbittech_mailcow.svg` (light background) and `rabbittech_mailcow_dark.svg`:
@@ -150,5 +183,11 @@ git merge upstream/master
 
 Most of the theme lives in new files (`016-rabbittech.css`, `templates/rabbittech/`, fonts and
 images), so conflicts are limited to the templates listed above, `inc/header.inc.php` (one global),
-`013-mailcow.js` (dark-mode toggle) and `dashboard.js` (chart colors). After merging, check that
-new upstream tabs have a sidebar entry in `nav.twig`; until they do, their tab strip stays visible. Resolve conflicts, test, then deploy.
+`013-mailcow.js` (dark-mode toggle), `dashboard.js` (chart colors) and `mailbox.js` (table cell
+renderers). The page redesigns also rewrote `user/tab-user-*.twig`, `domainadmin.twig` and
+`admin/tab-config-admins.twig`, and touched `edit/mailbox.twig`, `edit/domain.twig` and
+`admin/tab-config-dkim.twig`. If upstream changes those, carry its new fields or IDs over to the
+RabbitTech layout.
+
+After merging, check that new upstream tabs have a sidebar entry in `nav.twig`; until they do,
+their tab strip stays visible. Resolve conflicts, test, then deploy.

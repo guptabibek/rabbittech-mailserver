@@ -495,6 +495,10 @@ jQuery(function($){
             item.mailboxes = item.mboxes_in_domain + " / " + item.max_num_mboxes_for_domain;
             item.quota = item.quota_used_in_domain + "/" + item.max_quota_for_domain + "/" + item.bytes_total;
             item.stats = item.msgs_total + "/" + item.bytes_total;
+            var share = function (used, max) { return max > 0 ? used / max * 100 : 0; };
+            item.rt_aliases = rt.usage(share(item.aliases_in_domain, item.max_num_aliases_for_domain), item.aliases_in_domain + ' of ' + item.max_num_aliases_for_domain);
+            item.rt_mailboxes = rt.usage(share(item.mboxes_in_domain, item.max_num_mboxes_for_domain), item.mboxes_in_domain + ' of ' + item.max_num_mboxes_for_domain);
+            item.rt_quota = rt.usage(share(item.quota_used_in_domain, item.max_quota_for_domain), humanFileSize(item.quota_used_in_domain) + ' of ' + humanFileSize(item.max_quota_for_domain));
 
             if (!item.rl) item.rl = '∞';
             else {
@@ -562,27 +566,40 @@ jQuery(function($){
           title: lang.domain,
           data: 'domain_h_name',
           responsivePriority: 3,
-          defaultContent: ''
+          defaultContent: '',
+          render: function (data, type, row) {
+            if (type !== 'display') return data;
+            return rt.identity(data, row.description ? escapeHtml(row.description) : '', { icon: 'globe2', muted: row.active == 0 });
+          }
         },
         {
           title: lang.aliases,
           data: 'aliases',
           searchable: false,
-          defaultContent: ''
+          responsivePriority: 8,
+          defaultContent: '',
+          render: function (data, type, row) {
+            return type === 'display' ? row.rt_aliases : data;
+          }
         },
         {
           title: lang.mailboxes,
           data: 'mailboxes',
           searchable: false,
           responsivePriority: 4,
-          defaultContent: ''
+          defaultContent: '',
+          render: function (data, type, row) {
+            return type === 'display' ? row.rt_mailboxes : data;
+          }
         },
         {
           title: lang.domain_quota,
           data: 'quota',
           searchable: false,
+          responsivePriority: 5,
           defaultContent: '',
-          render: function (data, type) {
+          render: function (data, type, row) {
+            if (type === 'display') return row.rt_quota;
             data = data.split("/");
             return humanFileSize(data[0]) + " / " + humanFileSize(data[1]);
           }
@@ -594,7 +611,10 @@ jQuery(function($){
           defaultContent: '',
           render: function (data, type) {
             data = data.split("/");
-            return '<i class="bi bi-files"></i> ' + data[0] + ' / ' + humanFileSize(data[1]);
+            if (type === 'display') {
+              return '<span class="rt-cell-text"><span>' + Number(data[0]).toLocaleString() + ' messages</span><small>' + humanFileSize(data[1]) + ' stored</small></span>';
+            }
+            return data[0] + ' / ' + humanFileSize(data[1]);
           }
         },
         {
@@ -917,6 +937,7 @@ jQuery(function($){
         },
         dataSrc: function(json){
           $.each(json.data, function (i, item) {
+            item.rt_storage = rt.usage(item.percent_in_use, humanFileSize(item.quota_used) + ' of ' + (item.quota == 0 ? '∞' : humanFileSize(item.quota)));
             item.quota = {
               sortBy: item.quota_used,
               value: item.quota
@@ -925,10 +946,12 @@ jQuery(function($){
             item.quota.value = humanFileSize(item.quota_used) + "/" + item.quota.value;
 
             item.max_quota_for_mbox = humanFileSize(item.max_quota_for_mbox);
-            item.last_mail_login = (item.attributes.imap_access == 1 ? '<div class="text-start badge bg-info mb-2" style="min-width: 70px;">IMAP @ ' + unix_time_format(Number(item.last_imap_login)) + '</div><br>' : '') +
-                                   (item.attributes.pop3_access == 1 ? '<div class="text-start badge bg-info mb-2" style="min-width: 70px;">POP3 @ ' + unix_time_format(Number(item.last_pop3_login)) + '</div><br>' : '') +
-                                   (item.attributes.smtp_access == 1 ? '<div class="text-start badge bg-info mb-2" style="min-width: 70px;">SMTP @ ' + unix_time_format(Number(item.last_smtp_login)) + '</div><br>' : '') +
-                                   '<div class="text-start badge bg-info" style="min-width: 70px;">SSO @ ' + unix_time_format(Number(item.last_sso_login)) + '</div>';
+            var logins = [];
+            if (item.attributes.imap_access == 1) logins.push(['IMAP', item.last_imap_login]);
+            if (item.attributes.pop3_access == 1) logins.push(['POP3', item.last_pop3_login]);
+            if (item.attributes.smtp_access == 1) logins.push(['SMTP', item.last_smtp_login]);
+            logins.push(['SSO', item.last_sso_login]);
+            item.last_mail_login = rt.lastActive(logins);
             /*
             if (!item.rl) {
               item.rl = '∞';
@@ -1033,14 +1056,21 @@ jQuery(function($){
           title: lang.username,
           data: 'username',
           responsivePriority: 3,
-          defaultContent: ''
+          defaultContent: '',
+          render: function (data, type, row) {
+            if (type !== 'display') return data;
+            return rt.identity(row.name || data, row.name ? data : '', { muted: row.active == 0 });
+          }
         },
         {
           title: lang.domain_quota,
           data: 'quota.value',
           searchable: false,
-          responsivePriority: 8,
-          defaultContent: ''
+          responsivePriority: 4,
+          defaultContent: '',
+          render: function (data, type, row) {
+            return type === 'display' ? row.rt_storage : data;
+          }
         },
         {
           title: lang.last_mail_login,
@@ -1061,7 +1091,7 @@ jQuery(function($){
           searchable: false,
           defaultContent: '',
           responsivePriority: 9,
-          className: 'dt-data-w100'
+          className: 'none'
         },
         {
           title: lang.fname,
@@ -1149,7 +1179,10 @@ jQuery(function($){
           data: 'messages',
           searchable: false,
           defaultContent: '',
-          responsivePriority: 5
+          responsivePriority: 5,
+          render: function (data, type) {
+            return type === 'display' && data !== null && data !== '' ? Number(data).toLocaleString() : data;
+          }
         },
         {
           title: lang.created_on,
@@ -1983,19 +2016,27 @@ jQuery(function($){
         {
           title: 'ID',
           data: 'id',
-          responsivePriority: 3,
+          responsivePriority: 10,
           defaultContent: ''
         },
         {
           title: lang.alias,
           data: 'address',
-          responsivePriority: 4,
-          defaultContent: ''
+          responsivePriority: 3,
+          defaultContent: '',
+          render: function (data, type, row) {
+            return type === 'display' ? rt.identity(data, '', { icon: 'at', muted: row.active == 0 }) : data;
+          }
         },
         {
           title: lang.target_address,
           data: 'goto',
-          defaultContent: ''
+          responsivePriority: 4,
+          defaultContent: '',
+          render: function (data, type) {
+            // special targets (spam/ham/discard) are already rendered as badges
+            return type === 'display' && data && data.indexOf('<') === -1 ? rt.chips(data) : data;
+          }
         },
         {
           title: lang.domain,
