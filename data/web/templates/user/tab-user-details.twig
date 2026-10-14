@@ -1,72 +1,92 @@
+{% macro address_list(items) %}
+  {% set items = items|filter(i => i|trim != '') %}
+  {% if items %}
+  <ul class="rt-address-list">
+    {% for item in items %}<li><i class="bi bi-envelope" aria-hidden="true"></i><span>{{ item|trim }}</span></li>{% endfor %}
+  </ul>
+  {% else %}
+  <div class="rt-setting-empty">None</div>
+  {% endif %}
+{% endmacro %}
 <div class="tab-pane fade" id="tab-user-details" role="tabpanel" aria-labelledby="tab-user-details">
-  <div class="card mb-4">
-    <div class="card-header d-flex fs-5">
-      <button class="btn d-md-none flex-grow-1 text-start" data-bs-target="#collapse-tab-user-details" data-bs-toggle="collapse" aria-controls="collapse-tab-user-details">
-        {{ lang.user.mailbox_details }}
-      </button>
-      <span class="d-none d-md-block">{{ lang.user.mailbox_details }}</span>
+  <div class="row g-4">
+    <div class="col-xl-7">
+      <section class="card rt-panel h-100">
+        <div class="card-header"><h3 class="rt-panel-title"><i class="bi bi-inbox"></i> Receiving</h3></div>
+        <div class="rt-setting-list">
+          <div class="rt-setting rt-setting-wrap">
+            <span class="rt-setting-icon" aria-hidden="true"><i class="bi bi-pin-angle"></i></span>
+            <div class="rt-setting-body">
+              <div class="rt-setting-title">{{ lang.user.direct_aliases }}</div>
+              <div class="rt-setting-desc">{{ lang.user.direct_aliases_desc }}</div>
+            </div>
+            <div class="rt-setting-detail">
+              {% if user_get_alias_details.direct_aliases %}
+              <ul class="rt-address-list">
+                {% for direct_alias, direct_alias_meta in user_get_alias_details.direct_aliases %}
+                <li><i class="bi bi-envelope" aria-hidden="true"></i><span>{{ direct_alias }}</span>{% if direct_alias_meta.public_comment %}<small><i class="bi bi-chat-left"></i> {{ direct_alias_meta.public_comment }}</small>{% endif %}</li>
+                {% endfor %}
+              </ul>
+              {% else %}
+              <div class="rt-setting-empty">None</div>
+              {% endif %}
+            </div>
+          </div>
+          <div class="rt-setting rt-setting-wrap">
+            <span class="rt-setting-icon" aria-hidden="true"><i class="bi bi-share"></i></span>
+            <div class="rt-setting-body">
+              <div class="rt-setting-title">{{ lang.user.shared_aliases }}</div>
+              <div class="rt-setting-desc">{{ lang.user.shared_aliases_desc }}</div>
+            </div>
+            <div class="rt-setting-detail">
+              {% if user_get_alias_details.shared_aliases %}
+              <ul class="rt-address-list">
+                {% for shared_alias, shared_alias_meta in user_get_alias_details.shared_aliases %}
+                <li><i class="bi bi-envelope" aria-hidden="true"></i><span>{{ shared_alias }}</span>{% if shared_alias_meta.public_comment %}<small><i class="bi bi-chat-left"></i> {{ shared_alias_meta.public_comment }}</small>{% endif %}</li>
+                {% endfor %}
+              </ul>
+              {% else %}
+              <div class="rt-setting-empty">None</div>
+              {% endif %}
+            </div>
+          </div>
+          <div class="rt-setting rt-setting-wrap">
+            <span class="rt-setting-icon" aria-hidden="true"><i class="bi bi-asterisk"></i></span>
+            <div class="rt-setting-body">
+              <div class="rt-setting-title">{{ lang.user.is_catch_all }}</div>
+              <div class="rt-setting-desc">Mail to any unknown address in these domains is delivered to you.</div>
+            </div>
+            <div class="rt-setting-detail">{{ _self.address_list(user_get_alias_details.is_catch_all|default('')|split(',')) }}</div>
+          </div>
+        </div>
+      </section>
     </div>
-    <div id="collapse-tab-user-details" class="card-body collapse" data-bs-parent="#user-content">
-      <div class="row">
-        <div class="col-sm-4 col-md-3 col-12 text-sm-end text-start"><i class="bi bi-pin-angle"></i> {{ lang.user.direct_aliases }}:
-          <p class="small">{{ lang.user.direct_aliases_desc }}</p>
+    <div class="col-xl-5">
+      <section class="card rt-panel h-100">
+        <div class="card-header"><h3 class="rt-panel-title"><i class="bi bi-send"></i> Sending</h3></div>
+        <div class="rt-setting-list">
+          <div class="rt-setting rt-setting-wrap">
+            <span class="rt-setting-icon" aria-hidden="true"><i class="bi bi-person-badge"></i></span>
+            <div class="rt-setting-body">
+              <div class="rt-setting-title">{{ lang.user.aliases_also_send_as }}</div>
+            </div>
+            <div class="rt-setting-detail">
+              {% if user_get_alias_details.aliases_also_send_as == '*' %}
+              <div class="alert alert-warning mb-0">{{ lang.user.sender_acl_disabled|raw }}</div>
+              {% else %}
+              {{ _self.address_list(user_get_alias_details.aliases_also_send_as|default('')|split(',')) }}
+              {% endif %}
+            </div>
+          </div>
+          <div class="rt-setting rt-setting-wrap">
+            <span class="rt-setting-icon" aria-hidden="true"><i class="bi bi-globe2"></i></span>
+            <div class="rt-setting-body">
+              <div class="rt-setting-title">{{ lang.user.aliases_send_as_all }}</div>
+            </div>
+            <div class="rt-setting-detail">{{ _self.address_list(user_get_alias_details.aliases_send_as_all|default('')|split(',')) }}</div>
+          </div>
         </div>
-        <div class="col-sm-8 col-md-9 col-12">
-          {% for direct_alias, direct_alias_meta in user_get_alias_details.direct_aliases %}
-            {% if direct_alias_meta.public_comment %}
-              {{ direct_alias }} &mdash; <i class="bi bi-chat-left"></i> {{ direct_alias_meta.public_comment }}<br>
-            {% else %}
-              {{ direct_alias }}<br>
-            {% endif %}
-          {% else %}
-           <i class="bi bi-x-lg"></i>
-          {% endfor %}
-        </div>
-      </div>
-      <br>
-      <div class="row">
-        <div class="col-sm-4 col-md-3 col-12 text-sm-end text-start"><i class="bi bi-share"></i> {{ lang.user.shared_aliases }}:
-          <p class="small">{{ lang.user.shared_aliases_desc }}</p>
-        </div>
-        <div class="col-sm-8 col-md-9 col-12">
-          {% for shared_alias, shared_alias_meta in user_get_alias_details.shared_aliases %}
-            {% if shared_alias_meta.public_comment %}
-              {{ shared_alias }} &mdash; <i class="bi bi-chat-left"></i> {{ shared_alias_meta.public_comment }}<br>
-            {% else %}
-              {{ shared_alias }}<br>
-            {% endif %}
-          {% else %}
-            <i class="bi bi-x-lg"></i>
-          {% endfor %}
-        </div>
-      </div>
-      <hr>
-      <div class="row">
-        <div class="col-sm-4 col-md-3 col-12 text-sm-end text-start mb-4">{{ lang.user.aliases_also_send_as }}:</div>
-        <div class="col-sm-8 col-md-9 col-12">
-          <p>
-            {% if user_get_alias_details.aliases_also_send_as == '*' %}
-              {{ lang.user.sender_acl_disabled | raw }}
-            {% elseif user_get_alias_details.aliases_also_send_as %}
-              {{ user_get_alias_details.aliases_also_send_as }}
-            {% else %}
-              <i class="bi bi-x-lg"></i>
-            {% endif %}
-          </p>
-        </div>
-      </div>
-      <div class="row">
-        <div class="col-sm-4 col-md-3 col-12 text-sm-end text-start mb-4">{{ lang.user.aliases_send_as_all }}:</div>
-        <div class="col-sm-8 col-md-9 col-12">
-          <p>{% if not user_get_alias_details.aliases_send_as_all %}<i class="bi bi-x-lg"></i>{% else %}{{ user_get_alias_details.aliases_send_as_all }}{% endif %}</p>
-        </div>
-      </div>
-      <div class="row">
-        <div class="col-sm-4 col-md-3 col-12 text-sm-end text-start mb-4">{{ lang.user.is_catch_all }}:</div>
-        <div class="col-sm-8 col-md-9 col-12">
-          <p>{% if not user_get_alias_details.is_catch_all %}<i class="bi bi-x-lg"></i>{% else %}{{ user_get_alias_details.is_catch_all }}{% endif %}</p>
-        </div>
-      </div>
+      </section>
     </div>
   </div>
 </div>

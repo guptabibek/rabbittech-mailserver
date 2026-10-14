@@ -1,3 +1,81 @@
+// Cell renderers shared by the RabbitTech tables (used from js/site/mailbox.js).
+// Text arguments are expected to be HTML-escaped already.
+window.rt = window.rt || {};
+(function(rt) {
+  'use strict';
+
+  rt.initials = function(text) {
+    var words = String(text || '').replace(/&[#a-z0-9]+;/gi, '').replace(/@.*$/, '').split(/[\s._-]+/).filter(Boolean);
+    return (words.length > 1 ? words[0][0] + words[1][0] : (words[0] || '?').slice(0, 2)).toUpperCase();
+  };
+
+  // Avatar or icon, primary line and muted secondary line
+  rt.identity = function(primary, secondary, options) {
+    options = options || {};
+    var badge = options.icon
+      ? '<span class="rt-cell-icon"><i class="bi bi-' + options.icon + '"></i></span>'
+      : '<span class="rt-avatar rt-avatar-sm" aria-hidden="true">' + rt.initials(options.initials || primary) + '</span>';
+    return '<div class="rt-cell-identity' + (options.muted ? ' is-muted' : '') + '">' + badge +
+      '<span class="rt-cell-text"><span class="rt-cell-primary">' + primary + '</span>' +
+      (secondary ? '<small>' + secondary + '</small>' : '') + '</span></div>';
+  };
+
+  // Progress bar with a caption, e.g. "6.2 GiB of 10 GiB"
+  rt.usage = function(percent, caption) {
+    percent = Math.max(0, Math.min(100, Number(percent) || 0));
+    var level = percent >= 90 ? 'danger' : (percent >= 75 ? 'warning' : 'ok');
+    return '<div class="rt-usage rt-usage-' + level + '"><div class="rt-usage-caption"><span>' + caption + '</span>' +
+      '<span class="rt-usage-pct">' + Math.round(percent) + '%</span></div>' +
+      '<div class="rt-usage-track"><div class="rt-usage-bar" style="width:' + percent + '%"></div></div></div>';
+  };
+
+  rt.timeAgo = function(seconds) {
+    seconds = Number(seconds);
+    if (!seconds) return null;
+    var diff = Math.max(0, Date.now() / 1000 - seconds);
+    var steps = [[60, 'second'], [3600, 'minute'], [86400, 'hour'], [604800, 'day'], [2629800, 'week'], [31557600, 'month'], [Infinity, 'year']];
+    var divisors = [1, 60, 3600, 86400, 604800, 2629800, 31557600];
+    for (var i = 0; i < steps.length; i++) {
+      if (diff < steps[i][0]) {
+        var value = Math.floor(diff / divisors[i]);
+        if (i === 0 && value < 30) return 'just now';
+        return value + ' ' + steps[i][1] + (value === 1 ? '' : 's') + ' ago';
+      }
+    }
+  };
+
+  // Most recent of several logins, e.g. [['IMAP', 1760000000], ['SSO', 0]]
+  rt.lastActive = function(logins, neverLabel) {
+    var latest = null;
+    var details = [];
+    logins.forEach(function(login) {
+      var ts = Number(login[1]) || 0;
+      details.push(login[0] + ': ' + (ts ? new Date(ts * 1000).toLocaleString() : (neverLabel || 'never')));
+      if (ts && (!latest || ts > latest[1])) latest = [login[0], ts];
+    });
+    if (!latest) return '<span class="rt-cell-muted">' + (neverLabel || 'Never') + '</span>';
+    return '<span class="rt-cell-text" title="' + details.join('&#10;') + '"><span>' + rt.timeAgo(latest[1]) + '</span>' +
+      '<small>via ' + latest[0] + '</small></span>';
+  };
+
+  // Space-separated addresses as chips, the rest summarised as "+N"
+  rt.chips = function(text, max) {
+    var items = String(text || '').split(/\s+/).filter(Boolean);
+    max = max || 3;
+    var html = items.slice(0, max).map(function(item) { return '<span class="rt-chip">' + item + '</span>'; }).join('');
+    if (items.length > max) html += '<span class="rt-chip rt-chip-more" title="' + items.slice(max).join('&#10;') + '">+' + (items.length - max) + '</span>';
+    return '<div class="rt-chips">' + html + '</div>';
+  };
+
+  // <time data-rt-time="<unix seconds>"> elements rendered by the templates show relative times
+  $(function() {
+    $('[data-rt-time]').each(function() {
+      var text = rt.timeAgo(this.getAttribute('data-rt-time'));
+      if (text) this.textContent = text;
+    });
+  });
+})(window.rt);
+
 // RabbitTech app shell: sidebar, tab routing, page header and command palette.
 // The sidebar (templates/rabbittech/nav.twig) replaces mailcow's top-level tab strips:
 // each entry lists the tab panes it covers, and this script shows the right pane, keeps
@@ -533,5 +611,121 @@ $(document).ready(function() {
     } else if (e.key === 'Escape') {
       closeDrawer();
     }
+  });
+});
+
+// ------------------------------------------------------------ data tables
+// Applies the RabbitTech table design to every DataTable: search and page-size controls
+// without label clutter, a select-all checkbox in the header with a selection counter,
+// icon-only row actions with tooltips and an emphasised primary column.
+$(document).ready(function() {
+  'use strict';
+  if (!$.fn.dataTable) return;
+
+  function textNodes(el) {
+    return $(el).contents().filter(function() { return this.nodeType === 3; });
+  }
+
+  function selectionBar(table) {
+    return table.closest('.card-body, .tab-pane, .card').find('[class*="mass-actions"]').first();
+  }
+
+  function updateSelection(table) {
+    var boxes = table.find('tbody input[name="multi_select"]:enabled');
+    var checked = boxes.filter(':checked').length;
+    var header = table.find('thead .rt-select-all');
+    header.prop('checked', checked > 0 && checked === boxes.length);
+    header.prop('indeterminate', checked > 0 && checked < boxes.length);
+    var bar = selectionBar(table);
+    var counter = bar.find('.rt-selection-count');
+    if (!counter.length) {
+      counter = $('<span class="rt-selection-count" aria-live="polite"></span>');
+      bar.find('.btn-group').first().before(counter);
+    }
+    counter.text(checked + ' selected').toggleClass('is-visible', checked > 0);
+    table.closest('.card').toggleClass('rt-has-selection', checked > 0);
+  }
+
+  function setup(settings) {
+    var api = new $.fn.dataTable.Api(settings);
+    var wrapper = $(api.table().container());
+    if (wrapper.data('rtReady')) return;
+    wrapper.data('rtReady', true);
+
+    wrapper.find('.dataTables_filter label').each(function() {
+      var label = (textNodes(this).text() || '').replace(/[:：]\s*$/, '').trim() || 'Search';
+      $(this).find('input').attr({ placeholder: label + '…', 'aria-label': label });
+      textNodes(this).remove();
+    });
+    wrapper.find('.dataTables_length label').each(function() {
+      textNodes(this).remove();
+      $(this).find('select').attr({ title: 'Rows per page', 'aria-label': 'Rows per page' });
+    });
+  }
+
+  function decorate(settings) {
+    var api = new $.fn.dataTable.Api(settings);
+    var table = $(api.table().node());
+
+    // Select-all checkbox in the header of the selection column
+    if (!table.find('thead .rt-select-all').length) {
+      api.columns().every(function(index) {
+        if (table.find('thead .rt-select-all').length) return;
+        // mailcow names the selection column "chkbox"; rows may not be loaded yet
+        if (this.dataSrc() !== 'chkbox' && !$(this.nodes()).find('input[name="multi_select"]').length) return;
+        var box = $('<input type="checkbox" class="form-check-input rt-select-all" aria-label="Select all rows">');
+        $(this.header()).empty().append(box);
+        box.on('click', function(e) { e.stopPropagation(); });
+        box.on('change', function() {
+          table.find('tbody input[name="multi_select"]:enabled').prop('checked', this.checked).trigger('change');
+          updateSelection(table);
+        });
+        // the header checkbox replaces mailcow's "Toggle all" buttons
+        selectionBar(table).closest('.card-body, .tab-pane').find('[id="toggle_multi_select_all"]').addClass('rt-hidden');
+      });
+    }
+    updateSelection(table);
+
+    // Row actions: icon buttons, the label moves to the tooltip
+    var narrowed = false;
+    table.find('tbody .btn').each(function() {
+      var button = $(this);
+      if (button.hasClass('rt-icon-only') || !button.find('.bi').length) return;
+      var label = button.text().replace(/\s+/g, ' ').trim();
+      if (!label) return;
+      button.addClass('rt-icon-only').attr({ title: label, 'aria-label': label });
+      button.closest('.btn-group').addClass('rt-row-actions');
+      narrowed = true;
+    });
+    // Responsive measured the columns with the wide text buttons; measure again so the
+    // freed space shows more columns
+    if (narrowed && api.responsive && !table.data('rtRecalc')) {
+      table.data('rtRecalc', true);
+      api.responsive.recalc();
+      table.data('rtRecalc', false);
+    }
+
+    // The first content column carries the row's name
+    var primary = null;
+    api.columns(':visible').every(function(index) {
+      if (primary !== null) return;
+      var title = $(this.header()).text().trim();
+      if (title && !$(this.nodes()).find('input[type="checkbox"]').length) primary = index;
+    });
+    if (primary !== null) $(api.column(primary).nodes()).addClass('rt-col-primary');
+  }
+
+  $(document).on('init.dt', function(e, settings) { setup(settings); });
+  $(document).on('draw.dt', function(e, settings) { setup(settings); decorate(settings); });
+  $(document).on('change', 'table.dataTable tbody input[name="multi_select"]', function() {
+    updateSelection($(this).closest('table'));
+  });
+
+  // Refresh buttons become icon buttons
+  $('.refresh_table').each(function() {
+    var button = $(this);
+    var label = button.text().trim();
+    if (!button.find('.bi').length) button.prepend('<i class="bi bi-arrow-clockwise"></i> ');
+    button.addClass('rt-icon-only rt-refresh').attr({ title: label, 'aria-label': label });
   });
 });

@@ -2,6 +2,7 @@
 
 {% block inner_content %}
 {% if result %}
+{% include 'rabbittech/summary-mailbox.twig' %}
 <div id="mailbox-content" class="responsive-tabs">
     <ul class="nav nav-tabs" role="tablist">
       <li role="presentation" class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#medit">{{ lang.edit.mailbox }}</button></li>
@@ -302,8 +303,9 @@
                   </div>
                   <hr>
                   <div class="row">
-                    <div class="offset-sm-2 col-sm-10">
-                      <select name="active" class="form-control">
+                    <label class="control-label col-sm-2" for="mailbox_active">{{ lang.mailbox.status }}</label>
+                    <div class="col-sm-10">
+                      <select name="active" id="mailbox_active" class="form-control">
                         <option value="1"{% if result.active == '1' %} selected{% endif %}>{{ lang.edit.active }}</option>
                         <option value="2"{% if result.active == '2' %} selected{% endif %}>{{ lang.edit.disable_login }}</option>
                         <option value="0"{% if result.active == '0' %} selected{% endif %}>{{ lang.edit.inactive }}</option>
@@ -339,12 +341,6 @@
                   <div class="row mt-2 mb-2">
                     <div class="offset-sm-2 col-sm-10">
                       <button class="btn btn-xs-lg d-block d-sm-inline btn-success" data-action="edit_selected" data-id="editmailbox" data-item="{{ result.username }}" data-api-url='edit/mailbox' data-api-attr='{}' href="#">{{ lang.edit.save }}</button>
-                    </div>
-                  </div>
-                  <div class="row">
-                    <div class="offset-sm-2 col-sm-10">
-                      <small class="fst-italic d-block">{{ lang.edit.created_on }}: {{ result.created }}</small>
-                      <small class="fst-italic d-block">{{ lang.edit.last_modified }}: {{ result.modified|default(lang.user.never) }}</small>
                     </div>
                   </div>
                 </form>
