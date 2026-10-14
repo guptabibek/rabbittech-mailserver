@@ -18,7 +18,27 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Validate shell scripts
-        run: bash -n scripts/bootstrap-vps.sh scripts/deploy-vps.sh
+        run: |
+          bash -n scripts/bootstrap-vps.sh scripts/deploy-vps.sh
+          sh -n scripts/sync-release.sh
+
+      - name: Test release sync
+        run: |
+          set -euo pipefail
+          release=$(mktemp -d) app=$(mktemp -d) state=$(mktemp -d)
+          git archive HEAD | tar -x -C "$release"
+          sh scripts/sync-release.sh "$release" "$app" "$state"
+          # runtime state that a deploy must keep
+          mkdir -p "$app/data/conf/postfix/sql"
+          echo generated > "$app/data/conf/postfix/sql/runtime.cf"
+          echo edited > "$app/data/conf/rspamd/custom/ip_wl.map"
+          rm "$release/README.md"
+          sh scripts/sync-release.sh "$release" "$app" "$state"
+          test ! -e "$app/README.md"
+          test ! -e "$app/.env"
+          grep -qx generated "$app/data/conf/postfix/sql/runtime.cf"
+          grep -qx edited "$app/data/conf/rspamd/custom/ip_wl.map"
+          test "$(cat "$state/release-changes")" = README.md
 
       - name: Validate Docker Compose file
         run: docker compose config >/dev/null
