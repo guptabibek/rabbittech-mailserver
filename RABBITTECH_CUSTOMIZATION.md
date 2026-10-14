@@ -25,17 +25,45 @@ Twig + Bootstrap 5.1 interface. Every Mailcow feature and its JavaScript keep wo
 - Upstream's `css/themes/mailcow-darkmode.css` is no longer loaded. That file was served with
   `expires max`, so browsers kept stale copies; the dark tokens are now part of the hashed CSS bundle.
 
-### Layout and templates
+### App shell and information architecture
 
-- **Top bar** (`templates/base.twig`): brand, icon navigation with active states, theme toggle,
-  language menu and a user menu with sign-out. It collapses into a drawer on mobile.
+The console is a sidebar application. mailcow's nested tab menus ("Access ▾", "Options ▾",
+"Logs ▾") are reorganised into task-based sections that differ per role:
+
+| Role | Sections |
+|---|---|
+| Admin | Overview · E-Mail (domains, mailboxes, aliases, resources, sync jobs, filters, address rewriting, templates, quarantine, mail queue) · Security (spam filter, DKIM, TLS policies, Fail2ban, password policy) · Access (administrators, identity provider, OAuth2 apps) · System (routing, notifications, Rspamd UI, branding, logs) |
+| Domain admin | E-Mail (domains to quarantine) · Access (account settings) |
+| User | E-Mail (overview, addresses, preferences, spam filter, quarantine) · Tools (app passwords, sync jobs, push notifications), filtered by the user's ACL |
+
+How it works:
+
+- **`templates/rabbittech/nav.twig`** defines the sidebar. Each entry lists the mailcow tab panes it
+  covers. The first pane opens by default; several panes become a sub-navigation on the page, for
+  example Logs → Postfix | Dovecot | ….
+- **`js/build/014-rabbittech.js`** runs the shell:
+  - It opens the right pane and keeps the URL in sync as `#/<pane>`, so back/forward and bookmarks work.
+  - It fills the page header (section, title, description) and shows the entry's primary action
+    (e.g. "Add mailbox") in the header, hiding the duplicate buttons inside the page.
+  - It runs the command palette (Ctrl/⌘ K or `/`) for pages and actions.
+  - It handles the collapsible icon rail and the mobile drawer.
+  - It loads the live counts on the Overview page.
+- **Upstream compatibility:** the sidebar hides each page's original tab strip (`.rt-managed-tabs`).
+  If upstream adds a tab that `nav.twig` doesn't list, that strip reappears automatically, so the new
+  page stays reachable until it gets a sidebar entry.
+- **Overview** (`dashboard.twig`):
+  - Live counts of domains, mailboxes, aliases, queued mail and quarantine, read from `/api/v1`.
+  - A server status card and quick actions.
+  - CPU and memory charts.
+  - A service grid, where expanding a container shows its I/O charts.
+- **Edit pages** show a back link to their list and the edited object as the page title.
+- **Sign-in pages** (`*_index.twig`, `reset-password.twig`) use a split screen: brand panel
+  (`templates/rabbittech/auth-hero.twig`) and form. Form fields and IDs are unchanged.
+- **Pages without a signed-in user** (quarantine release links) get a simple branded header.
 - **Brand mark** (`templates/rabbittech/brand.twig`): an inline SVG plus wordmark. A logo uploaded
-  under System > Configuration > Customize replaces it, with separate light and dark logos.
-- **Login and reset-password pages** (`*_index.twig`, `reset-password.twig`): a centered card under
-  the brand lockup. Form fields and IDs are unchanged.
-- **System > Information** (`dashboard.twig`): host overview with stat tiles, CPU and memory chart
-  cards, and a container status grid. Expanding a container opens its I/O charts full-width. All
-  element IDs used by `js/site/dashboard.js` are kept, and the chart colors match the brand.
+  under Branding replaces it, with separate light and dark logos.
+- **`inc/header.inc.php`** exposes the session ACL as `rt_acl`, so the sidebar shows only the
+  modules a user may use.
 
 ### Assets
 
@@ -96,6 +124,11 @@ server, which calls `scripts/sync-release.sh` to copy it into `/opt/rabbittech-m
 - **Services restart only when their config changed.** A changed file under `data/conf/<service>/`
   restarts that service. SOGo copies its web files into a volume at start, so theme and logo
   changes need this.
+- **Missing runtime files are regenerated.** Some services write config into `data/` when they
+  start: Dovecot creates the master user and the SOGo single sign-on password that webmail needs to
+  open mailboxes, and Postfix creates its SQL and transport maps. If those files are missing, the
+  deploy restarts the service that owns them. If they still don't appear, the deploy fails and names
+  the files.
 - **Template changes clear the Twig cache.** CSS and JS bundles are re-hashed on the next request
   anyway.
 - **Old releases are pruned.** Only the newest three are kept in `releases/`.
@@ -116,5 +149,6 @@ git merge upstream/master
 ```
 
 Most of the theme lives in new files (`016-rabbittech.css`, `templates/rabbittech/`, fonts and
-images), so conflicts are limited to the templates listed above, `013-mailcow.js` (dark-mode toggle)
-and `dashboard.js` (chart colors). Resolve conflicts, test, then deploy.
+images), so conflicts are limited to the templates listed above, `inc/header.inc.php` (one global),
+`013-mailcow.js` (dark-mode toggle) and `dashboard.js` (chart colors). After merging, check that
+new upstream tabs have a sidebar entry in `nav.twig`; until they do, their tab strip stays visible. Resolve conflicts, test, then deploy.

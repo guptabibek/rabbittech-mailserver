@@ -68,11 +68,14 @@ jobs:
           grep -q "RabbitTech Mail" data/web/img/rabbittech_mailcow.svg
           grep -q "RabbitTech Mail design system" data/web/css/build/016-rabbittech.css
           test -f data/web/templates/rabbittech/brand.twig
+          test -f data/web/templates/rabbittech/nav.twig
+          test -f data/web/templates/rabbittech/auth-hero.twig
           test -f data/web/fonts/inter-latin-wght-normal.woff2
 
       - name: Check UI JavaScript syntax
         run: |
           node --check data/web/js/build/013-mailcow.js
+          node --check data/web/js/build/014-rabbittech.js
           node --check data/web/js/site/dashboard.js
           node --check data/conf/sogo/custom-theme.js
           node --check data/conf/sogo/custom-sogo.js

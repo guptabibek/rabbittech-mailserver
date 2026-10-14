@@ -61,9 +61,9 @@ while IFS= read -r f; do
   else
     if [ -e "$dst" ] || [ -L "$dst" ]; then
       is_seed_only "$f" && continue
+      # Unchanged content: leave the file alone, including the owner and mode that
+      # containers set at start (e.g. Dovecot makes passwd-verify.lua 640 root:dovecot)
       if [ -f "$dst" ] && [ ! -L "$dst" ] && cmp -s "$src" "$dst"; then
-        mode=$(stat -c %a "$src")
-        [ "$(stat -c %a "$dst")" = "$mode" ] || chmod "$mode" "$dst"
         continue
       fi
       if [ -d "$dst" ] || [ -L "$dst" ]; then

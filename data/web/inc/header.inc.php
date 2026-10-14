@@ -90,6 +90,8 @@ $globalVariables = [
   'app_links_processed' => $app_links_processed,
   'is_root_uri' => (parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) == '/'),
   'uri' => parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/',
+  // RabbitTech sidebar: show only the modules this login may use
+  'rt_acl' => @$_SESSION['acl'],
 ];
 
 foreach ($globalVariables as $globalVariableName => $globalVariableValue) {
