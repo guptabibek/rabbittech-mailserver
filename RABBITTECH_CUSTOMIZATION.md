@@ -54,8 +54,9 @@ Twig + Bootstrap 5.1 interface. Every Mailcow feature and its JavaScript keep wo
 
 ### CI
 
-`.github/workflows/ci.yml` checks the theme assets, runs `node --check` on the touched JavaScript, and
-parses every Twig template with `scripts/check-twig-templates.php`.
+`.github/workflows/ci.yml` checks the theme assets, runs `node --check` on the touched JavaScript,
+parses every Twig template with `scripts/check-twig-templates.php`, and tests that a release sync
+keeps runtime files and admin-edited maps.
 
 ## Deployment
 
@@ -77,13 +78,32 @@ Recommended hostname:
 mail.rabbittech.com.np
 ```
 
-`data/web` is bind-mounted into the php-fpm and nginx containers, so UI changes need no image rebuild:
+### Automated deploys (GitHub Actions)
 
-- CSS and JS bundles are re-hashed on the next request.
-- Twig templates are cached. `scripts/deploy-vps.sh` clears the cache through its `rsync --delete`.
-  On a manual `git pull`, run `docker compose restart php-fpm-mailcow`.
-- SOGo theme and logo changes need `docker compose restart sogo-mailcow`. Users may need a hard
-  refresh because SOGo caches static files.
+`.github/workflows/deploy-vps.yml` uploads the release and runs `scripts/deploy-vps.sh` on the
+server, which calls `scripts/sync-release.sh` to copy it into `/opt/rabbittech-mailserver/app`:
+
+- **Only release files are written.** Files the containers generate at runtime are never touched:
+  Postfix/Dovecot SQL maps, rspamd network maps, certificates, the ACME challenge directory and the
+  Twig cache. A file is deleted only when the previous release shipped it and the new one doesn't
+  (tracked in `shared/release-manifest`).
+- **The rspamd global filter maps are seeded, not overwritten.** These are the maps in
+  `data/conf/rspamd/custom/` that admins edit under System > Configuration > Global filter maps.
+  They are installed when missing and otherwise left alone.
+- **Root access comes from Docker, not sudo.** Containers re-own several bind-mounted directories,
+  so the sync runs as root. When the deploy user isn't root, it runs inside a throwaway
+  `alpine:3.20` container, using the `docker` group membership the deploy user already has.
+- **Services restart only when their config changed.** A changed file under `data/conf/<service>/`
+  restarts that service. SOGo copies its web files into a volume at start, so theme and logo
+  changes need this.
+- **Template changes clear the Twig cache.** CSS and JS bundles are re-hashed on the next request
+  anyway.
+- **Old releases are pruned.** Only the newest three are kept in `releases/`.
+
+### Manual updates
+
+On a manual `git pull`, run `docker compose restart php-fpm-mailcow` so updated templates show up.
+Run `docker compose restart sogo-mailcow` after SOGo theme or logo changes.
 
 ## Keeping upstream updates
 
