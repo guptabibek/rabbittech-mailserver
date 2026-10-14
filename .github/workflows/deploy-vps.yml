@@ -1,0 +1,146 @@
+name: Deploy to VPS
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-mail-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy mail.rabbittech.com.np
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: production
+    env:
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
+      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+      VPS_KNOWN_HOSTS: ${{ vars.VPS_KNOWN_HOSTS }}
+      MAILCOW_ENV_FILE: ${{ secrets.MAILCOW_ENV_FILE }}
+      APP_ROOT: ${{ vars.APP_ROOT || '/opt/rabbittech-mailserver' }}
+
+    steps:
+      - name: Check deployment secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in VPS_HOST VPS_USER VPS_SSH_KEY MAILCOW_ENV_FILE; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing required GitHub environment secret: $name" >&2
+              exit 1
+            fi
+          done
+
+          required_env=(
+            MAILCOW_HOSTNAME TZ COMPOSE_PROJECT_NAME DBPASS DBROOT REDISPASS
+            HTTP_PORT HTTPS_PORT SMTP_PORT SMTPS_PORT SUBMISSION_PORT
+            IMAP_PORT IMAPS_PORT POP_PORT POPS_PORT SIEVE_PORT
+          )
+          missing=()
+          for name in "${required_env[@]}"; do
+            if ! grep -Eq "^${name}=.+" <<< "$MAILCOW_ENV_FILE"; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "MAILCOW_ENV_FILE is missing required values: ${missing[*]}" >&2
+            exit 1
+          fi
+          if ! grep -Eq '^MAILCOW_HOSTNAME=mail\.rabbittech\.com\.np$' <<< "$MAILCOW_ENV_FILE"; then
+            echo "MAILCOW_ENV_FILE must set MAILCOW_HOSTNAME=mail.rabbittech.com.np" >&2
+            exit 1
+          fi
+
+      - name: Check out the verified commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Prepare release and SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$RUNNER_TEMP/mailcow-deploy" "$HOME/.ssh"
+          git archive --format=tar.gz \
+            --output="$RUNNER_TEMP/mailcow-deploy/rabbittech-mailserver-$DEPLOY_SHA.tar.gz" \
+            "$DEPLOY_SHA"
+          printf '%s\n' "$MAILCOW_ENV_FILE" \
+            > "$RUNNER_TEMP/mailcow-deploy/mailcow.conf.$DEPLOY_SHA"
+          printf '%s\n' "$VPS_SSH_KEY" | tr -d '\r' > "$HOME/.ssh/id_deploy"
+          if ! ssh-keygen -y -f "$HOME/.ssh/id_deploy" >/dev/null 2>&1; then
+            echo "VPS_SSH_KEY is not a valid private key" >&2
+            exit 1
+          fi
+          if [ -n "$VPS_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$VPS_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          else
+            ssh-keyscan -p "$VPS_PORT" "$VPS_HOST" 2>/dev/null > "$HOME/.ssh/known_hosts"
+            echo "::warning::VPS_KNOWN_HOSTS is unset; trusting the host key returned on this run"
+          fi
+          chmod 600 "$HOME/.ssh/id_deploy" "$HOME/.ssh/known_hosts"
+
+      - name: Upload release
+        shell: bash
+        run: |
+          set -euo pipefail
+          scp -P "$VPS_PORT" -i "$HOME/.ssh/id_deploy" \
+            -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o ServerAliveInterval=15 -o ServerAliveCountMax=40 \
+            -o ConnectTimeout=20 \
+            "$RUNNER_TEMP/mailcow-deploy/rabbittech-mailserver-$DEPLOY_SHA.tar.gz" \
+            "$RUNNER_TEMP/mailcow-deploy/mailcow.conf.$DEPLOY_SHA" \
+            "$VPS_USER@$VPS_HOST:/tmp/"
+
+      - name: Deploy Mailcow
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -p "$VPS_PORT" -i "$HOME/.ssh/id_deploy" \
+            -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o ServerAliveInterval=15 -o ServerAliveCountMax=40 \
+            -o TCPKeepAlive=yes -o ConnectTimeout=20 \
+            "$VPS_USER@$VPS_HOST" "DEPLOY_SHA='$DEPLOY_SHA' APP_ROOT='$APP_ROOT' bash -se" <<'REMOTE'
+          set -Eeuo pipefail
+
+          if [[ ! "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid deployment SHA" >&2
+            exit 1
+          fi
+
+          RELEASE_ROOT="$APP_ROOT/releases/$DEPLOY_SHA"
+          UPLOAD_TAR="/tmp/rabbittech-mailserver-$DEPLOY_SHA.tar.gz"
+          UPLOAD_ENV="/tmp/mailcow.conf.$DEPLOY_SHA"
+
+          cleanup_uploads() {
+            rm -f -- "$UPLOAD_TAR" "$UPLOAD_ENV"
+          }
+          trap cleanup_uploads EXIT
+
+          if [ ! -d "$APP_ROOT/releases" ] || [ ! -d "$APP_ROOT/shared" ] || [ ! -w "$APP_ROOT" ]; then
+            echo "Mail server has not been bootstrapped for user $(whoami)." >&2
+            echo "Run scripts/bootstrap-vps.sh once as root, reconnect, and rerun this workflow." >&2
+            exit 1
+          fi
+
+          rm -rf -- "$RELEASE_ROOT"
+          mkdir -p "$RELEASE_ROOT"
+          tar -xzf "$UPLOAD_TAR" -C "$RELEASE_ROOT"
+          install -m 600 "$UPLOAD_ENV" "$APP_ROOT/shared/mailcow.conf"
+          bash "$RELEASE_ROOT/scripts/deploy-vps.sh" "$RELEASE_ROOT" "$APP_ROOT/shared/mailcow.conf"
+          echo "RabbitTech Mailcow deployed at commit $DEPLOY_SHA"
+          REMOTE

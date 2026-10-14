@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: shell · compose · config
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate shell scripts
+        run: bash -n scripts/bootstrap-vps.sh scripts/deploy-vps.sh
+
+      - name: Validate Docker Compose file
+        run: docker compose config >/dev/null
+        env:
+          MAILCOW_HOSTNAME: mail.rabbittech.com.np
+          TZ: Asia/Kathmandu
+          COMPOSE_PROJECT_NAME: rabbittechmail
+          DBPASS: ci-db-pass
+          DBROOT: ci-db-root
+          REDISPASS: ci-redis-pass
+          HTTP_PORT: "80"
+          HTTPS_PORT: "443"
+          SMTP_PORT: "25"
+          SMTPS_PORT: "465"
+          SUBMISSION_PORT: "587"
+          IMAP_PORT: "143"
+          IMAPS_PORT: "993"
+          POP_PORT: "110"
+          POPS_PORT: "995"
+          SIEVE_PORT: "4190"
+          SKIP_LETS_ENCRYPT: "y"
+          ENABLE_IPV6: "false"
+
+      - name: Confirm RabbitTech assets exist
+        run: |
+          test -f data/web/img/rabbittech_mailcow.svg
+          grep -q "RabbitTech Mail" data/web/img/rabbittech_mailcow.svg
+          grep -q "RabbitTech theme layer" data/web/css/build/014-mailcow.css
