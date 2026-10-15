@@ -17,7 +17,8 @@ mkdirSync(output, { recursive: true });
 const children = [];
 function serve(port, env = {}) {
   const child = spawn('php', ['-S', `127.0.0.1:${port}`, join(here, 'router.php')], {
-    env: { ...process.env, ...env }, stdio: 'ignore',
+    // Several workers, so parallel page loads (two tabs reloading together) don't queue up
+    env: { ...process.env, PHP_CLI_SERVER_WORKERS: '4', ...env }, stdio: 'ignore',
   });
   children.push(child);
   return `http://127.0.0.1:${port}`;
@@ -167,7 +168,6 @@ console.log('Behaviour');
   const ctx = await browser.newContext();
   await ctx.clock.install({ time: new Date('2026-10-15T08:00:00Z') });
   const a = await ctx.newPage(), b = await ctx.newPage();
-  let loads = 0; a.on('load', () => loads++);
   await a.goto(session + '/admin/mailbox', { waitUntil: 'networkidle' });
   await b.goto(session + '/admin/mailbox', { waitUntil: 'networkidle' });
   const warns = p => p.evaluate(() => !!document.querySelector('.rt-session-warning'));
@@ -181,10 +181,10 @@ console.log('Behaviour');
   await b.waitForTimeout(500);
   await ctx.clock.runFor(6000);
   check('session: "Stay signed in" clears the warning in every tab', !(await warns(a)) && !(await warns(b)));
-  const before = loads;
+  // Both tabs reload at once; wait for the reload itself rather than a fixed time
+  const reloaded = a.waitForEvent('load', { timeout: 20000 }).then(() => true, () => false);
   await ctx.clock.runFor(310000);
-  await a.waitForTimeout(1000);
-  check('session: the page reloads once the session has ended', loads > before);
+  check('session: the page reloads once the session has ended', await reloaded);
   await ctx.close();
 }
 
