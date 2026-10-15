@@ -25,8 +25,8 @@ $(document).ready(function() {
 
   // set update loop container list
   containersToUpdate = {};
-  // set default ChartJs Font Color
-  Chart.defaults.color = '#999';
+  // set default ChartJs Font Color from the RabbitTech theme (#999 fails contrast on white)
+  Chart.defaults.color = getComputedStyle(document.documentElement).getPropertyValue('--rt-muted').trim() || '#5f667a';
   // create host cpu and mem charts
   createHostCpuAndMemChart();
   // check for new version

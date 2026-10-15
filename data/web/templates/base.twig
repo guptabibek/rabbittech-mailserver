@@ -3,23 +3,32 @@
 <head>
   <meta charset="utf-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#7C3AED"/>
   <meta http-equiv="Referrer-Policy" content="same-origin">
   <title>{{ ui_texts.title_name|raw }}</title>
 
+  <link rel="preload" href="/fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="{{ css_path }}">
   <script>
     // RabbitTech theme: light by default, dark once chosen with the toggle (stored in localStorage)
     (function () {
+      var root = document.documentElement;
+      root.classList.add('rt-js');
+      // If a script fails before the shell is up (see 014-rabbittech.js), fall back to
+      // mailcow's own tab navigation instead of leaving pages without one
+      window.addEventListener('error', function (e) {
+        if (root.classList.contains('rt-shell-ready')) return;
+        if (e instanceof ErrorEvent || (e.target && e.target.tagName === 'SCRIPT')) root.classList.add('rt-shell-failed');
+      }, true);
       var theme = null;
       try { theme = localStorage.getItem('mailcow_theme'); } catch (e) {}
       if (theme === 'dark') {
-        document.documentElement.setAttribute('data-theme', 'dark');
+        root.setAttribute('data-theme', 'dark');
       }
       try {
         if (localStorage.getItem('rt_sidebar') === 'collapsed') {
-          document.documentElement.classList.add('rt-sidebar-collapsed');
+          root.classList.add('rt-sidebar-collapsed');
         }
         // A #/<pane> URL picks the tab; stop mailcow from first reopening the last one,
         // which would run two tab transitions at once
@@ -35,67 +44,75 @@
 </head>
 <body class="{% block body_class %}{% if mailcow_cc_role %}rt-has-shell{% else %}rt-public-page{% endif %}{% endblock %}">
 <div class="overlay"></div>
+{% if mailcow_cc_role %}<a class="rt-skip-link" href="#rt-content">{{ lang.rabbittech.skip_to_content }}</a>{% endif %}
 {% block navbar %}
-{% if mailcow_cc_role %}
-<aside class="rt-sidebar" id="rt-sidebar" aria-label="Sidebar">
-  <div class="rt-sidebar-head">
-    <a class="rt-sidebar-brand" href="/" aria-label="Home">{% include 'rabbittech/brand.twig' %}</a>
-    <button type="button" class="rt-icon-btn rt-sidebar-close" id="rt-sidebar-close" aria-label="Close navigation"><i class="bi bi-x-lg"></i></button>
-  </div>
-  <div class="rt-sidebar-body">
-    {% include 'rabbittech/nav.twig' %}
-  </div>
-  <div class="rt-sidebar-foot">
-    <button type="button" class="rt-nav-link rt-collapse-toggle" id="rt-collapse-toggle" aria-label="Collapse sidebar" title="Collapse sidebar">
-      <i class="bi bi-chevron-bar-left" aria-hidden="true"></i>
-      <span class="rt-nav-label">Collapse</span>
-    </button>
-  </div>
-</aside>
-<div class="rt-sidebar-backdrop" id="rt-sidebar-backdrop"></div>
-
-<header class="rt-topbar">
-  <button type="button" class="rt-icon-btn rt-menu-toggle" id="rt-menu-toggle" aria-controls="rt-sidebar" aria-expanded="false" aria-label="Open navigation">
-    <i class="bi bi-list"></i>
-  </button>
-  <a class="rt-topbar-brand" href="/" aria-label="Home">{% include 'rabbittech/brand.twig' %}</a>
-
-  {% if mailcow_cc_role %}
-  <button type="button" class="rt-search" id="rt-search-trigger" aria-haspopup="dialog" aria-controls="rt-palette">
-    <i class="bi bi-search" aria-hidden="true"></i>
-    <span class="rt-search-text">Search or jump to…</span>
-    <kbd class="rt-search-kbd" data-rt-shortcut>Ctrl K</kbd>
-  </button>
-  {% endif %}
-
-  <div class="rt-topbar-actions">
-    {% if not is_master %}
-    <span class="rt-slave-badge" title="This server is a replica"><i class="bi bi-diagram-3"></i>slave</span>
-    {% endif %}
-    <label class="rt-icon-btn rt-theme-toggle" title="Toggle dark mode">
-      <input type="checkbox" id="dark-mode-toggle" aria-label="Dark mode">
-      <i class="bi bi-moon-stars rt-icon-moon"></i>
-      <i class="bi bi-sun rt-icon-sun"></i>
-    </label>
+{% set t = lang.rabbittech %}
+{% set rt_lang_menu %}
     {% if mailcow_locale %}
     <div class="dropdown rt-lang{% if available_languages|length == 1 %} lang-link-disabled{% endif %}">
-      <button type="button" class="rt-icon-btn" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Language" title="Language">
-        <span class="flag-icon flag-icon-{{ mailcow_locale[-2:] }}"></span>
+      <button type="button" class="rt-icon-btn" data-bs-toggle="dropdown" aria-expanded="false" aria-label="{{ t.language }}" title="{{ t.language }}">
+        <span class="flag-icon flag-icon-{{ mailcow_locale[-2:] }}" aria-hidden="true"></span>
       </button>
       <ul class="dropdown-menu dropdown-menu-end rt-lang-menu">
         {% for key, val in available_languages %}
         <li>
-          <a class="dropdown-item {% if mailcow_locale == key %}active{% endif %}" href="?{{ query_string({'lang': key}) }}">
-            <span class="flag-icon flag-icon-{{ key[-2:] }}"></span>{{ val }}
+          <a class="dropdown-item {% if mailcow_locale == key %}active{% endif %}" href="?{{ query_string({'lang': key}) }}"{% if mailcow_locale == key %} aria-current="true"{% endif %} lang="{{ key[:2] }}">
+            <span class="flag-icon flag-icon-{{ key[-2:] }}" aria-hidden="true"></span>{{ val }}
           </a>
         </li>
         {% endfor %}
       </ul>
     </div>
     {% endif %}
+{% endset %}
+{% set rt_theme_toggle %}
+    <label class="rt-icon-btn rt-theme-toggle" title="{{ t.toggle_dark_mode }}">
+      <input type="checkbox" id="dark-mode-toggle" aria-label="{{ t.dark_mode }}">
+      <i class="bi bi-moon-stars rt-icon-moon" aria-hidden="true"></i>
+      <i class="bi bi-sun rt-icon-sun" aria-hidden="true"></i>
+    </label>
+{% endset %}
+{% if mailcow_cc_role %}
+<aside class="rt-sidebar" id="rt-sidebar" aria-label="{{ t.sidebar }}">
+  <div class="rt-sidebar-head">
+    <a class="rt-sidebar-brand" href="/" aria-label="{{ t.home }}">{% include 'rabbittech/brand.twig' %}</a>
+    <button type="button" class="rt-icon-btn rt-sidebar-close" id="rt-sidebar-close" aria-label="{{ t.close_navigation }}"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+  </div>
+  <div class="rt-sidebar-body">
+    {% include 'rabbittech/nav.twig' %}
+  </div>
+  <div class="rt-sidebar-foot">
+    <button type="button" class="rt-nav-link rt-collapse-toggle" id="rt-collapse-toggle" aria-label="{{ t.collapse_sidebar }}" title="{{ t.collapse_sidebar }}">
+      <i class="bi bi-chevron-bar-left" aria-hidden="true"></i>
+      <span class="rt-nav-label">{{ t.collapse }}</span>
+    </button>
+  </div>
+</aside>
+<div class="rt-sidebar-backdrop" id="rt-sidebar-backdrop"></div>
+
+<header class="rt-topbar">
+  <button type="button" class="rt-icon-btn rt-menu-toggle" id="rt-menu-toggle" aria-controls="rt-sidebar" aria-expanded="false" aria-label="{{ t.open_navigation }}">
+    <i class="bi bi-list" aria-hidden="true"></i>
+  </button>
+  <a class="rt-topbar-brand" href="/" aria-label="{{ t.home }}">{% include 'rabbittech/brand.twig' %}</a>
+
+  {% if mailcow_cc_role %}
+  <button type="button" class="rt-search" id="rt-search-trigger" aria-haspopup="dialog" aria-controls="rt-palette">
+    <i class="bi bi-search" aria-hidden="true"></i>
+    <span class="rt-search-text">{{ t.search_or_jump }}</span>
+    <kbd class="rt-search-kbd" data-rt-shortcut>Ctrl K</kbd>
+  </button>
+  {% endif %}
+
+  <div class="rt-topbar-actions">
+    {% if not is_master %}
+    <span class="rt-slave-badge"><i class="bi bi-diagram-3" aria-hidden="true"></i>{{ t.replica }}</span>
+    {% endif %}
+    {{ rt_theme_toggle }}
+    {{ rt_lang_menu }}
     {% if mailcow_cc_username %}
     <div class="dropdown rt-user logged-in-as">
-      <button type="button" class="rt-user-chip" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Account menu">
+      <button type="button" class="rt-user-chip" data-bs-toggle="dropdown" aria-expanded="false">
         <span class="rt-avatar" aria-hidden="true">{{ mailcow_cc_username|first }}</span>
         <span class="rt-user-name username-lia">{{ mailcow_cc_username }}</span>
         <i class="bi bi-chevron-down rt-user-caret" aria-hidden="true"></i>
@@ -105,7 +122,7 @@
           <span class="rt-avatar rt-avatar-lg" aria-hidden="true">{{ mailcow_cc_username|first }}</span>
           <span class="rt-user-meta">
             <strong>{{ mailcow_cc_username }}</strong>
-            {% if dual_login %}<span>via {{ dual_login.username }}</span>{% endif %}
+            {% if dual_login %}<span>{{ t.signed_in_via|format(dual_login.username) }}</span>{% endif %}
             <span class="rt-role-badge">{{ mailcow_cc_role }}</span>
           </span>
         </li>
@@ -115,11 +132,13 @@
         {% elseif mailcow_cc_role == 'domainadmin' %}
         <li><a href="/domainadmin/user" class="dropdown-item"><i class="bi bi-person-circle"></i>{{ lang.header.user_settings }}</a></li>
         {% elseif mailcow_cc_role == 'admin' %}
-        <li><a href="/admin/system#/config-admins" class="dropdown-item"><i class="bi bi-shield-lock"></i>Security &amp; 2FA</a></li>
-        <li><a href="#" class="dropdown-item" data-bs-toggle="modal" data-container="sogo-mailcow" data-bs-target="#RestartContainer"><i class="bi bi-arrow-repeat"></i>{{ lang.header.restart_sogo }}</a></li>
+        <li><a href="/admin/system#/config-admins" class="dropdown-item"><i class="bi bi-shield-lock" aria-hidden="true"></i>{{ t.security_2fa }}</a></li>
+        {% if not skip_sogo %}
+        <li><button type="button" class="dropdown-item" data-bs-toggle="modal" data-container="sogo-mailcow" data-bs-target="#RestartContainer"><i class="bi bi-arrow-repeat" aria-hidden="true"></i>{{ lang.header.restart_sogo }}</button></li>
+        {% endif %}
         {% endif %}
         <li><hr class="dropdown-divider"></li>
-        <li><a href="#" onclick="logout.submit(); return false;" class="dropdown-item"><i class="bi bi-box-arrow-right"></i>{{ lang.header.logout|default('Sign out') }}</a></li>
+        <li><button type="submit" form="logout" class="dropdown-item"><i class="bi bi-box-arrow-right" aria-hidden="true"></i>{{ t.sign_out }}</button></li>
       </ul>
     </div>
     {% endif %}
@@ -127,20 +146,20 @@
 </header>
 
 {% if mailcow_cc_role %}
-<div class="rt-palette" id="rt-palette" role="dialog" aria-modal="true" aria-label="Search" hidden>
+<div class="rt-palette" id="rt-palette" role="dialog" aria-modal="true" aria-label="{{ t.search }}" hidden>
   <div class="rt-palette-backdrop" data-rt-palette-close></div>
   <div class="rt-palette-panel">
     <div class="rt-palette-search">
       <i class="bi bi-search" aria-hidden="true"></i>
-      <input type="text" id="rt-palette-input" placeholder="Search pages and actions…" autocomplete="off" spellcheck="false"
-             role="combobox" aria-expanded="true" aria-controls="rt-palette-list" aria-autocomplete="list">
+      <input type="text" id="rt-palette-input" placeholder="{{ t.palette_placeholder }}" aria-label="{{ t.palette_placeholder }}" autocomplete="off" spellcheck="false"
+             role="combobox" aria-expanded="false" aria-controls="rt-palette-list" aria-autocomplete="list">
       <kbd>Esc</kbd>
     </div>
-    <ul class="rt-palette-list" id="rt-palette-list" role="listbox" aria-label="Results"></ul>
-    <div class="rt-palette-foot">
-      <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
-      <span><kbd>↵</kbd> open</span>
-      <span><kbd>Esc</kbd> close</span>
+    <ul class="rt-palette-list" id="rt-palette-list" role="listbox" aria-label="{{ t.results }}"></ul>
+    <div class="rt-palette-foot" aria-hidden="true">
+      <span><kbd>↑</kbd><kbd>↓</kbd> {{ t.palette_navigate }}</span>
+      <span><kbd>↵</kbd> {{ t.palette_open }}</span>
+      <span><kbd>Esc</kbd> {{ t.palette_close }}</span>
     </div>
   </div>
 </div>
@@ -148,14 +167,11 @@
 {% else %}
 {# Pages reachable without signing in, e.g. quarantine release links from notification mails #}
 <header class="rt-public-header">
-  <a class="rt-public-brand" href="/" aria-label="Home">{% include 'rabbittech/brand.twig' %}</a>
+  <a class="rt-public-brand" href="/" aria-label="{{ t.home }}">{% include 'rabbittech/brand.twig' %}</a>
   <div class="rt-topbar-actions">
-    <label class="rt-icon-btn rt-theme-toggle" title="Toggle dark mode">
-      <input type="checkbox" id="dark-mode-toggle" aria-label="Dark mode">
-      <i class="bi bi-moon-stars rt-icon-moon"></i>
-      <i class="bi bi-sun rt-icon-sun"></i>
-    </label>
-    <a class="btn btn-sm btn-secondary" href="/"><i class="bi bi-box-arrow-in-right"></i>{{ lang.login.login }}</a>
+    {{ rt_theme_toggle }}
+    {{ rt_lang_menu }}
+    <a class="btn btn-sm btn-secondary" href="/"><i class="bi bi-box-arrow-in-right" aria-hidden="true"></i>{{ lang.login.login }}</a>
   </div>
 </header>
 {% endif %}
@@ -163,7 +179,7 @@
 
 <form action="/" method="post" id="logout"><input type="hidden" name="logout"></form>
 
-<main class="rt-content flex-grow-1" id="rt-content">
+<main class="rt-content flex-grow-1" id="rt-content" tabindex="-1">
   {% if ui_texts.ui_announcement_text and ui_texts.ui_announcement_active and not is_root_uri and mailcow_cc_username %}
   <div class="alert alert-{{ ui_texts.ui_announcement_type }} rt-announcement">{{ ui_texts.ui_announcement_text }}</div>
   {% endif %}
@@ -177,7 +193,7 @@
     </div>
     <div class="rt-page-actions" id="rt-page-actions"></div>
   </div>
-  <nav class="rt-subnav" id="rt-subnav" aria-label="Section" hidden></nav>
+  <nav class="rt-subnav" id="rt-subnav" aria-label="{{ lang.rabbittech.section }}" hidden></nav>
 
   {% block content %}{% endblock %}
 </main>
@@ -192,6 +208,7 @@
   var lang_fido2 = {{ lang_fido2|raw }};
   var lang_success = {{ lang_success|raw }};
   var lang_danger = {{ lang_danger|raw }};
+  var lang_rt = {{ lang_rt|default('{}')|raw }};
   var docker_timeout = {{ docker_timeout|raw }} * 1000;
   var mailcow_cc_role = '{{ mailcow_cc_role }}';
   {% if mailcow_cc_username %}
@@ -683,11 +700,36 @@ function recursiveBase64StrToArrayBuffer(obj) {
   });
 
   {% if mailcow_cc_username %}
-  // Reload after session timeout
-  var session_lifetime = {{ (session_lifetime * 1000) + 15000 }};
-  setTimeout(function() {
-    location.reload();
-  }, session_lifetime);
+  // The server ends a session after session_lifetime seconds without a request (every
+  // page load and API call counts). Warn two minutes before so unsaved input isn't lost,
+  // and reload once it has ended so the sign-in page shows instead of failing actions.
+  (function() {
+    var lifetime = {{ session_lifetime * 1000 }};
+    var lastContact = Date.now();
+    var warning = null;
+    function hideWarning() {
+      if (warning) { warning.remove(); warning = null; }
+    }
+    function staySignedIn() {
+      // Any request refreshes the session; HEAD on this page works for every role
+      fetch(window.location.pathname, { method: 'HEAD', credentials: 'same-origin', cache: 'no-store' })
+        .then(function(response) { if (response.ok) { lastContact = Date.now(); hideWarning(); } });
+    }
+    function showWarning() {
+      if (warning) return;
+      warning = $('<div class="rt-session-warning" role="alert"><i class="bi bi-clock-history" aria-hidden="true"></i><span></span>' +
+        '<button type="button" class="btn btn-sm btn-primary"></button></div>');
+      warning.find('span').text(lang_rt.session_expiring);
+      warning.find('button').text(lang_rt.stay_signed_in).on('click', staySignedIn);
+      $('body').append(warning);
+    }
+    $(document).ajaxComplete(function() { lastContact = Date.now(); hideWarning(); });
+    setInterval(function() {
+      var idle = Date.now() - lastContact;
+      if (idle > lifetime + 15000) location.reload();
+      else if (idle > lifetime - 120000) showWarning();
+    }, 5000);
+  })();
   {% endif %}
 
   // CSRF

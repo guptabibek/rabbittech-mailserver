@@ -98,6 +98,35 @@ The content of every page follows the same patterns, so the console reads as one
 - **DKIM** shows one bordered row per domain. This also fixes an upstream bug: domains without a
   key were hidden although the "Key missing" filter was on.
 
+### Languages
+
+- Every string the RabbitTech layer adds lives in a `rabbittech` section of
+  `data/web/lang/lang.en-gb.json`. mailcow loads English first and merges the page language over it,
+  so the other 32 languages show these strings in English until a `rabbittech` section is added to
+  their file. Existing mailcow keys are reused wherever one fits.
+- Templates read them as `lang.rabbittech.*` (aliased to `t`). Scripts read them from the
+  `lang_rt` object through `rt.t('key')`, set up in `base.twig` from `inc/footer.inc.php`.
+- Dates, relative times ("2 hours ago") and numbers are formatted in the browser with `Intl` for the
+  page language. Templates print plain values marked `data-rt-date`, `data-rt-time` or
+  `data-rt-number`; sizes use binary units (KiB, MiB, GiB).
+
+### Accessibility and resilience
+
+- Colours meet WCAG AA contrast in both themes. Buttons use separate, darker fill tokens
+  (`--rt-primary-fill`, `--rt-danger-fill`), and form controls use `--rt-control-border`.
+- Every focusable element shows a 2px outline when reached by keyboard. A "Skip to content" link
+  jumps past the sidebar, and the closed mobile drawer is `inert`.
+- Headings follow the page outline (h1 page title, h2 cards, h3 items), logout and "Restart SOGo"
+  are real buttons, and pinch-zoom is allowed.
+- On touch screens, icon buttons, pagination and navigation links have larger hit areas. Motion is
+  reduced when the OS asks for it, and pages print without the shell.
+- The page stays usable without the shell script. mailcow's tab strips stay visible until
+  `014-rabbittech.js` has started (`html.rt-shell-ready`), and if a script fails the header falls
+  back to the plain back link. Layout rules that need `:has()` sit inside
+  `@supports selector(:has(*))`.
+- Two minutes before the session expires, a notice offers "Stay signed in" instead of the page
+  reloading without warning.
+
 ### Assets
 
 - `data/web/img/rabbittech_mailcow.svg` (light background) and `rabbittech_mailcow_dark.svg`:
@@ -116,8 +145,9 @@ The content of every page follows the same patterns, so the console reads as one
 ### CI
 
 `.github/workflows/ci.yml` checks the theme assets, runs `node --check` on the touched JavaScript,
-parses every Twig template with `scripts/check-twig-templates.php`, and tests that a release sync
-keeps runtime files and admin-edited maps.
+parses every Twig template with `scripts/check-twig-templates.php`, checks that every language file
+is valid JSON and every RabbitTech string in use exists (`scripts/check-rabbittech-lang.php`), and
+tests that a release sync keeps runtime files and admin-edited maps.
 
 ## Deployment
 

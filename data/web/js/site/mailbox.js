@@ -496,9 +496,10 @@ jQuery(function($){
             item.quota = item.quota_used_in_domain + "/" + item.max_quota_for_domain + "/" + item.bytes_total;
             item.stats = item.msgs_total + "/" + item.bytes_total;
             var share = function (used, max) { return max > 0 ? used / max * 100 : 0; };
-            item.rt_aliases = rt.usage(share(item.aliases_in_domain, item.max_num_aliases_for_domain), item.aliases_in_domain + ' of ' + item.max_num_aliases_for_domain);
-            item.rt_mailboxes = rt.usage(share(item.mboxes_in_domain, item.max_num_mboxes_for_domain), item.mboxes_in_domain + ' of ' + item.max_num_mboxes_for_domain);
-            item.rt_quota = rt.usage(share(item.quota_used_in_domain, item.max_quota_for_domain), humanFileSize(item.quota_used_in_domain) + ' of ' + humanFileSize(item.max_quota_for_domain));
+            var of = rt.t('of', '%s of %s');
+            item.rt_aliases = rt.usage(share(item.aliases_in_domain, item.max_num_aliases_for_domain), rt.format(of, item.aliases_in_domain, item.max_num_aliases_for_domain));
+            item.rt_mailboxes = rt.usage(share(item.mboxes_in_domain, item.max_num_mboxes_for_domain), rt.format(of, item.mboxes_in_domain, item.max_num_mboxes_for_domain));
+            item.rt_quota = rt.usage(share(item.quota_used_in_domain, item.max_quota_for_domain), rt.format(of, humanFileSize(item.quota_used_in_domain), humanFileSize(item.max_quota_for_domain)));
 
             if (!item.rl) item.rl = '∞';
             else {
@@ -612,7 +613,8 @@ jQuery(function($){
           render: function (data, type) {
             data = data.split("/");
             if (type === 'display') {
-              return '<span class="rt-cell-text"><span>' + Number(data[0]).toLocaleString() + ' messages</span><small>' + humanFileSize(data[1]) + ' stored</small></span>';
+              return '<span class="rt-cell-text"><span>' + rt.format(rt.t('n_messages', '%s messages'), rt.number(Number(data[0]) || 0)) + '</span><small>' +
+                rt.format(rt.t('kpi_stored', '%s stored'), humanFileSize(data[1])) + '</small></span>';
             }
             return data[0] + ' / ' + humanFileSize(data[1]);
           }
@@ -937,7 +939,8 @@ jQuery(function($){
         },
         dataSrc: function(json){
           $.each(json.data, function (i, item) {
-            item.rt_storage = rt.usage(item.percent_in_use, humanFileSize(item.quota_used) + ' of ' + (item.quota == 0 ? '∞' : humanFileSize(item.quota)));
+            // percent_in_use is "- " for unlimited quota; rt.usage then shows the caption only
+            item.rt_storage = rt.usage(item.percent_in_use, rt.format(rt.t('of', '%s of %s'), humanFileSize(item.quota_used), item.quota == 0 ? '∞' : humanFileSize(item.quota)));
             item.quota = {
               sortBy: item.quota_used,
               value: item.quota
@@ -951,7 +954,7 @@ jQuery(function($){
             if (item.attributes.pop3_access == 1) logins.push(['POP3', item.last_pop3_login]);
             if (item.attributes.smtp_access == 1) logins.push(['SMTP', item.last_smtp_login]);
             logins.push(['SSO', item.last_sso_login]);
-            item.last_mail_login = rt.lastActive(logins);
+            item.last_mail_login = rt.lastActive(logins, lang.never);
             /*
             if (!item.rl) {
               item.rl = '∞';
@@ -1019,7 +1022,7 @@ jQuery(function($){
               'style="min-width:2em;width:' + item.percent_in_use + '%">' + item.percent_in_use + '%' + '</div></div>'
             };
             item.username = escapeHtml(item.username);
-            item.name = escapeHtml(item.name);
+            item.name = item.name ? escapeHtml(item.name) : '';
 
             if (Array.isArray(item.tags)){
               var tags = '';
@@ -1181,7 +1184,7 @@ jQuery(function($){
           defaultContent: '',
           responsivePriority: 5,
           render: function (data, type) {
-            return type === 'display' && data !== null && data !== '' ? Number(data).toLocaleString() : data;
+            return type === 'display' && data !== null && data !== '' ? rt.number(Number(data)) : data;
           }
         },
         {
@@ -2023,6 +2026,7 @@ jQuery(function($){
           title: lang.alias,
           data: 'address',
           responsivePriority: 3,
+          className: 'rt-col-primary',
           defaultContent: '',
           render: function (data, type, row) {
             return type === 'display' ? rt.identity(data, '', { icon: 'at', muted: row.active == 0 }) : data;

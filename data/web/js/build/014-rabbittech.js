@@ -1,61 +1,91 @@
-// Cell renderers shared by the RabbitTech tables (used from js/site/mailbox.js).
-// Text arguments are expected to be HTML-escaped already.
+// Helpers and cell renderers shared by the RabbitTech UI (also used from js/site/mailbox.js).
+// Text arguments of the renderers are expected to be HTML-escaped already.
 window.rt = window.rt || {};
 (function(rt) {
   'use strict';
 
+  // Translated UI text from lang.*.json "rabbittech" (window.lang_rt, set in base.twig)
+  rt.t = function(key, fallback) {
+    return (window.lang_rt && window.lang_rt[key]) || fallback || key;
+  };
+  // "%s" placeholders, e.g. rt.format(rt.t('of'), used, total)
+  rt.format = function(text) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    return String(text).replace(/%s/g, function() { return args.length ? args.shift() : ''; });
+  };
+  rt.locale = function() {
+    return document.documentElement.lang || undefined;
+  };
+  rt.number = function(value) {
+    try { return new Intl.NumberFormat(rt.locale()).format(value); } catch (e) { return String(value); }
+  };
+
   rt.initials = function(text) {
     var words = String(text || '').replace(/&[#a-z0-9]+;/gi, '').replace(/@.*$/, '').split(/[\s._-]+/).filter(Boolean);
-    return (words.length > 1 ? words[0][0] + words[1][0] : (words[0] || '?').slice(0, 2)).toUpperCase();
+    var first = Array.from(words[0] || '?');
+    var second = words.length > 1 ? Array.from(words[1]) : first.slice(1);
+    return (first[0] + (second[0] || '')).toUpperCase();
   };
 
   // Avatar or icon, primary line and muted secondary line
   rt.identity = function(primary, secondary, options) {
     options = options || {};
     var badge = options.icon
-      ? '<span class="rt-cell-icon"><i class="bi bi-' + options.icon + '"></i></span>'
+      ? '<span class="rt-cell-icon" aria-hidden="true"><i class="bi bi-' + options.icon + '"></i></span>'
       : '<span class="rt-avatar rt-avatar-sm" aria-hidden="true">' + rt.initials(options.initials || primary) + '</span>';
     return '<div class="rt-cell-identity' + (options.muted ? ' is-muted' : '') + '">' + badge +
       '<span class="rt-cell-text"><span class="rt-cell-primary">' + primary + '</span>' +
       (secondary ? '<small>' + secondary + '</small>' : '') + '</span></div>';
   };
 
-  // Progress bar with a caption, e.g. "6.2 GiB of 10 GiB"
+  // Progress bar with a caption, e.g. "6.2 GiB of 10 GiB". Without a limit (percent is not
+  // a number, e.g. mailcow's "- " for unlimited quota) only the caption shows. Over 100%
+  // the bar is full and the label keeps the real value.
   rt.usage = function(percent, caption) {
-    percent = Math.max(0, Math.min(100, Number(percent) || 0));
-    var level = percent >= 90 ? 'danger' : (percent >= 75 ? 'warning' : 'ok');
+    var value = parseFloat(percent);
+    if (!isFinite(value)) {
+      return '<div class="rt-usage rt-usage-unlimited"><div class="rt-usage-caption"><span>' + caption + '</span></div></div>';
+    }
+    var width = Math.max(0, Math.min(100, value));
+    var level = value >= 90 ? 'danger' : (value >= 75 ? 'warning' : 'ok');
     return '<div class="rt-usage rt-usage-' + level + '"><div class="rt-usage-caption"><span>' + caption + '</span>' +
-      '<span class="rt-usage-pct">' + Math.round(percent) + '%</span></div>' +
-      '<div class="rt-usage-track"><div class="rt-usage-bar" style="width:' + percent + '%"></div></div></div>';
+      '<span class="rt-usage-pct">' + Math.round(value) + '%</span></div>' +
+      '<div class="rt-usage-track" aria-hidden="true"><div class="rt-usage-bar" style="width:' + width + '%"></div></div></div>';
   };
 
+  // "2 hours ago" in the page language
   rt.timeAgo = function(seconds) {
     seconds = Number(seconds);
     if (!seconds) return null;
     var diff = Math.max(0, Date.now() / 1000 - seconds);
-    var steps = [[60, 'second'], [3600, 'minute'], [86400, 'hour'], [604800, 'day'], [2629800, 'week'], [31557600, 'month'], [Infinity, 'year']];
-    var divisors = [1, 60, 3600, 86400, 604800, 2629800, 31557600];
-    for (var i = 0; i < steps.length; i++) {
-      if (diff < steps[i][0]) {
-        var value = Math.floor(diff / divisors[i]);
-        if (i === 0 && value < 30) return 'just now';
-        return value + ' ' + steps[i][1] + (value === 1 ? '' : 's') + ' ago';
+    if (diff < 30) return rt.t('just_now', 'just now');
+    var units = [[60, 'second', 1], [3600, 'minute', 60], [86400, 'hour', 3600], [604800, 'day', 86400],
+      [2629800, 'week', 604800], [31557600, 'month', 2629800], [Infinity, 'year', 31557600]];
+    for (var i = 0; i < units.length; i++) {
+      if (diff < units[i][0]) {
+        var value = Math.floor(diff / units[i][2]);
+        try {
+          return new Intl.RelativeTimeFormat(rt.locale(), { numeric: 'always' }).format(-value, units[i][1]);
+        } catch (e) {
+          return value + ' ' + units[i][1] + (value === 1 ? '' : 's') + ' ago';
+        }
       }
     }
   };
 
   // Most recent of several logins, e.g. [['IMAP', 1760000000], ['SSO', 0]]
   rt.lastActive = function(logins, neverLabel) {
+    var never = neverLabel || rt.t('never', 'Never');
     var latest = null;
     var details = [];
     logins.forEach(function(login) {
       var ts = Number(login[1]) || 0;
-      details.push(login[0] + ': ' + (ts ? new Date(ts * 1000).toLocaleString() : (neverLabel || 'never')));
+      details.push(login[0] + ': ' + (ts ? new Date(ts * 1000).toLocaleString(rt.locale()) : never));
       if (ts && (!latest || ts > latest[1])) latest = [login[0], ts];
     });
-    if (!latest) return '<span class="rt-cell-muted">' + (neverLabel || 'Never') + '</span>';
+    if (!latest) return '<span class="rt-cell-muted">' + never + '</span>';
     return '<span class="rt-cell-text" title="' + details.join('&#10;') + '"><span>' + rt.timeAgo(latest[1]) + '</span>' +
-      '<small>via ' + latest[0] + '</small></span>';
+      '<small>' + rt.format(rt.t('via', 'via %s'), latest[0]) + '</small></span>';
   };
 
   // Space-separated addresses as chips, the rest summarised as "+N"
@@ -67,11 +97,29 @@ window.rt = window.rt || {};
     return '<div class="rt-chips">' + html + '</div>';
   };
 
-  // <time data-rt-time="<unix seconds>"> elements rendered by the templates show relative times
+  // Templates print dates (YYYY-MM-DD) and numbers plainly; format them for the page language
+  $(function() {
+    var dateFormat = null;
+    try { dateFormat = new Intl.DateTimeFormat(rt.locale(), { dateStyle: 'medium' }); } catch (e) {}
+    $('time[data-rt-date]').each(function() {
+      var parts = (this.getAttribute('datetime') || '').split('-').map(Number);
+      if (dateFormat && parts.length === 3 && parts[0]) this.textContent = dateFormat.format(new Date(parts[0], parts[1] - 1, parts[2]));
+    });
+    $('[data-rt-number]').each(function() {
+      var value = Number(this.textContent.trim());
+      if (isFinite(value)) this.textContent = rt.number(value);
+    });
+  });
+
+  // <time data-rt-time="<unix seconds>"> elements rendered by the templates show relative
+  // times; the exact time stays in the text for assistive technology and on hover
   $(function() {
     $('[data-rt-time]').each(function() {
       var text = rt.timeAgo(this.getAttribute('data-rt-time'));
-      if (text) this.textContent = text;
+      if (!text) return;
+      var exact = this.getAttribute('title') || this.textContent;
+      this.textContent = text;
+      this.setAttribute('aria-label', text + ' (' + exact + ')');
     });
   });
 })(window.rt);
@@ -103,10 +151,10 @@ $(document).ready(function() {
   var collapseToggle = document.getElementById('rt-collapse-toggle');
   function syncCollapseToggle() {
     var collapsed = root.classList.contains('rt-sidebar-collapsed');
-    var label = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+    var label = collapsed ? rt.t('expand_sidebar', 'Expand sidebar') : rt.t('collapse_sidebar', 'Collapse sidebar');
     collapseToggle.setAttribute('title', label);
     collapseToggle.setAttribute('aria-label', label);
-    collapseToggle.querySelector('.rt-nav-label').textContent = collapsed ? 'Expand' : 'Collapse';
+    collapseToggle.querySelector('.rt-nav-label').textContent = collapsed ? rt.t('expand', 'Expand') : rt.t('collapse', 'Collapse');
   }
   function toggleCollapsed() {
     root.classList.toggle('rt-sidebar-collapsed');
@@ -118,12 +166,20 @@ $(document).ready(function() {
     syncCollapseToggle();
   }
 
-  // Mobile drawer
+  // Mobile drawer. Closed, it is off-canvas: inert keeps its links out of the tab order.
   var menuToggle = document.getElementById('rt-menu-toggle');
   var lastFocus = null;
+  var drawerQuery = window.matchMedia('(max-width: 991.98px)');
+  function syncDrawerInert() {
+    if (!sidebar) return;
+    var hidden = drawerQuery.matches && !body.classList.contains('rt-nav-open');
+    if (hidden) sidebar.setAttribute('inert', ''); else sidebar.removeAttribute('inert');
+  }
+  if (drawerQuery.addEventListener) drawerQuery.addEventListener('change', syncDrawerInert);
   function openDrawer() {
     lastFocus = document.activeElement;
     body.classList.add('rt-nav-open');
+    syncDrawerInert();
     menuToggle.setAttribute('aria-expanded', 'true');
     var current = sidebar.querySelector('.rt-nav-link.active') || sidebar.querySelector('.rt-nav-link');
     if (current) current.focus();
@@ -132,9 +188,11 @@ $(document).ready(function() {
     if (!body.classList.contains('rt-nav-open')) return;
     body.classList.remove('rt-nav-open');
     menuToggle.setAttribute('aria-expanded', 'false');
+    syncDrawerInert();
     if (lastFocus && lastFocus.focus) lastFocus.focus();
   }
   if (menuToggle) menuToggle.addEventListener('click', openDrawer);
+  syncDrawerInert();
   $('#rt-sidebar-close, #rt-sidebar-backdrop').on('click', closeDrawer);
 
   // ------------------------------------------------------------ tab routing
@@ -150,7 +208,7 @@ $(document).ready(function() {
   }
 
   // tab pane id -> sidebar entry, for entries that live on this page
-  var tabLinks = {};
+  var tabLinks = Object.create(null);
   navLinks.forEach(function(link) {
     if (!samePage(link)) return;
     linkTabs(link).forEach(function(id) {
@@ -181,7 +239,8 @@ $(document).ready(function() {
   function paneFromHash() {
     var hash = window.location.hash;
     if (hash.indexOf('#/') !== 0) return null;
-    var slug = decodeURIComponent(hash.slice(2));
+    var slug;
+    try { slug = decodeURIComponent(hash.slice(2)); } catch (e) { return null; }
     if (tabLinks['tab-' + slug]) return 'tab-' + slug;
     if (tabLinks[slug]) return slug;
     return null;
@@ -220,22 +279,25 @@ $(document).ready(function() {
     var actions = document.getElementById('rt-page-actions');
     actions.innerHTML = '';
 
+    var editReturn = document.getElementById('rt-edit-return');
     if (!link) {
       header.hidden = true;
       body.classList.add('rt-no-page-header');
+      // Edit pages without a sidebar entry keep mailcow's own back link
+      if (editReturn) editReturn.hidden = false;
       return;
     }
 
-    var editReturn = document.getElementById('rt-edit-return');
     if (path.indexOf('/edit/') === 0) {
       // Edit pages: back link to the list, the edited object as the title
-      eyebrow.innerHTML = '<i class="bi bi-arrow-left"></i> ';
+      eyebrow.innerHTML = '<i class="bi bi-arrow-left" aria-hidden="true"></i> ';
       eyebrow.appendChild(document.createTextNode(linkLabel(link)));
       eyebrow.href = editReturn && editReturn.getAttribute('href') ? editReturn.getAttribute('href') : link.getAttribute('href');
       eyebrow.classList.add('is-link');
       var object = path.split('/').slice(3).join('/');
       try { object = decodeURIComponent(object); } catch (e) {}
-      title.textContent = object || linkLabel(link);
+      // Items without a name (sync jobs, app passwords, filters…) are edited by number
+      title.textContent = !object ? linkLabel(link) : (/^\d+$/.test(object) ? linkLabel(link) + ' #' + object : object);
       desc.textContent = '';
     } else {
       eyebrow.textContent = link.getAttribute('data-rt-section') || '';
@@ -254,7 +316,7 @@ $(document).ready(function() {
       button.className = 'btn btn-primary';
       button.setAttribute('data-bs-toggle', 'modal');
       button.setAttribute('data-bs-target', '#' + modalId);
-      button.innerHTML = '<i class="bi bi-plus-lg"></i> ';
+      button.innerHTML = '<i class="bi bi-plus-lg" aria-hidden="true"></i> ';
       button.appendChild(document.createTextNode(link.getAttribute('data-rt-action-label') || ''));
       actions.appendChild(button);
     }
@@ -287,6 +349,21 @@ $(document).ready(function() {
       subnav.appendChild(item);
     });
     subnav.hidden = false;
+    syncSubnavOverflow();
+    var active = subnav.querySelector('.active');
+    if (active && active.scrollIntoView) active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  // A sub-navigation wider than the page scrolls sideways; fade the edge it continues past
+  function syncSubnavOverflow() {
+    if (!subnav || subnav.hidden) return;
+    var overflowing = subnav.scrollWidth > subnav.clientWidth + 1;
+    subnav.classList.toggle('is-overflowing', overflowing);
+    subnav.classList.toggle('at-end', !overflowing || subnav.scrollLeft + subnav.clientWidth >= subnav.scrollWidth - 1);
+  }
+  if (subnav) {
+    subnav.addEventListener('scroll', syncSubnavOverflow, { passive: true });
+    window.addEventListener('resize', syncSubnavOverflow);
   }
 
   function sync(paneId) {
@@ -355,6 +432,8 @@ $(document).ready(function() {
       history.replaceState(null, '', '#/' + slugFor(id));
     }
     sync(id);
+    // The CSS hides mailcow's tab strips and reveals the page header only from here on
+    root.classList.add('rt-shell-ready');
 
     // A palette action may have asked to open a dialog after navigating here
     var pending = null;
@@ -364,15 +443,25 @@ $(document).ready(function() {
     }
   })();
 
+  // The skip link moves focus without touching the hash, which the tab routing owns
+  $(document).on('click', '.rt-skip-link', function(e) {
+    var main = document.getElementById('rt-content');
+    if (!main) return;
+    e.preventDefault();
+    main.focus();
+  });
+
   // Links that open a dialog on the page they lead to (e.g. Overview quick actions)
-  $(document).on('click', '[data-rt-open-modal]', function() {
-    try { sessionStorage.setItem('rt_open_modal', this.getAttribute('data-rt-open-modal')); } catch (e) {}
+  $(document).on('click', '[data-rt-open-modal]', function(e) {
+    // Ctrl/Cmd/Shift-clicks open another tab; this one must not pop the dialog later
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    try { sessionStorage.setItem('rt_open_modal', this.getAttribute('data-rt-open-modal')); } catch (err) {}
   });
 
   // --------------------------------------------------------- overview KPIs
   var kpis = document.getElementById('rt-kpis');
   if (kpis) {
-    var number = new Intl.NumberFormat();
+    var number = { format: rt.number };
     var setKpi = function(key, value, sub, attention) {
       var card = kpis.querySelector('[data-rt-kpi="' + key + '"]');
       if (!card) return;
@@ -383,7 +472,7 @@ $(document).ready(function() {
     };
     var unavailable = function(keys) {
       return function() {
-        keys.forEach(function(key) { setKpi(key, '—', 'Unavailable'); });
+        keys.forEach(function(key) { setKpi(key, '—', rt.t('unavailable', 'Unavailable')); });
       };
     };
     var getJSON = function(url) {
@@ -392,11 +481,12 @@ $(document).ready(function() {
         return response.json();
       });
     };
+    // Binary units, like mailcow's tables (1 GiB = 1024 MiB)
     var bytes = function(value) {
-      var units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      var units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
       var i = 0;
       while (value >= 1024 && i < units.length - 1) { value /= 1024; i++; }
-      return (i ? value.toFixed(1) : value) + ' ' + units[i];
+      return (i ? rt.number(Math.round(value * 10) / 10) : value) + ' ' + units[i];
     };
 
     getJSON('/api/v1/get/domain/all').then(function(domains) {
@@ -407,19 +497,20 @@ $(document).ready(function() {
         aliases += parseInt(domain.aliases_in_domain, 10) || 0;
         stored += parseInt(domain.bytes_total, 10) || 0;
       });
-      setKpi('domains', number.format(domains.length), bytes(stored) + ' stored');
-      setKpi('mailboxes', number.format(mailboxes), 'Across ' + number.format(domains.length) + (domains.length === 1 ? ' domain' : ' domains'));
-      setKpi('aliases', number.format(aliases), 'Forwarding addresses');
+      setKpi('domains', number.format(domains.length), rt.format(rt.t('kpi_stored', '%s stored'), bytes(stored)));
+      setKpi('mailboxes', number.format(mailboxes), domains.length === 1 ? rt.t('kpi_across_one_domain', 'In 1 domain')
+        : rt.format(rt.t('kpi_across_domains', 'Across %s domains'), number.format(domains.length)));
+      setKpi('aliases', number.format(aliases), rt.t('kpi_aliases', 'Forwarding addresses'));
     }).catch(unavailable(['domains', 'mailboxes', 'aliases']));
 
     getJSON('/api/v1/get/mailq/all').then(function(queue) {
       var count = Array.isArray(queue) ? queue.length : 0;
-      setKpi('queue', number.format(count), count ? 'Waiting for delivery' : 'Nothing waiting', count > 0);
+      setKpi('queue', number.format(count), count ? rt.t('kpi_queue_waiting', 'Waiting for delivery') : rt.t('kpi_queue_empty', 'Nothing waiting'), count > 0);
     }).catch(unavailable(['queue']));
 
     getJSON('/api/v1/get/quarantine/all').then(function(items) {
       var count = Array.isArray(items) ? items.length : 0;
-      setKpi('quarantine', number.format(count), count ? 'Held for review' : 'Nothing held');
+      setKpi('quarantine', number.format(count), count ? rt.t('kpi_quarantine_held', 'Held for review') : rt.t('kpi_quarantine_empty', 'Nothing held'));
     }).catch(unavailable(['quarantine']));
   }
 
@@ -439,7 +530,7 @@ $(document).ready(function() {
       var icon = link.querySelector('.bi');
       items.push({
         label: linkLabel(link),
-        hint: link.getAttribute('data-rt-external') ? 'Open app' : (link.getAttribute('data-rt-section') || 'Go to'),
+        hint: link.getAttribute('data-rt-external') ? rt.t('palette_open_app', 'Open app') : (link.getAttribute('data-rt-section') || rt.t('palette_go_to', 'Go to')),
         icon: icon ? icon.className.replace(/\s*bi\s+/, ' ').trim() : 'bi-arrow-right',
         run: function() {
           if (link.getAttribute('data-rt-external')) { window.location.href = link.href; return; }
@@ -450,7 +541,7 @@ $(document).ready(function() {
       if (modalId) {
         items.push({
           label: link.getAttribute('data-rt-action-label') || '',
-          hint: 'Action',
+          hint: rt.t('palette_action', 'Action'),
           icon: 'bi-plus-lg',
           run: function() {
             var modal = document.getElementById(modalId);
@@ -466,26 +557,26 @@ $(document).ready(function() {
       }
     });
     items.push({
-      label: 'Toggle dark mode', hint: 'Appearance', icon: 'bi-circle-half',
+      label: rt.t('toggle_dark_mode', 'Toggle dark mode'), hint: rt.t('palette_appearance', 'Appearance'), icon: 'bi-circle-half',
       run: function() { document.getElementById('dark-mode-toggle').click(); }
     });
     if (collapseToggle) {
       items.push({
-        label: root.classList.contains('rt-sidebar-collapsed') ? 'Expand sidebar' : 'Collapse sidebar',
-        hint: 'Appearance', icon: 'bi-layout-sidebar',
+        label: root.classList.contains('rt-sidebar-collapsed') ? rt.t('expand_sidebar', 'Expand sidebar') : rt.t('collapse_sidebar', 'Collapse sidebar'),
+        hint: rt.t('palette_appearance', 'Appearance'), icon: 'bi-layout-sidebar',
         run: toggleCollapsed
       });
     }
     var restart = document.querySelector('.rt-user [data-bs-target="#RestartContainer"]');
     if (restart) {
       items.push({
-        label: restart.textContent.trim(), hint: 'System', icon: 'bi-arrow-repeat',
+        label: restart.textContent.trim(), hint: rt.t('palette_system', 'System'), icon: 'bi-arrow-repeat',
         run: function() { restart.click(); }
       });
     }
     if (document.getElementById('logout')) {
       items.push({
-        label: 'Sign out', hint: 'Account', icon: 'bi-box-arrow-right',
+        label: rt.t('sign_out', 'Sign out'), hint: rt.t('palette_account', 'Account'), icon: 'bi-box-arrow-right',
         run: function() { document.getElementById('logout').submit(); }
       });
     }
@@ -519,7 +610,7 @@ $(document).ready(function() {
     if (!results.length) {
       var empty = document.createElement('li');
       empty.className = 'rt-palette-empty';
-      empty.textContent = 'No matches';
+      empty.textContent = rt.t('palette_no_matches', 'No matches');
       list.appendChild(empty);
       input.removeAttribute('aria-activedescendant');
       return;
@@ -571,6 +662,7 @@ $(document).ready(function() {
     cursor = 0;
     renderResults();
     palette.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
     body.classList.add('rt-palette-open');
     input.focus();
   }
@@ -578,6 +670,7 @@ $(document).ready(function() {
   function closePalette() {
     if (palette.hidden) return;
     palette.hidden = true;
+    input.setAttribute('aria-expanded', 'false');
     body.classList.remove('rt-palette-open');
     if (paletteReturnFocus && paletteReturnFocus.focus) paletteReturnFocus.focus();
   }
@@ -603,6 +696,7 @@ $(document).ready(function() {
   document.addEventListener('keydown', function(e) {
     var typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
     if ((e.key === 'k' || e.key === 'K') && (e.metaKey || e.ctrlKey)) {
+      if (palette.hidden && document.querySelector('.modal.show')) return;
       e.preventDefault();
       if (palette.hidden) openPalette(); else closePalette();
     } else if (e.key === '/' && !typing && !document.querySelector('.modal.show')) {
@@ -649,7 +743,7 @@ $(document).ready(function() {
       counter = $('<span class="rt-selection-count" aria-live="polite"></span>');
       bar.find('.btn-group').first().before(counter);
     }
-    counter.text(checked + ' selected').toggleClass('is-visible', checked > 0);
+    counter.text(rt.format(rt.t('n_selected', '%s selected'), rt.number(checked))).toggleClass('is-visible', checked > 0);
     table.closest('.card').toggleClass('rt-has-selection', checked > 0);
   }
 
@@ -665,48 +759,81 @@ $(document).ready(function() {
     }
 
     wrapper.find('.dataTables_filter label').each(function() {
-      var label = (textNodes(this).text() || '').replace(/[:：]\s*$/, '').trim() || 'Search';
+      var label = (textNodes(this).text() || '').replace(/[:：]\s*$/, '').trim() || rt.t('search', 'Search');
       $(this).find('input').attr({ placeholder: label + '…', 'aria-label': label });
       textNodes(this).remove();
     });
     wrapper.find('.dataTables_length label').each(function() {
       textNodes(this).remove();
-      $(this).find('select').attr({ title: 'Rows per page', 'aria-label': 'Rows per page' });
+      var rows = rt.t('rows_per_page', 'Rows per page');
+      $(this).find('select').attr({ title: rows, 'aria-label': rows });
     });
+  }
+
+  // Column metadata is the same on every draw; work it out once per table
+  function columnInfo(api) {
+    var table = $(api.table().node());
+    var info = table.data('rtColumns');
+    if (info) return info;
+    var columns = api.settings()[0].aoColumns;
+    info = { select: null, primary: null };
+    columns.forEach(function(col, i) {
+      // mailcow names the selection column "chkbox"
+      if (info.select === null && col.mData === 'chkbox') info.select = i;
+      if (/(^|\s)rt-col-primary(\s|$)/.test(col.sClass || col.className || '')) info.primary = i;
+    });
+    if (info.primary === null) {
+      // otherwise the first titled content column carries the row's name
+      columns.forEach(function(col, i) {
+        if (info.primary !== null || i === info.select || col.mData === null || col.mData === 'chkbox') return;
+        if ($('<div>').html(col.sTitle || '').text().trim()) info.primary = i;
+      });
+    }
+    table.data('rtColumns', info);
+    return info;
+  }
+
+  function addSelectAll(api, table, index) {
+    var box = $('<input type="checkbox" class="form-check-input rt-select-all">').attr('aria-label', rt.t('select_all_rows', 'Select all rows'));
+    $(api.column(index).header()).empty().append(box);
+    box.on('click', function(e) { e.stopPropagation(); });
+    box.on('change', function() {
+      // mailcow builds its list of selected items from change events (011-api.js) and
+      // doesn't de-duplicate it. Do what its own "Toggle all" does: mass_action makes the
+      // first event start the list afresh, then every row reports its new state once.
+      window.mass_action = true;
+      bulkChange = true;
+      table.find('tbody input[name="multi_select"]:enabled').prop('checked', this.checked).trigger('change');
+      bulkChange = false;
+      updateSelection(table);
+    });
+    // the header checkbox replaces mailcow's "Toggle all" buttons for this table
+    var wrapper = table.closest('.dataTables_wrapper');
+    wrapper.prevAll('[class*="mass-actions"]').first().add(wrapper.nextAll('[class*="mass-actions"]').first())
+      .find('[id="toggle_multi_select_all"]').addClass('rt-hidden');
   }
 
   function decorate(settings) {
     var api = new $.fn.dataTable.Api(settings);
     var table = $(api.table().node());
+    var info = columnInfo(api);
 
-    // Select-all checkbox in the header of the selection column
+    // Select-all checkbox in the header of the selection column. Tables whose selection
+    // column isn't called "chkbox" are recognised by a row checkbox on the current page.
     if (!table.find('thead .rt-select-all').length) {
-      api.columns().every(function(index) {
-        if (table.find('thead .rt-select-all').length) return;
-        // mailcow names the selection column "chkbox"; rows may not be loaded yet
-        if (this.dataSrc() !== 'chkbox' && !$(this.nodes()).find('input[name="multi_select"]').length) return;
-        var box = $('<input type="checkbox" class="form-check-input rt-select-all" aria-label="Select all rows">');
-        $(this.header()).empty().append(box);
-        box.on('click', function(e) { e.stopPropagation(); });
-        box.on('change', function() {
-          // mailcow builds its list of selected items from change events (011-api.js) and
-          // doesn't de-duplicate it. Do what its own "Toggle all" does: mass_action makes the
-          // first event start the list afresh, then every row reports its new state once.
-          window.mass_action = true;
-          bulkChange = true;
-          table.find('tbody input[name="multi_select"]:enabled').prop('checked', this.checked).trigger('change');
-          bulkChange = false;
-          updateSelection(table);
-        });
-        // the header checkbox replaces mailcow's "Toggle all" buttons for this table
-        var wrapper = table.closest('.dataTables_wrapper');
-        wrapper.prevAll('[class*="mass-actions"]').first().add(wrapper.nextAll('[class*="mass-actions"]').first())
-          .find('[id="toggle_multi_select_all"]').addClass('rt-hidden');
-      });
+      var index = info.select;
+      if (index === null) {
+        var cell = table.find('tbody input[name="multi_select"]').first().closest('td');
+        if (cell.length && api.cell(cell).index()) index = api.cell(cell).index().column;
+      }
+      if (index !== null) addSelectAll(api, table, index);
     }
+    // Only offer select-all when the page has something selectable
+    var selectable = table.find('tbody input[name="multi_select"]:enabled').length > 0;
+    table.find('thead .rt-select-all').prop('disabled', !selectable);
     updateSelection(table);
 
-    // Row actions: icon buttons, the label moves to the tooltip
+    // Row actions on this page: icon buttons, the label moves to the tooltip
     var narrowed = false;
     table.find('tbody .btn').each(function() {
       var button = $(this);
@@ -718,21 +845,10 @@ $(document).ready(function() {
       narrowed = true;
     });
     // Responsive measured the columns with the wide text buttons; measure again so the
-    // freed space shows more columns
-    if (narrowed && api.responsive && !table.data('rtRecalc')) {
-      table.data('rtRecalc', true);
-      api.responsive.recalc();
-      table.data('rtRecalc', false);
-    }
+    // freed space shows more columns. recalc() doesn't redraw, so this can't loop.
+    if (narrowed && api.responsive) api.responsive.recalc();
 
-    // The first content column carries the row's name
-    var primary = null;
-    api.columns(':visible').every(function(index) {
-      if (primary !== null) return;
-      var title = $(this.header()).text().trim();
-      if (title && !$(this.nodes()).find('input[type="checkbox"]').length) primary = index;
-    });
-    if (primary !== null) $(api.column(primary).nodes()).addClass('rt-col-primary');
+    if (info.primary !== null) $(api.column(info.primary, { page: 'current' }).nodes()).addClass('rt-col-primary');
   }
 
   $(document).on('init.dt', function(e, settings) { setup(settings); });

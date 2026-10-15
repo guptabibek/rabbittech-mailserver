@@ -86,3 +86,6 @@ jobs:
 
       - name: Parse Twig templates
         run: php scripts/check-twig-templates.php
+
+      - name: Check RabbitTech UI strings
+        run: php scripts/check-rabbittech-lang.php

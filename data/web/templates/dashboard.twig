@@ -32,6 +32,7 @@
       <div role="tabpanel" class="tab-pane active" id="tab-containers">
         {% set rt_containers_running = containers|filter(c => c.State.Running == 1)|length %}
         {% set rt_containers_total = containers|length %}
+        {% set t = lang.rabbittech %}
 
         {# Live counts, loaded by 014-rabbittech.js from the API #}
         <div class="rt-kpi-grid mb-4" id="rt-kpis">
@@ -39,7 +40,7 @@
             { key: 'domains', label: lang.mailbox.domains, icon: 'globe2', href: '/admin/mailbox#/domains' },
             { key: 'mailboxes', label: lang.mailbox.mailboxes, icon: 'inbox', href: '/admin/mailbox#/mailboxes' },
             { key: 'aliases', label: lang.mailbox.aliases, icon: 'at', href: '/admin/mailbox#/mbox-aliases' },
-            { key: 'queue', label: 'Mail queue', icon: 'hourglass-split', href: '/admin/queue' },
+            { key: 'queue', label: t.nav_mail_queue, icon: 'hourglass-split', href: '/admin/queue' },
             { key: 'quarantine', label: lang.header.quarantine, icon: 'shield-exclamation', href: '/quarantine' },
           ] %}
           <a class="rt-kpi" href="{{ kpi.href }}" data-rt-kpi="{{ kpi.key }}">
@@ -58,47 +59,52 @@
             <div class="card rt-overview h-100">
               <div class="card-body">
                 <div class="rt-overview-head">
-                  <span class="rt-container-icon rt-overview-icon"><i class="bi bi-hdd-stack"></i></span>
+                  <span class="rt-container-icon rt-overview-icon" aria-hidden="true"><i class="bi bi-hdd-stack"></i></span>
                   <div class="rt-overview-title">
-                    <span class="rt-eyebrow">Server</span>
+                    <span class="rt-eyebrow">{{ t.server }}</span>
                     <h2>{{ hostname }}</h2>
-                    <div class="rt-meta">
-                      <span><i class="bi bi-globe2"></i>{{ timezone }}</span>
-                      <span><i class="bi bi-cpu"></i><span id="host_architecture">-</span></span>
-                    </div>
+                    <dl class="rt-meta">
+                      <div><dt><i class="bi bi-globe2" aria-hidden="true"></i>{{ lang.debug.timezone }}</dt><dd>{{ timezone }}</dd></div>
+                      <div><dt><i class="bi bi-cpu" aria-hidden="true"></i>{{ lang.debug.architecture }}</dt><dd id="host_architecture">-</dd></div>
+                    </dl>
                   </div>
-                  <a class="rt-status {% if rt_containers_running == rt_containers_total %}rt-status-running{% else %}rt-status-stopped{% endif %}" href="#rt-services">
-                    {% if rt_containers_running == rt_containers_total %}All services running{% else %}{{ rt_containers_total - rt_containers_running }} {{ lang.debug.container_stopped|lower }}{% endif %}
-                  </a>
+                  {# No containers means the Docker API didn't answer, not that everything runs #}
+                  {% if rt_containers_total == 0 %}
+                  <a class="rt-status rt-status-warning" href="#rt-services">{{ t.status_unavailable }}</a>
+                  {% elseif rt_containers_running == rt_containers_total %}
+                  <a class="rt-status rt-status-running" href="#rt-services">{{ t.all_services_running }}</a>
+                  {% else %}
+                  <a class="rt-status rt-status-stopped" href="#rt-services">{{ rt_containers_total - rt_containers_running }} {{ lang.debug.container_stopped|lower }}</a>
+                  {% endif %}
                 </div>
 
             <div class="rt-stat-grid">
               <div class="rt-stat">
-                <div class="rt-stat-label"><i class="bi bi-tag"></i>Version</div>
+                <div class="rt-stat-label"><i class="bi bi-tag" aria-hidden="true"></i>{{ t.version }}</div>
                 <div class="rt-stat-value">
                   <a href="#" id="mailcow_version">{{ mailcow_info.version_tag }}</a>
                   <p id="mailcow_update" class="rt-stat-sub"></p>
                 </div>
               </div>
               <div class="rt-stat">
-                <div class="rt-stat-label"><i class="bi bi-clock-history"></i>{{ lang.debug.uptime }}</div>
+                <div class="rt-stat-label"><i class="bi bi-clock-history" aria-hidden="true"></i>{{ lang.debug.uptime }}</div>
                 <div class="rt-stat-value">
                   <span id="host_uptime">-</span>
                   <span class="rt-stat-sub">{{ lang.debug.current_time }}: <span id="host_date">-</span></span>
                 </div>
               </div>
               <div class="rt-stat">
-                <div class="rt-stat-label"><i class="bi bi-hdd"></i>{{ lang.debug.disk_usage }}</div>
+                <div class="rt-stat-label"><i class="bi bi-hdd" aria-hidden="true"></i>{{ lang.debug.disk_usage }}</div>
                 <div class="rt-stat-value">
                   {{ vmail_df[2] }} / {{ vmail_df[1] }}
                   <span class="rt-stat-sub">{{ vmail_df[0] }} &middot; {{ vmail_df[4] }}</span>
                 </div>
                 <div class="progress">
-                  <div class="progress-bar bg-info" role="progressbar" style="width:{{ vmail_df[4] }}"></div>
+                  <div class="progress-bar bg-info" role="progressbar" style="width:{{ vmail_df[4] }}" aria-valuenow="{{ vmail_df[4]|trim('%') }}" aria-valuemin="0" aria-valuemax="100" aria-label="{{ lang.debug.disk_usage }}"></div>
                 </div>
               </div>
               <div class="rt-stat">
-                <div class="rt-stat-label"><i class="bi bi-diagram-3"></i>IPs</div>
+                <div class="rt-stat-label"><i class="bi bi-diagram-3" aria-hidden="true"></i>{{ t.ip_addresses }}</div>
                 <div class="rt-stat-value">
                   {% if ip_check == 1 %}
                     <span class="d-none" id="host_ipv4">-</span>
@@ -121,36 +127,36 @@
           <div class="col-xl-4">
             <div class="card h-100">
               <div class="card-header d-flex">
-                <span><i class="bi bi-lightning-charge me-2"></i>Quick actions</span>
+                <h2 class="rt-card-title"><i class="bi bi-lightning-charge me-2" aria-hidden="true"></i>{{ t.quick_actions }}</h2>
               </div>
               <div class="card-body rt-quick-list">
                 <a class="rt-quick-item" href="/admin/mailbox#/domains" data-rt-open-modal="addDomainModal">
-                  <span class="rt-quick-icon"><i class="bi bi-globe2"></i></span>
-                  <span class="rt-quick-text"><strong>{{ lang.mailbox.add_domain }}</strong><small>Start receiving mail for a new domain</small></span>
+                  <span class="rt-quick-icon" aria-hidden="true"><i class="bi bi-globe2"></i></span>
+                  <span class="rt-quick-text"><strong>{{ lang.mailbox.add_domain }}</strong><small>{{ t.quick_add_domain }}</small></span>
                   <i class="bi bi-chevron-right rt-quick-go" aria-hidden="true"></i>
                 </a>
                 <a class="rt-quick-item" href="/admin/mailbox#/mailboxes" data-rt-open-modal="addMailboxModal">
-                  <span class="rt-quick-icon"><i class="bi bi-person-plus"></i></span>
-                  <span class="rt-quick-text"><strong>{{ lang.mailbox.add_mailbox }}</strong><small>Create an account for a person or team</small></span>
+                  <span class="rt-quick-icon" aria-hidden="true"><i class="bi bi-person-plus"></i></span>
+                  <span class="rt-quick-text"><strong>{{ lang.mailbox.add_mailbox }}</strong><small>{{ t.quick_add_mailbox }}</small></span>
                   <i class="bi bi-chevron-right rt-quick-go" aria-hidden="true"></i>
                 </a>
                 <a class="rt-quick-item" href="/admin/mailbox#/mbox-aliases" data-rt-open-modal="addAliasModal">
-                  <span class="rt-quick-icon"><i class="bi bi-at"></i></span>
-                  <span class="rt-quick-text"><strong>{{ lang.mailbox.add_alias }}</strong><small>Forward an address to one or more mailboxes</small></span>
+                  <span class="rt-quick-icon" aria-hidden="true"><i class="bi bi-at"></i></span>
+                  <span class="rt-quick-text"><strong>{{ lang.mailbox.add_alias }}</strong><small>{{ t.quick_add_alias }}</small></span>
+                  <i class="bi bi-chevron-right rt-quick-go" aria-hidden="true"></i>
+                </a>
+                <a class="rt-quick-item" href="/admin/system#/config-dkim">
+                  <span class="rt-quick-icon" aria-hidden="true"><i class="bi bi-key"></i></span>
+                  <span class="rt-quick-text"><strong>DKIM</strong><small>{{ t.quick_dkim }}</small></span>
                   <i class="bi bi-chevron-right rt-quick-go" aria-hidden="true"></i>
                 </a>
                 {% if not skip_sogo %}
-                <a class="rt-quick-item" href="/SOGo/">
-                  <span class="rt-quick-icon"><i class="bi bi-envelope-open"></i></span>
-                  <span class="rt-quick-text"><strong>Open webmail</strong><small>Read and send mail in SOGo</small></span>
-                  <i class="bi bi-box-arrow-up-right rt-quick-go" aria-hidden="true"></i>
-                </a>
-                {% endif %}
-                <a class="rt-quick-item" href="#" data-bs-toggle="modal" data-container="sogo-mailcow" data-bs-target="#RestartContainer">
-                  <span class="rt-quick-icon"><i class="bi bi-arrow-repeat"></i></span>
-                  <span class="rt-quick-text"><strong>{{ lang.header.restart_sogo }}</strong><small>Apply webmail configuration changes</small></span>
+                <button type="button" class="rt-quick-item" data-bs-toggle="modal" data-container="sogo-mailcow" data-bs-target="#RestartContainer">
+                  <span class="rt-quick-icon" aria-hidden="true"><i class="bi bi-arrow-repeat"></i></span>
+                  <span class="rt-quick-text"><strong>{{ lang.header.restart_sogo }}</strong><small>{{ t.quick_restart_sogo }}</small></span>
                   <i class="bi bi-chevron-right rt-quick-go" aria-hidden="true"></i>
-                </a>
+                </button>
+                {% endif %}
               </div>
             </div>
           </div>
@@ -160,7 +166,7 @@
           <div class="col-lg-6">
             <div class="card rt-chart-card h-100">
               <div class="card-header d-flex">
-                <span><i class="bi bi-cpu me-2"></i>CPU</span>
+                <h2 class="rt-card-title"><i class="bi bi-cpu me-2" aria-hidden="true"></i>CPU</h2>
                 <span class="rt-chart-meta"><strong><span id="host_cpu_cores">-</span> {{ lang.debug.cores }}</strong> @ <span id="host_cpu_usage"></span></span>
               </div>
               <div class="card-body">
@@ -171,7 +177,7 @@
           <div class="col-lg-6">
             <div class="card rt-chart-card h-100">
               <div class="card-header d-flex">
-                <span><i class="bi bi-memory me-2"></i>{{ lang.debug.memory }}</span>
+                <h2 class="rt-card-title"><i class="bi bi-memory me-2" aria-hidden="true"></i>{{ lang.debug.memory }}</h2>
                 <span class="rt-chart-meta"><strong id="host_memory_total">-</strong> @ <span id="host_memory_usage"></span></span>
               </div>
               <div class="card-body">
@@ -184,7 +190,7 @@
         <!-- container info -->
         <div class="card mb-4" id="rt-services">
           <div class="card-header d-flex rt-section-head">
-            <span><i class="bi bi-boxes me-2"></i>{{ lang.debug.containers_info }}</span>
+            <h2 class="rt-card-title"><i class="bi bi-boxes me-2" aria-hidden="true"></i>{{ lang.debug.containers_info }}</h2>
             <span class="rt-count">
               <span class="badge bg-success">{{ rt_containers_running }} {{ lang.debug.container_running|lower }}</span>
               {% if rt_containers_running != rt_containers_total %}
@@ -198,12 +204,12 @@
                 {% set rt_running = container_info.State.Running == 1 %}
                 <div class="rt-container{% if not rt_running %} is-stopped{% endif %}">
                   <div class="rt-container-head">
-                    <span class="rt-container-icon"><i class="bi bi-box-seam"></i></span>
+                    <span class="rt-container-icon" aria-hidden="true"><i class="bi bi-box-seam"></i></span>
                     <div class="rt-container-body">
-                      <div class="rt-container-name"><span>{{ container }}</span></div>
+                      <h3 class="rt-container-name"><span>{{ container }}</span></h3>
                       <div class="rt-container-meta">
                         <span class="rt-image-tag" title="{{ container_info.Config.Image }}">{{ container_info.Config.Image }}</span>
-                        <span title="{{ lang.debug.started_on }}"><i class="bi bi-clock-history me-1"></i><span class="parse_date">{{ container_info.State.StartedAtHR }}</span></span>
+                        <span><i class="bi bi-clock-history me-1" aria-hidden="true"></i><span class="visually-hidden">{{ lang.debug.started_on }}: </span><span class="parse_date">{{ container_info.State.StartedAtHR }}</span></span>
                       </div>
                     </div>
                     {% if rt_running %}
@@ -211,33 +217,33 @@
                     {% elseif container_info.State %}
                       <span class="rt-status rt-status-stopped">{{ lang.debug.container_stopped }}</span>
                     {% endif %}
-                    <button class="rt-icon-btn rt-container-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#{{ container }}Collapse" aria-expanded="false" aria-controls="{{ container }}Collapse" aria-label="{{ container }}">
-                      <i class="bi bi-chevron-down caret"></i>
+                    <button class="rt-icon-btn rt-container-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#{{ container }}Collapse" aria-expanded="false" aria-controls="{{ container }}Collapse" aria-label="{{ t.show_details|format(container) }}">
+                      <i class="bi bi-chevron-down caret" aria-hidden="true"></i>
                     </button>
                   </div>
                   <div class="collapse rt-container-details container-details-collapse" id="{{ container }}Collapse" data-id="{{ container_info.Id }}">
                     <div class="row g-3 p-3">
                       <div class="col-sm-12 col-md-6 d-flex flex-column">
-                        <h6>Disk I/O</h6>
+                        <h4 class="rt-chart-title">Disk I/O</h4>
                         <div class="spinner-border my-4 mx-auto" role="status">
                           <span class="visually-hidden">Loading...</span>
                         </div>
                         <canvas class="d-none" id="{{ container }}_DiskIOChart" width="400" height="200"></canvas>
                       </div>
                       <div class="col-sm-12 col-md-6 d-flex flex-column">
-                        <h6>Net I/O</h6>
+                        <h4 class="rt-chart-title">Net I/O</h4>
                         <div class="spinner-border my-4 mx-auto" role="status">
                           <span class="visually-hidden">Loading...</span>
                         </div>
                         <canvas class="d-none" id="{{ container }}_NetIOChart" width="400" height="200"></canvas>
                       </div>
                       <div class="col-12 d-flex">
-                        <a href data-bs-toggle="modal"
+                        <button type="button" data-bs-toggle="modal"
                           data-container="{{ container }}"
                           data-bs-target="#RestartContainer"
                           class="btn btn-sm btn-secondary ms-auto">
-                          <i class="bi bi-arrow-repeat"></i>{{ lang.debug.restart_container }}
-                        </a>
+                          <i class="bi bi-arrow-repeat" aria-hidden="true"></i>{{ lang.debug.restart_container }}
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -249,7 +255,7 @@
 
         <div class="card mb-4">
           <div class="card-header d-flex">
-            <span><i class="bi bi-suit-heart me-2"></i>{{ lang.admin.guid_and_license }}</span>
+            <h2 class="rt-card-title"><i class="bi bi-suit-heart me-2" aria-hidden="true"></i>{{ lang.admin.guid_and_license }}</h2>
           </div>
           <div class="card-body">
             <div id="license">

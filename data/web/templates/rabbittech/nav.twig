@@ -13,67 +13,68 @@
     action   id of the modal opened by the page's primary button, with action_label
 #}
 {% set rt_sections = [] %}
+{% set t = lang.rabbittech %}
 
 {% if mailcow_cc_role == 'admin' %}
   {% set rt_sections = [
     { label: '', items: [
-      { label: 'Overview', icon: 'grid-1x2', path: '/admin/dashboard', tabs: 'tab-containers',
-        desc: 'Health, capacity and activity of your mail server at a glance.' },
+      { label: lang.user.overview, icon: 'grid-1x2', path: '/admin/dashboard', tabs: 'tab-containers',
+        desc: t.desc_overview_admin },
     ]},
     { label: lang.header.email, items: [
       { label: lang.mailbox.domains, icon: 'globe2', path: '/admin/mailbox', tabs: 'tab-domains', match: 'edit\\/domain\\/',
-        desc: 'Mail domains served by this server, with their limits and quotas.', action: 'addDomainModal', action_label: lang.mailbox.add_domain },
+        desc: t.desc_domains, action: 'addDomainModal', action_label: lang.mailbox.add_domain },
       { label: lang.mailbox.mailboxes, icon: 'inbox', path: '/admin/mailbox', tabs: 'tab-mailboxes', match: 'edit\\/mailbox\\/',
-        desc: 'User mailboxes, quotas, protocols and access.', action: 'addMailboxModal', action_label: lang.mailbox.add_mailbox },
+        desc: t.desc_mailboxes, action: 'addMailboxModal', action_label: lang.mailbox.add_mailbox },
       { label: lang.mailbox.aliases, icon: 'at', path: '/admin/mailbox', tabs: 'tab-mbox-aliases tab-domain-aliases', match: 'edit\\/(alias|aliasdomain)\\/',
-        desc: 'Forwarding addresses and domain-wide aliases.', action: 'addAliasModal', action_label: lang.mailbox.add_alias },
+        desc: t.desc_aliases, action: 'addAliasModal', action_label: lang.mailbox.add_alias },
       { label: lang.mailbox.resources, icon: 'calendar3', path: '/admin/mailbox', tabs: 'tab-resources', match: 'edit\\/resource\\/',
-        desc: 'Bookable rooms and equipment for calendar scheduling.', action: 'addResourceModal', action_label: lang.mailbox.add_resource },
+        desc: t.desc_resources, action: 'addResourceModal', action_label: lang.mailbox.add_resource },
       { label: lang.mailbox.sync_jobs, icon: 'arrow-left-right', path: '/admin/mailbox', tabs: 'tab-syncjobs', match: 'edit\\/syncjob\\/',
-        desc: 'Import mail from external IMAP accounts.', action: 'addSyncJobModalAdmin', action_label: lang.user.create_syncjob },
+        desc: t.desc_syncjobs, action: 'addSyncJobModalAdmin', action_label: lang.user.create_syncjob },
       { label: lang.mailbox.filters, icon: 'funnel', path: '/admin/mailbox', tabs: 'tab-filters', match: 'edit\\/filter\\/',
-        desc: 'Server-side Sieve filters that run before or after user rules.', action: 'addFilterModalAdmin', action_label: lang.mailbox.add_filter },
+        desc: t.desc_filters, action: 'addFilterModalAdmin', action_label: lang.mailbox.add_filter },
       { label: lang.mailbox.address_rewriting, icon: 'shuffle', path: '/admin/mailbox', tabs: 'tab-bcc', match: 'edit\\/(bcc|recipient_map)\\/',
-        desc: 'BCC maps and recipient rewrites.' },
-      { label: lang.mailbox.templates, icon: 'layers', path: '/admin/mailbox', tabs: 'tab-templates-domains tab-templates-mbox', match: 'edit\\/(domain|mailbox)-templates\\/',
-        desc: 'Defaults applied when creating domains and mailboxes.' },
+        desc: t.desc_rewriting },
+      { label: lang.mailbox.templates, icon: 'layers', path: '/admin/mailbox', tabs: 'tab-templates-domains tab-templates-mbox', match: 'edit\\/template\\/',
+        desc: t.desc_templates },
       { label: lang.header.quarantine, icon: 'shield-exclamation', path: '/quarantine',
-        desc: 'Messages held back by the spam and malware filters.' },
-      { label: 'Mail queue', icon: 'hourglass-split', path: '/admin/queue',
-        desc: 'Messages waiting for delivery in Postfix.' },
+        desc: t.desc_quarantine },
+      { label: t.nav_mail_queue, icon: 'hourglass-split', path: '/admin/queue',
+        desc: t.desc_queue },
     ]},
-    { label: 'Security', items: [
+    { label: t.nav_security, items: [
       { label: lang.user.spamfilter, icon: 'funnel-fill', path: '/admin/system', tabs: 'tab-config-rsettings tab-globalfilter-regex',
-        desc: 'Rspamd settings maps and global filter rules.' },
+        desc: t.desc_spamfilter_admin },
       { label: 'DKIM', icon: 'key', path: '/admin/system', tabs: 'tab-config-dkim',
-        desc: 'Signing keys that prove mail from your domains is authentic.' },
+        desc: t.desc_dkim },
       { label: lang.mailbox.tls_policy_maps, icon: 'shield-lock', path: '/admin/mailbox', tabs: 'tab-tls-policy', match: 'edit\\/tls_policy_map\\/',
-        desc: 'Enforce or relax TLS for specific destinations.' },
+        desc: t.desc_tls_policy },
       { label: 'Fail2ban', icon: 'slash-circle', path: '/admin/system', tabs: 'tab-config-f2b',
-        desc: 'Automatic banning of hosts after repeated failed logins.' },
-      { label: 'Password policy', icon: 'asterisk', path: '/admin/system', tabs: 'tab-config-password-settings',
-        desc: 'Password complexity rules and self-service password reset.' },
+        desc: t.desc_f2b },
+      { label: lang.admin.password_policy, icon: 'asterisk', path: '/admin/system', tabs: 'tab-config-password-settings',
+        desc: t.desc_password_policy },
     ]},
     { label: lang.admin.access, items: [
       { label: lang.admin.admins, icon: 'people', path: '/admin/system', tabs: 'tab-config-admins', match: 'edit\\/(admin|domainadmin)\\/',
-        desc: 'Administrators, domain administrators, API access and two-factor authentication.', action: 'addAdminModal', action_label: lang.admin.add_admin },
-      { label: 'Identity provider', icon: 'person-badge', path: '/admin/system', tabs: 'tab-config-identity-provider',
-        desc: 'Single sign-on through an external identity provider.' },
+        desc: t.desc_admins, action: 'addAdminModal', action_label: lang.admin.add_admin },
+      { label: lang.admin.iam, icon: 'person-badge', path: '/admin/system', tabs: 'tab-config-identity-provider',
+        desc: t.desc_iam },
       { label: lang.admin.oauth2_apps, icon: 'app-indicator', path: '/admin/system', tabs: 'tab-config-oauth2', match: 'edit\\/oauth2client\\/',
-        desc: 'Applications allowed to sign users in with OAuth2.' },
+        desc: t.desc_oauth2 },
     ]},
     { label: lang.header.mailcow_system, items: [
       { label: lang.admin.routing, icon: 'signpost-split', path: '/admin/system', tabs: 'tab-routing tab-config-fwdhosts', match: 'edit\\/(relayhost|transport)\\/',
-        desc: 'Relay hosts, transport maps and forwarding hosts.' },
-      { label: 'Notifications', icon: 'bell', path: '/admin/system', tabs: 'tab-config-quota tab-config-quarantine tab-sys-mails',
-        desc: 'Quota and quarantine notifications, and mail to all users.' },
-      { label: 'Rspamd UI', icon: 'speedometer2', path: '/admin/system', tabs: 'tab-config-rspamd',
-        desc: 'Access to the Rspamd web interface.' },
-      { label: 'Branding', icon: 'palette', path: '/admin/system', tabs: 'tab-config-customize',
-        desc: 'Logos, titles, login page options and app links.' },
+        desc: t.desc_routing },
+      { label: t.nav_notifications, icon: 'bell', path: '/admin/system', tabs: 'tab-config-quota tab-config-quarantine tab-sys-mails',
+        desc: t.desc_notifications },
+      { label: t.nav_rspamd_ui, icon: 'speedometer2', path: '/admin/system', tabs: 'tab-config-rspamd',
+        desc: t.desc_rspamd_ui },
+      { label: t.nav_branding, icon: 'palette', path: '/admin/system', tabs: 'tab-config-customize',
+        desc: t.desc_branding },
       { label: lang.debug.logs, icon: 'journal-text', path: '/admin/dashboard',
         tabs: 'tab-postfix-logs tab-dovecot-logs tab-sogo-logs tab-netfilter-logs tab-autodiscover-logs tab-watchdog-logs tab-acme-logs tab-api-logs tab-api-rl tab-cron-logs tab-rspamd-history tab-ui tab-sasl',
-        desc: 'Service logs from Postfix, Dovecot, SOGo, Rspamd and more.' },
+        desc: t.desc_logs },
     ]},
   ] %}
 
@@ -81,74 +82,74 @@
   {% set rt_sections = [
     { label: lang.header.email, items: [
       { label: lang.mailbox.domains, icon: 'globe2', path: '/domainadmin/mailbox', tabs: 'tab-domains', match: 'edit\\/domain\\/',
-        desc: 'The domains you manage, with their limits and quotas.' },
+        desc: t.desc_domains_domainadmin },
       { label: lang.mailbox.mailboxes, icon: 'inbox', path: '/domainadmin/mailbox', tabs: 'tab-mailboxes', match: 'edit\\/mailbox\\/',
-        desc: 'User mailboxes, quotas, protocols and access.', action: 'addMailboxModal', action_label: lang.mailbox.add_mailbox },
+        desc: t.desc_mailboxes, action: 'addMailboxModal', action_label: lang.mailbox.add_mailbox },
       { label: lang.mailbox.aliases, icon: 'at', path: '/domainadmin/mailbox', tabs: 'tab-mbox-aliases tab-domain-aliases', match: 'edit\\/(alias|aliasdomain)\\/',
-        desc: 'Forwarding addresses and domain-wide aliases.', action: 'addAliasModal', action_label: lang.mailbox.add_alias },
+        desc: t.desc_aliases, action: 'addAliasModal', action_label: lang.mailbox.add_alias },
       { label: lang.mailbox.resources, icon: 'calendar3', path: '/domainadmin/mailbox', tabs: 'tab-resources', match: 'edit\\/resource\\/',
-        desc: 'Bookable rooms and equipment for calendar scheduling.', action: 'addResourceModal', action_label: lang.mailbox.add_resource },
+        desc: t.desc_resources, action: 'addResourceModal', action_label: lang.mailbox.add_resource },
       { label: lang.mailbox.sync_jobs, icon: 'arrow-left-right', path: '/domainadmin/mailbox', tabs: 'tab-syncjobs', match: 'edit\\/syncjob\\/',
-        desc: 'Import mail from external IMAP accounts.' },
+        desc: t.desc_syncjobs },
       { label: lang.mailbox.filters, icon: 'funnel', path: '/domainadmin/mailbox', tabs: 'tab-filters', match: 'edit\\/filter\\/',
-        desc: 'Server-side Sieve filters that run before or after user rules.' },
+        desc: t.desc_filters },
       { label: lang.mailbox.address_rewriting, icon: 'shuffle', path: '/domainadmin/mailbox', tabs: 'tab-bcc', match: 'edit\\/(bcc|recipient_map)\\/',
-        desc: 'BCC maps and recipient rewrites.' },
+        desc: t.desc_rewriting },
       { label: lang.header.quarantine, icon: 'shield-exclamation', path: '/quarantine',
-        desc: 'Messages held back by the spam and malware filters.' },
+        desc: t.desc_quarantine },
     ]},
     { label: lang.admin.access, items: [
       { label: lang.header.user_settings, icon: 'person-circle', path: '/domainadmin/user',
-        desc: 'Your password, two-factor authentication and API access.' },
+        desc: t.desc_account_domainadmin },
     ]},
   ] %}
 
 {% elseif mailcow_cc_role == 'user' %}
   {% set rt_spam_tabs = (rt_acl.spam_score == 1 or rt_acl.spam_policy == 1 ? 'Spamfilter ' : '') ~ (rt_acl.spam_alias == 1 ? 'SpamAliases' : '') %}
   {% set rt_mail_items = [
-    { label: 'Overview', icon: 'grid-1x2', path: '/user', tabs: 'tab-user-auth',
-      desc: 'Your mailbox, storage, connected apps and sign-in security.' },
-    { label: 'Addresses', icon: 'at', path: '/user', tabs: 'tab-user-details',
-      desc: 'Aliases that deliver to your mailbox and addresses you can send as.' },
-    { label: 'Preferences', icon: 'sliders', path: '/user', tabs: 'tab-user-settings',
-      desc: 'Spam tagging, TLS, quarantine notifications and device resets.' },
+    { label: lang.user.overview, icon: 'grid-1x2', path: '/user', tabs: 'tab-user-auth',
+      desc: t.desc_overview_user },
+    { label: t.nav_addresses, icon: 'at', path: '/user', tabs: 'tab-user-details',
+      desc: t.desc_addresses },
+    { label: t.nav_preferences, icon: 'sliders', path: '/user', tabs: 'tab-user-settings',
+      desc: t.desc_preferences },
   ] %}
   {% if rt_spam_tabs|trim %}
     {% set rt_mail_items = rt_mail_items|merge([
       { label: lang.user.spamfilter, icon: 'funnel', path: '/user', tabs: rt_spam_tabs|trim,
-        desc: 'How strictly spam is filtered, and disposable addresses for sign-ups.' },
+        desc: t.desc_spamfilter_user },
     ]) %}
   {% endif %}
   {% set rt_mail_items = rt_mail_items|merge([
     { label: lang.header.quarantine, icon: 'shield-exclamation', path: '/quarantine',
-      desc: 'Messages held back by the spam and malware filters.' },
+      desc: t.desc_quarantine },
   ]) %}
   {% set rt_tool_items = [] %}
   {% if rt_acl.app_passwds == 1 %}
     {% set rt_tool_items = rt_tool_items|merge([
       { label: lang.user.app_passwds, icon: 'key', path: '/user', tabs: 'AppPasswds', match: 'edit\\/app-passwd\\/',
-        desc: 'Separate passwords for mail apps and devices.', action: 'addAppPasswdModal', action_label: lang.user.create_app_passwd },
+        desc: t.desc_app_passwords, action: 'addAppPasswdModal', action_label: lang.user.create_app_passwd },
     ]) %}
   {% endif %}
   {% if rt_acl.syncjobs == 1 %}
     {% set rt_tool_items = rt_tool_items|merge([
       { label: lang.user.sync_jobs, icon: 'arrow-left-right', path: '/user', tabs: 'Syncjobs', match: 'edit\\/syncjob\\/',
-        desc: 'Import mail from another IMAP account.', action: 'addSyncJobModal', action_label: lang.user.create_syncjob },
+        desc: t.desc_syncjobs_user, action: 'addSyncJobModal', action_label: lang.user.create_syncjob },
     ]) %}
   {% endif %}
   {% if rt_acl.pushover == 1 %}
     {% set rt_tool_items = rt_tool_items|merge([
-      { label: 'Push notifications', icon: 'bell', path: '/user', tabs: 'Pushover',
-        desc: 'Get notified about new mail through Pushover.' },
+      { label: t.nav_push, icon: 'bell', path: '/user', tabs: 'Pushover',
+        desc: t.desc_push },
     ]) %}
   {% endif %}
   {% set rt_sections = [{ label: lang.header.email, items: rt_mail_items }] %}
   {% if rt_tool_items %}
-    {% set rt_sections = rt_sections|merge([{ label: 'Tools', items: rt_tool_items }]) %}
+    {% set rt_sections = rt_sections|merge([{ label: t.nav_tools, items: rt_tool_items }]) %}
   {% endif %}
 {% endif %}
 
-<nav class="rt-nav" aria-label="Main">
+<nav class="rt-nav" aria-label="{{ t.nav_main }}">
   {% for section in rt_sections %}
   <div class="rt-nav-section">
     {% if section.label %}<div class="rt-nav-heading">{{ section.label }}</div>{% endif %}

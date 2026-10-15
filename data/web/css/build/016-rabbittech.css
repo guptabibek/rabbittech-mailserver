@@ -29,7 +29,9 @@
 :root {
   color-scheme: light;
 
-  --rt-font: "Inter", "Noto Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Noto Sans (mailcow's web font, 157 KB) comes after the system fonts, so scripts Inter
+     doesn't cover use a local font instead of downloading it */
+  --rt-font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
   --rt-mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
 
   --rt-bg: #f5f6fa;
@@ -40,10 +42,13 @@
   --rt-surface-inverse: #12141c;
   --rt-border: #e6e8ef;
   --rt-border-strong: #d5d9e3;
+  /* Boundaries of inputs, checkboxes and switches: at least 3:1 against the surface */
+  --rt-control-border: #8d93a5;
   --rt-text: #10121b;
   --rt-text-2: #3c4256;
-  --rt-muted: #6a7085;
-  --rt-subtle: #9aa0b3;
+  /* Secondary text; both pass WCAG AA (4.5:1) on every surface */
+  --rt-muted: #5f667a;
+  --rt-subtle: #686e82;
 
   --rt-primary: #7c3aed;
   --rt-primary-hover: #6d28d9;
@@ -52,6 +57,12 @@
   --rt-primary-soft-2: #e9e0ff;
   --rt-primary-text: #6d28d9;
   --rt-on-primary: #ffffff;
+  /* Filled buttons keep white text above 4.5:1 in both themes */
+  --rt-primary-fill: #7c3aed;
+  --rt-primary-fill-hover: #6d28d9;
+  --rt-primary-fill-active: #5b21b6;
+  --rt-danger-fill: #e11d48;
+  --rt-danger-fill-hover: #be123c;
   --rt-ring: rgba(124, 58, 237, .24);
 
   --rt-success: #059669;
@@ -105,10 +116,11 @@
   --rt-surface-inverse: #f3f4f8;
   --rt-border: #232937;
   --rt-border-strong: #3a4257;
+  --rt-control-border: #59627e;
   --rt-text: #eceef4;
   --rt-text-2: #c0c5d3;
-  --rt-muted: #8c93a7;
-  --rt-subtle: #656c81;
+  --rt-muted: #9aa1b4;
+  --rt-subtle: #858ca0;
 
   --rt-primary: #8b5cf6;
   --rt-primary-hover: #7c3aed;
@@ -228,10 +240,11 @@ legend + hr { margin-top: .25rem; }
 small, .small { color: inherit; }
 .text-muted { color: var(--rt-muted) !important; }
 .text-secondary { color: var(--rt-muted) !important; }
-.text-success { color: var(--rt-success) !important; }
-.text-danger { color: var(--rt-danger) !important; }
-.text-warning { color: var(--rt-warning) !important; }
-.text-info { color: var(--rt-info) !important; }
+/* Text colours use the *-text tokens, which pass 4.5:1 (the fill colours don't as text) */
+.text-success { color: var(--rt-success-text) !important; }
+.text-danger { color: var(--rt-danger-text) !important; }
+.text-warning { color: var(--rt-warning-text) !important; }
+.text-info { color: var(--rt-info-text) !important; }
 .text-primary { color: var(--rt-primary) !important; }
 .text-dark { color: var(--rt-text) !important; }
 
@@ -684,7 +697,17 @@ pre code { background: none; padding: 0; color: inherit; }
   min-height: 78px;
   margin-bottom: 22px;
 }
-.rt-page-header:not(.is-ready) { visibility: hidden; }
+/* The header waits for the shell script; it reveals itself after 4s regardless, and stays
+   out of the way when the script failed (base.twig sets rt-js / rt-shell-failed) */
+.rt-js:not(.rt-shell-failed) .rt-page-header:not(.is-ready) {
+  visibility: hidden;
+  animation: rt-reveal 0s 4s forwards;
+}
+@keyframes rt-reveal { to { visibility: visible; } }
+.rt-shell-failed .rt-page-header,
+html:not(.rt-js) .rt-page-header { display: none !important; }
+.rt-shell-failed .rt-edit-return[hidden],
+html:not(.rt-js) .rt-edit-return[hidden] { display: inline-flex !important; margin-bottom: 16px; }
 .rt-page-header[hidden],
 body:not(.rt-has-shell) .rt-page-header,
 body:not(.rt-has-shell) .rt-subnav { display: none !important; }
@@ -766,13 +789,14 @@ body:not(.rt-has-shell) .rt-subnav { display: none !important; }
 
 /* The sidebar replaces the top-level tab strips; a strip with tabs the sidebar
    does not know about stays visible (014-rabbittech.js adds .rt-tabs-unmanaged). */
-.rt-has-shell .rt-managed-tabs:not(.rt-tabs-unmanaged) { display: none !important; }
+/* ...but only while the shell script runs; otherwise mailcow's tabs are the navigation */
+.rt-js:not(.rt-shell-failed) .rt-has-shell .rt-managed-tabs:not(.rt-tabs-unmanaged) { display: none !important; }
 .rt-has-shell .rt-managed-tabs ~ .row .tab-content[style*="padding-top"],
 .rt-has-shell .tab-content[style*="padding-top"] { padding-top: 0 !important; }
 @media (max-width: 767.98px) {
   /* mailcow stacks every pane on phones; with the sidebar, show only the active one */
-  .rt-has-shell .responsive-tabs:has(> .rt-managed-tabs:not(.rt-tabs-unmanaged)) .tab-pane:not(.active) { display: none !important; }
-  .rt-has-shell .responsive-tabs:has(> .rt-managed-tabs:not(.rt-tabs-unmanaged)) .tab-pane > .card > .card-body.collapse { display: block; }
+  .rt-js:not(.rt-shell-failed) .rt-has-shell .responsive-tabs:has(> .rt-managed-tabs:not(.rt-tabs-unmanaged)) .tab-pane:not(.active) { display: none !important; }
+  .rt-js:not(.rt-shell-failed) .rt-has-shell .responsive-tabs:has(> .rt-managed-tabs:not(.rt-tabs-unmanaged)) .tab-pane > .card > .card-body.collapse { display: block; }
   .rt-has-shell .responsive-tabs .rt-tabs-unmanaged { display: flex !important; }
 }
 
@@ -878,12 +902,20 @@ body:not(.rt-has-shell) .rt-subnav { display: none !important; }
 /* Narrow screens: sidebar becomes a drawer */
 @media (max-width: 991.98px) {
   .rt-has-shell { padding-left: 0; }
+  /* Closed, the drawer is hidden from keyboard and screen readers too (the JS also sets
+     inert); visibility switches after the slide-out finishes */
   .rt-sidebar {
     width: 284px;
+    visibility: hidden;
     transform: translateX(-100%);
     box-shadow: var(--rt-shadow-lg);
+    transition: transform .22s ease, visibility 0s linear .22s;
   }
-  .rt-nav-open .rt-sidebar { transform: none; }
+  .rt-nav-open .rt-sidebar {
+    visibility: visible;
+    transform: none;
+    transition: transform .22s ease, visibility 0s;
+  }
   .rt-sidebar .rt-sidebar-close { display: inline-flex; }
   .rt-sidebar-foot { display: none; }
   .rt-sidebar-backdrop {
@@ -1156,7 +1188,8 @@ body:not(.rt-has-shell) .rt-subnav { display: none !important; }
 }
 .btn:focus-visible,
 .btn-check:focus-visible + .btn {
-  outline: 0;
+  outline: 2px solid var(--rt-primary);
+  outline-offset: 2px;
   box-shadow: 0 0 0 3px var(--rt-ring);
 }
 .btn:active,
@@ -1201,12 +1234,12 @@ fieldset:disabled .btn {
 
 .btn-primary,
 .btn-success {
-  --rt-btn-bg: var(--rt-primary);
+  --rt-btn-bg: var(--rt-primary-fill);
   --rt-btn-color: var(--rt-on-primary);
-  --rt-btn-border: var(--rt-primary);
-  --rt-btn-hover-bg: var(--rt-primary-hover);
+  --rt-btn-border: var(--rt-primary-fill);
+  --rt-btn-hover-bg: var(--rt-primary-fill-hover);
   --rt-btn-hover-color: var(--rt-on-primary);
-  --rt-btn-hover-border: var(--rt-primary-hover);
+  --rt-btn-hover-border: var(--rt-primary-fill-hover);
   background-color: var(--rt-btn-bg) !important;
   border-color: var(--rt-btn-border) !important;
   box-shadow: 0 1px 2px rgba(91, 33, 182, .2), inset 0 1px 0 rgba(255, 255, 255, .12);
@@ -1223,8 +1256,8 @@ fieldset:disabled .btn {
 .btn-check:checked + .btn-success,
 .btn-check:checked + .btn-primary {
   color: var(--rt-on-primary);
-  background-color: var(--rt-primary-active) !important;
-  border-color: var(--rt-primary-active) !important;
+  background-color: var(--rt-primary-fill-active) !important;
+  border-color: var(--rt-primary-fill-active) !important;
 }
 
 .btn-secondary,
@@ -1281,26 +1314,32 @@ fieldset:disabled .btn {
 }
 
 .btn-danger {
-  --rt-btn-bg: var(--rt-danger);
+  --rt-btn-bg: var(--rt-danger-fill);
   --rt-btn-color: #fff;
-  --rt-btn-border: var(--rt-danger);
-  --rt-btn-hover-bg: var(--rt-danger-hover);
+  --rt-btn-border: var(--rt-danger-fill);
+  --rt-btn-hover-bg: var(--rt-danger-fill-hover);
   --rt-btn-hover-color: #fff;
-  --rt-btn-hover-border: var(--rt-danger-hover);
+  --rt-btn-hover-border: var(--rt-danger-fill-hover);
 }
 .btn-danger:focus,
 .btn-danger:active {
   color: #fff;
-  background: var(--rt-danger-hover);
-  border-color: var(--rt-danger-hover);
+  background: var(--rt-danger-fill-hover);
+  border-color: var(--rt-danger-fill-hover);
 }
-.btn-warning {
-  --rt-btn-bg: var(--rt-warning);
-  --rt-btn-color: #fff;
-  --rt-btn-border: var(--rt-warning);
-  --rt-btn-hover-bg: var(--rt-warning);
-  --rt-btn-hover-color: #fff;
-  --rt-btn-hover-border: var(--rt-warning);
+/* Amber needs dark text: white on amber stays under 3.5:1 */
+.btn-warning,
+.btn-warning:focus,
+.btn-warning:active {
+  --rt-btn-bg: #f59e0b;
+  --rt-btn-color: #1f1300;
+  --rt-btn-border: #f59e0b;
+  --rt-btn-hover-bg: #d97706;
+  --rt-btn-hover-color: #1f1300;
+  --rt-btn-hover-border: #d97706;
+  color: var(--rt-btn-color);
+  background-color: var(--rt-btn-bg);
+  border-color: var(--rt-btn-border);
 }
 .btn-info {
   --rt-btn-bg: var(--rt-surface);
@@ -1367,7 +1406,7 @@ fieldset:disabled .btn {
 .tag-box {
   color: var(--rt-text);
   background-color: var(--rt-surface);
-  border: 1px solid var(--rt-border-strong);
+  border: 1px solid var(--rt-control-border);
   border-radius: var(--rt-radius-sm);
   box-shadow: var(--rt-shadow-xs);
   transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
@@ -1388,7 +1427,7 @@ textarea.form-control { min-height: 80px; }
 .form-control:hover,
 .form-select:hover,
 .bootstrap-select > .dropdown-toggle.btn:hover {
-  border-color: var(--rt-subtle);
+  border-color: var(--rt-muted);
 }
 .form-control:focus,
 .form-select:focus,
@@ -1453,7 +1492,7 @@ label {
   height: 1.1em;
   margin-top: .2em;
   background-color: var(--rt-surface);
-  border: 1px solid var(--rt-border-strong);
+  border: 1px solid var(--rt-control-border);
   box-shadow: var(--rt-shadow-xs);
   transition: background-color .15s ease, border-color .15s ease, background-position .15s ease;
 }
@@ -1467,12 +1506,18 @@ label {
   border-color: var(--rt-primary);
   box-shadow: 0 0 0 3px var(--rt-ring);
 }
+/* The soft ring alone is too faint to find a checkbox by keyboard */
+.form-check-input:focus-visible {
+  outline: 2px solid var(--rt-primary);
+  outline-offset: 2px;
+  box-shadow: none;
+}
 .form-switch .form-check-input {
   width: 2.1em;
   height: 1.2em;
   margin-top: .15em;
   border-radius: 2em;
-  background-color: var(--rt-border-strong);
+  background-color: var(--rt-control-border);
   border-color: transparent;
   background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23fff'/%3e%3c/svg%3e");
 }
@@ -1540,23 +1585,31 @@ label {
 .tag-add { color: var(--rt-muted); }
 .tag-add:hover { color: var(--rt-primary); }
 
-/* Sliders */
-.slider .slider-track,
-.slider.slider-horizontal .slider-track {
+/* Spam score slider (noUiSlider; css/site/user.css styles it for light mode only and loads
+   after this file, hence the extra "body") */
+body .noUi-target {
+  height: 14px;
   background: var(--rt-surface-3);
-  box-shadow: none;
+  border: 1px solid var(--rt-border);
   border-radius: 999px;
-}
-.slider .slider-selection {
-  background: var(--rt-primary-soft-2);
   box-shadow: none;
 }
-.slider .slider-handle {
-  background: var(--rt-primary);
-  background-image: none;
-  border: 2px solid var(--rt-surface);
-  box-shadow: 0 1px 4px rgba(16, 18, 40, .25);
+body .noUi-connects { border-radius: 999px; }
+body .noUi-horizontal .noUi-handle {
+  top: -6px;
+  width: 24px;
+  height: 24px;
+  right: -12px;
+  background: var(--rt-surface);
+  border: 1px solid var(--rt-control-border);
+  border-radius: 999px;
+  box-shadow: var(--rt-shadow-sm);
+  cursor: grab;
 }
+body .noUi-handle:hover { margin-top: 0; background: var(--rt-surface); border-color: var(--rt-muted); }
+body .noUi-handle:focus-visible { outline: 2px solid var(--rt-primary); outline-offset: 2px; }
+body .noUi-handle::before,
+body .noUi-handle::after { display: none; }
 
 div.numberedtextarea-number { color: var(--rt-subtle); }
 
@@ -1564,186 +1617,191 @@ div.numberedtextarea-number { color: var(--rt-subtle); }
 /* mailcow lays every form out as rows of "label.control-label.col-sm-2 + .col-sm-10",
    with "offset-sm-2" rows for checkboxes and buttons. These rules turn that grid into
    stacked fields in dialogs and settings rows on pages, without touching templates. */
-:root { --rt-label-w: 260px; }
+/* Everything below depends on :has(). Browsers without it (e.g. Firefox ESR 115) keep
+   mailcow's own form layout instead of a half-applied one. */
+@supports selector(:has(*)) {
+  :root { --rt-label-w: 260px; }
 
-/* Dialogs: stacked labels, readable width */
-.modal-xl:has(.modal-body > form),
-.modal-lg:has(.modal-body > form) { max-width: 780px; }
-.modal-body .row:has(> .control-label),
-.modal-body .row:has(> [class*="col-"] > .control-label:only-child) {
-  flex-direction: column;
-  row-gap: 6px;
-  margin-bottom: 18px !important;
-}
-.modal-body .row:has(> .control-label) > *,
-.modal-body .row:has(> [class*="col-"] > .control-label:only-child) > * {
-  flex: 0 0 auto;
-  width: 100%;
-  max-width: 100%;
-  margin-left: 0 !important;
-}
-.modal-body .row > .control-label,
-.modal-body .row > [class*="col-"] > .control-label {
-  padding-top: 0 !important;
-  color: var(--rt-text);
-  font-weight: 560;
-  text-align: left !important;
-}
-.modal-body .row > [class*="col-"]:has(> .control-label:only-child) { justify-content: flex-start !important; }
-.modal-body .row > [class*="offset-"] {
-  width: 100%;
-  margin-left: 0 !important;
-}
-.modal-body hr { margin: 20px 0; }
-
-/* Pages: settings rows with a label column */
-.rt-has-shell .card-body form .row:has(> .control-label),
-.rt-has-shell .card-body form .row:has(> [class*="col-"] > .control-label:only-child) {
-  align-items: flex-start;
-  margin: 0 !important;
-  padding: 16px 0;
-  border-bottom: 1px solid var(--rt-border);
-}
-.rt-has-shell .card-body form .row > .control-label,
-.rt-has-shell .card-body form .row > [class*="col-"]:has(> .control-label:only-child) {
-  flex: 0 0 var(--rt-label-w);
-  width: var(--rt-label-w);
-  max-width: var(--rt-label-w);
-  padding-top: 9px;
-  color: var(--rt-text);
-  font-weight: 560;
-  text-align: left !important;
-  justify-content: flex-start !important;
-}
-.rt-has-shell .card-body form .row > [class*="col-"] > .control-label:only-child { padding-top: 0; font-weight: 560; }
-.rt-has-shell .card-body form .row:has(> .control-label) > :not(.control-label),
-.rt-has-shell .card-body form .row:has(> [class*="col-"] > .control-label:only-child) > :not(:has(> .control-label:only-child)) {
-  flex: 1 1 0;
-  width: auto;
-  max-width: 680px;
-}
-.rt-has-shell .card-body form .row > [class*="offset-"] {
-  flex: 1 1 0;
-  width: auto;
-  max-width: calc(680px + var(--rt-label-w));
-  margin-left: var(--rt-label-w) !important;
-}
-.rt-has-shell .card-body form .row:has(> [class*="offset-"]) {
-  margin-left: 0 !important;
-  margin-right: 0 !important;
-  padding: 8px 0;
-}
-.rt-has-shell .card-body form > hr { margin: 8px 0; opacity: 0; }
-.rt-has-shell .card-body form > .row:first-of-type:has(> .control-label) { padding-top: 0; }
-.rt-has-shell .card-body form small.text-muted,
-.rt-has-shell .card-body form .help-block,
-.modal-body small.text-muted {
-  display: block;
-  margin-top: 6px;
-  font-size: .84rem;
-  line-height: 1.5;
-}
-
-/* Save rows stay in reach at the bottom of long forms */
-.rt-has-shell .card-body form .row:has(> [class*="offset-"] > .btn-success:only-child),
-.rt-has-shell .card-body form .row:has(> [class*="offset-"] > button[type="submit"]:only-child) {
-  position: sticky;
-  bottom: 0;
-  z-index: 5;
-  margin: 12px -20px -20px !important;
-  padding: 14px 20px;
-  background: var(--rt-nav-bg);
-  border-top: 1px solid var(--rt-border);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-  border-radius: 0 0 var(--rt-radius-lg) var(--rt-radius-lg);
-}
-.rt-has-shell .card-body form .row > [class*="offset-"] > .btn-success:only-child,
-.rt-has-shell .card-body form .row > [class*="offset-"] > button[type="submit"]:only-child {
-  min-width: 140px;
-}
-
-/* A checkbox followed by its label lines up like a switch row */
-form div:has(> input.form-check-input[type="checkbox"] + label.form-check-label) {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding-left: 0;
-}
-form div:has(> input.form-check-input[type="checkbox"] + label.form-check-label) > input.form-check-input { float: none; margin-left: 0; }
-/* Numbers don't need the full width of the page */
-.rt-has-shell .card-body form input.form-control[type="number"],
-.rt-has-shell .card-body form .input-group:has(> input.form-control[type="number"]) { max-width: 320px; }
-form div:has(> input.form-check-input[type="checkbox"] + label.form-check-label) > .form-check-label { color: var(--rt-text); font-weight: 500; cursor: pointer; }
-
-/* On/off options as switches with their description underneath */
-form .form-check:has(> label > .form-check-input[type="checkbox"]) {
-  padding-left: 0;
-  margin-bottom: 4px;
-}
-form .form-check > label:has(> .form-check-input[type="checkbox"]) {
-  display: inline-flex;
-  align-items: flex-start;
-  gap: 12px;
-  color: var(--rt-text);
-  font-weight: 520;
-  cursor: pointer;
-}
-form .form-check > label > .form-check-input[type="checkbox"],
-form .form-check-input[type="checkbox"]:not([name="multi_select"]):not(.rt-select-all) {
-  flex: 0 0 auto;
-  width: 2.15em;
-  height: 1.2em;
-  margin: .12em 0 0;
-  background-color: var(--rt-border-strong);
-  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23fff'/%3e%3c/svg%3e");
-  background-position: left center;
-  background-repeat: no-repeat;
-  background-size: contain;
-  border-color: transparent;
-  border-radius: 2em;
-  box-shadow: none;
-  transition: background-position .15s ease-in-out, background-color .15s ease-in-out;
-}
-form .form-check > label > .form-check-input[type="checkbox"]:checked,
-form .form-check-input[type="checkbox"]:not([name="multi_select"]):not(.rt-select-all):checked {
-  background-color: var(--rt-primary);
-  background-position: right center;
-  border-color: var(--rt-primary);
-}
-form .form-check:has(> label > .form-check-input[type="checkbox"]) > small {
-  margin: 2px 0 6px calc(2.15em + 12px);
-}
-
-@media (max-width: 767.98px) {
-  .rt-has-shell .card-body form .row:has(> .control-label),
-  .rt-has-shell .card-body form .row:has(> [class*="col-"] > .control-label:only-child) { flex-direction: column; row-gap: 6px; }
-  .rt-has-shell .card-body form .row > .control-label,
-  .rt-has-shell .card-body form .row > [class*="col-"]:has(> .control-label:only-child),
-  .rt-has-shell .card-body form .row:has(> .control-label) > :not(.control-label) {
+  /* Dialogs: stacked labels, readable width */
+  .modal-xl:has(.modal-body > form),
+  .modal-lg:has(.modal-body > form) { max-width: 780px; }
+  .modal-body .row:has(> .control-label),
+  .modal-body .row:has(> [class*="col-"] > .control-label:only-child) {
+    flex-direction: column;
+    row-gap: 6px;
+    margin-bottom: 18px !important;
+  }
+  .modal-body .row:has(> .control-label) > *,
+  .modal-body .row:has(> [class*="col-"] > .control-label:only-child) > * {
     flex: 0 0 auto;
     width: 100%;
     max-width: 100%;
-    padding-top: 0;
+    margin-left: 0 !important;
   }
-  .rt-has-shell .card-body form .row > [class*="offset-"] { margin-left: 0 !important; max-width: 100%; }
-  .rt-has-shell .card-body form .row:has(> [class*="offset-"] > .btn-success:only-child) { margin: 12px -14px -14px !important; padding: 12px 14px; }
-}
+  .modal-body .row > .control-label,
+  .modal-body .row > [class*="col-"] > .control-label {
+    padding-top: 0 !important;
+    color: var(--rt-text);
+    font-weight: 560;
+    text-align: left !important;
+  }
+  .modal-body .row > [class*="col-"]:has(> .control-label:only-child) { justify-content: flex-start !important; }
+  .modal-body .row > [class*="offset-"] {
+    width: 100%;
+    margin-left: 0 !important;
+  }
+  .modal-body hr { margin: 20px 0; }
 
-/* Rows that show a value instead of a field line up with the label */
-.rt-has-shell .card-body form .row:has(> .control-label) > [class*="col-"]:not(:has(input, select, textarea, button, .form-control)) { padding-top: 9px; }
-/* bootstrap-select keeps the field width in forms (015-responsive caps it at 350px) */
-.modal-body .bootstrap-select,
-.rt-has-shell .card-body form .row:has(> .control-label) .bootstrap-select:not(.input-group-btn) { width: 100% !important; max-width: 100%; }
-/* Help paragraphs between switches */
-form .form-check > p {
-  margin: 2px 0 10px calc(2.15em + 12px);
-  color: var(--rt-muted);
-  font-size: .84rem;
-  line-height: 1.5;
+  /* Pages: settings rows with a label column */
+  .rt-has-shell .card-body form .row:has(> .control-label),
+  .rt-has-shell .card-body form .row:has(> [class*="col-"] > .control-label:only-child) {
+    align-items: flex-start;
+    margin: 0 !important;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--rt-border);
+  }
+  .rt-has-shell .card-body form .row > .control-label,
+  .rt-has-shell .card-body form .row > [class*="col-"]:has(> .control-label:only-child) {
+    flex: 0 0 var(--rt-label-w);
+    width: var(--rt-label-w);
+    max-width: var(--rt-label-w);
+    padding-top: 9px;
+    color: var(--rt-text);
+    font-weight: 560;
+    text-align: left !important;
+    justify-content: flex-start !important;
+  }
+  .rt-has-shell .card-body form .row > [class*="col-"] > .control-label:only-child { padding-top: 0; font-weight: 560; }
+  .rt-has-shell .card-body form .row:has(> .control-label) > :not(.control-label),
+  .rt-has-shell .card-body form .row:has(> [class*="col-"] > .control-label:only-child) > :not(:has(> .control-label:only-child)) {
+    flex: 1 1 0;
+    width: auto;
+    max-width: 680px;
+  }
+  .rt-has-shell .card-body form .row > [class*="offset-"] {
+    flex: 1 1 0;
+    width: auto;
+    max-width: calc(680px + var(--rt-label-w));
+    margin-left: var(--rt-label-w) !important;
+  }
+  .rt-has-shell .card-body form .row:has(> [class*="offset-"]) {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding: 8px 0;
+  }
+  .rt-has-shell .card-body form > hr { margin: 8px 0; opacity: 0; }
+  .rt-has-shell .card-body form > .row:first-of-type:has(> .control-label) { padding-top: 0; }
+  .rt-has-shell .card-body form small.text-muted,
+  .rt-has-shell .card-body form .help-block,
+  .modal-body small.text-muted {
+    display: block;
+    margin-top: 6px;
+    font-size: .84rem;
+    line-height: 1.5;
+  }
+
+  /* Save rows stay in reach at the bottom of long forms */
+  .rt-has-shell .card-body form .row:has(> [class*="offset-"] > .btn-success:only-child),
+  .rt-has-shell .card-body form .row:has(> [class*="offset-"] > button[type="submit"]:only-child) {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    margin: 12px -20px -20px !important;
+    padding: 14px 20px;
+    background: var(--rt-nav-bg);
+    border-top: 1px solid var(--rt-border);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    border-radius: 0 0 var(--rt-radius-lg) var(--rt-radius-lg);
+  }
+  .rt-has-shell .card-body form .row > [class*="offset-"] > .btn-success:only-child,
+  .rt-has-shell .card-body form .row > [class*="offset-"] > button[type="submit"]:only-child {
+    min-width: 140px;
+  }
+
+  /* A checkbox followed by its label lines up like a switch row */
+  form div:has(> input.form-check-input[type="checkbox"] + label.form-check-label) {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding-left: 0;
+  }
+  form div:has(> input.form-check-input[type="checkbox"] + label.form-check-label) > input.form-check-input { float: none; margin-left: 0; }
+  /* Numbers don't need the full width of the page */
+  .rt-has-shell .card-body form input.form-control[type="number"],
+  .rt-has-shell .card-body form .input-group:has(> input.form-control[type="number"]) { max-width: 320px; }
+  form div:has(> input.form-check-input[type="checkbox"] + label.form-check-label) > .form-check-label { color: var(--rt-text); font-weight: 500; cursor: pointer; }
+
+  /* On/off options as switches with their description underneath */
+  form .form-check:has(> label > .form-check-input[type="checkbox"]) {
+    padding-left: 0;
+    margin-bottom: 4px;
+  }
+  form .form-check > label:has(> .form-check-input[type="checkbox"]) {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 12px;
+    color: var(--rt-text);
+    font-weight: 520;
+    cursor: pointer;
+  }
+  form .form-check > label > .form-check-input[type="checkbox"],
+  form .form-check-input[type="checkbox"]:not([name="multi_select"]):not(.rt-select-all) {
+    flex: 0 0 auto;
+    width: 2.15em;
+    height: 1.2em;
+    margin: .12em 0 0;
+    background-color: var(--rt-control-border);
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23fff'/%3e%3c/svg%3e");
+    background-position: left center;
+    background-repeat: no-repeat;
+    background-size: contain;
+    border-color: transparent;
+    border-radius: 2em;
+    box-shadow: none;
+    transition: background-position .15s ease-in-out, background-color .15s ease-in-out;
+  }
+  form .form-check > label > .form-check-input[type="checkbox"]:checked,
+  form .form-check-input[type="checkbox"]:not([name="multi_select"]):not(.rt-select-all):checked {
+    background-color: var(--rt-primary);
+    background-position: right center;
+    border-color: var(--rt-primary);
+  }
+  form .form-check:has(> label > .form-check-input[type="checkbox"]) > small {
+    margin: 2px 0 6px calc(2.15em + 12px);
+  }
+
+  @media (max-width: 767.98px) {
+    .rt-has-shell .card-body form .row:has(> .control-label),
+    .rt-has-shell .card-body form .row:has(> [class*="col-"] > .control-label:only-child) { flex-direction: column; row-gap: 6px; }
+    .rt-has-shell .card-body form .row > .control-label,
+    .rt-has-shell .card-body form .row > [class*="col-"]:has(> .control-label:only-child),
+    .rt-has-shell .card-body form .row:has(> .control-label) > :not(.control-label) {
+      flex: 0 0 auto;
+      width: 100%;
+      max-width: 100%;
+      padding-top: 0;
+    }
+    .rt-has-shell .card-body form .row > [class*="offset-"] { margin-left: 0 !important; max-width: 100%; }
+    .rt-has-shell .card-body form .row:has(> [class*="offset-"] > .btn-success:only-child),
+    .rt-has-shell .card-body form .row:has(> [class*="offset-"] > button[type="submit"]:only-child) { margin: 12px -14px -14px !important; padding: 12px 14px; }
+  }
+
+  /* Rows that show a value instead of a field line up with the label */
+  .rt-has-shell .card-body form .row:has(> .control-label) > [class*="col-"]:not(:has(input, select, textarea, button, .form-control)) { padding-top: 9px; }
+  /* bootstrap-select keeps the field width in forms (015-responsive caps it at 350px) */
+  .modal-body .bootstrap-select,
+  .rt-has-shell .card-body form .row:has(> .control-label) .bootstrap-select:not(.input-group-btn) { width: 100% !important; max-width: 100%; }
+  /* Help paragraphs between switches */
+  form .form-check > p {
+    margin: 2px 0 10px calc(2.15em + 12px);
+    color: var(--rt-muted);
+    font-size: .84rem;
+    line-height: 1.5;
+  }
+  form .form-check > br { display: none; }
+  form .form-check:has(> label > .form-check-input[type="checkbox"]) > label { margin-bottom: 6px; }
 }
-form .form-check > br { display: none; }
-form .form-check:has(> label > .form-check-input[type="checkbox"]) > label { margin-bottom: 6px; }
 
 /* ------------------------------------------------------------- edit pages */
 /* The wrapper card frames only edit pages without cards of their own */
@@ -2144,7 +2202,7 @@ form .form-check:has(> label > .form-check-input[type="checkbox"]) > label { mar
 /* Connection profile downloads */
 .rt-download-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
   gap: 10px;
 }
 .rt-download {
@@ -2209,8 +2267,10 @@ form .form-check:has(> label > .form-check-input[type="checkbox"]) > label { mar
   margin: 0;
 }
 .rt-logins .last-sasl-login > ul:empty { display: none; }
+/* The text comes from the template (data-rt-empty), so it is translated */
+.rt-logins:has(#spinner-last-login:not(.d-none)) .last-sasl-login::before { content: none !important; }
 .rt-logins .last-sasl-login:not(:has(li))::before {
-  content: "No sign-ins in this period";
+  content: attr(data-rt-empty);
   display: block;
   padding: 32px 20px;
   color: var(--rt-subtle);
@@ -2969,6 +3029,48 @@ div.dataTables_wrapper .row:first-child { align-items: center; }
   border-bottom-color: var(--rt-border);
 }
 .popover-body { color: var(--rt-text-2); }
+/* Arrows match their bubble in both themes (Lumen hard-codes black and white) */
+.bs-tooltip-top .tooltip-arrow::before,
+.bs-tooltip-auto[data-popper-placement^="top"] .tooltip-arrow::before { border-top-color: var(--rt-surface-inverse); }
+.bs-tooltip-bottom .tooltip-arrow::before,
+.bs-tooltip-auto[data-popper-placement^="bottom"] .tooltip-arrow::before { border-bottom-color: var(--rt-surface-inverse); }
+.bs-tooltip-start .tooltip-arrow::before,
+.bs-tooltip-auto[data-popper-placement^="left"] .tooltip-arrow::before { border-left-color: var(--rt-surface-inverse); }
+.bs-tooltip-end .tooltip-arrow::before,
+.bs-tooltip-auto[data-popper-placement^="right"] .tooltip-arrow::before { border-right-color: var(--rt-surface-inverse); }
+.bs-popover-top > .popover-arrow::after,
+.bs-popover-auto[data-popper-placement^="top"] > .popover-arrow::after { border-top-color: var(--rt-surface); }
+.bs-popover-bottom > .popover-arrow::after,
+.bs-popover-auto[data-popper-placement^="bottom"] > .popover-arrow::after { border-bottom-color: var(--rt-surface-2); }
+.bs-popover-start > .popover-arrow::after,
+.bs-popover-auto[data-popper-placement^="left"] > .popover-arrow::after { border-left-color: var(--rt-surface); }
+.bs-popover-end > .popover-arrow::after,
+.bs-popover-auto[data-popper-placement^="right"] > .popover-arrow::after { border-right-color: var(--rt-surface); }
+.popover-arrow::before { border-color: transparent; }
+.bs-popover-top > .popover-arrow::before,
+.bs-popover-auto[data-popper-placement^="top"] > .popover-arrow::before { border-top-color: var(--rt-border); }
+.bs-popover-bottom > .popover-arrow::before,
+.bs-popover-auto[data-popper-placement^="bottom"] > .popover-arrow::before { border-bottom-color: var(--rt-border); }
+
+/* bootstrap-select's "no results" and status lines (light grey by default) */
+.bootstrap-select .no-results,
+.bootstrap-select .notify {
+  color: var(--rt-muted);
+  background: var(--rt-surface-2);
+  border-color: var(--rt-border);
+}
+
+/* Pressed states from 014-mailcow.css flash light grey in dark mode */
+.btn-outline-secondary:active,
+.btn-outline-secondary.active,
+.btn-light:active,
+.btn-light.active,
+.btn-default:active,
+.btn-default.active {
+  color: var(--rt-text) !important;
+  background-color: var(--rt-surface-3) !important;
+  border-color: var(--rt-control-border) !important;
+}
 
 /* ------------------------------------------------------------- accordions */
 .accordion-item {
@@ -3039,7 +3141,9 @@ div.dataTables_wrapper .row:first-child { align-items: center; }
   border-bottom-color: var(--rt-border);
 }
 .toast-body { background: var(--rt-surface); }
-span.mail-address-item {
+/* Quarantine chips. css/site/quarantine.css loads after this file with light-only colours,
+   so these selectors are one level more specific. */
+body span.mail-address-item {
   display: inline-block;
   margin: 2px 6px 2px 0;
   padding: 1px 8px;
@@ -3047,6 +3151,26 @@ span.mail-address-item {
   background: var(--rt-surface-3);
   border: 1px solid var(--rt-border);
   border-radius: 999px;
+}
+body span.rspamd-symbol {
+  padding: 1px 8px;
+  border-radius: var(--rt-radius-xs);
+  font-size: .84rem;
+}
+body span.rspamd-symbol.positive {
+  color: var(--rt-success-text);
+  background: var(--rt-success-soft);
+  border-color: transparent;
+}
+body span.rspamd-symbol.negative {
+  color: var(--rt-danger-text);
+  background: var(--rt-danger-soft);
+  border-color: transparent;
+}
+body span.rspamd-symbol.neutral {
+  color: var(--rt-neutral-text);
+  background: var(--rt-neutral-soft);
+  border-color: transparent;
 }
 .debug-log-info {
   margin-bottom: 16px;
@@ -3083,6 +3207,7 @@ span.mail-address-item {
 }
 .rt-footer .rot-enc { color: var(--rt-muted); }
 .rt-footer .version {
+  color: var(--rt-muted);
   margin-left: auto;
   margin-top: 0;
   display: inline-flex;
@@ -3207,9 +3332,14 @@ span.mail-address-item {
   display: flex;
   align-items: center;
   gap: 12px;
+  width: 100%;
   padding: 10px;
   color: var(--rt-text);
+  background: transparent;
+  border: 0;
   border-radius: var(--rt-radius);
+  font: inherit;
+  text-align: left;
   text-decoration: none !important;
   transition: background-color .12s ease;
 }
@@ -3293,11 +3423,15 @@ a.rt-status { text-decoration: none !important; }
 .rt-overview-title .rt-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 14px;
-  margin-top: 6px;
+  gap: 6px 18px;
+  margin: 6px 0 0;
   color: var(--rt-muted);
   font-size: .9rem;
 }
+.rt-overview-title .rt-meta > div { display: inline-flex; align-items: baseline; gap: 6px; }
+.rt-overview-title .rt-meta dt { font-weight: 500; }
+.rt-overview-title .rt-meta dt::after { content: ":"; }
+.rt-overview-title .rt-meta dd { margin: 0; color: var(--rt-text-2); font-weight: 560; }
 .rt-overview-title .rt-meta .bi { margin-right: 4px; color: var(--rt-subtle); }
 
 .rt-stat-grid {
@@ -3414,8 +3548,11 @@ a.rt-status { text-decoration: none !important; }
   display: flex;
   align-items: center;
   gap: 8px;
+  margin: 0;
   color: var(--rt-text);
+  font-size: 1rem;
   font-weight: 620;
+  letter-spacing: 0;
 }
 .rt-container-name span {
   overflow: hidden;
@@ -3547,7 +3684,7 @@ a.rt-status { text-decoration: none !important; }
   max-width: 460px;
   margin: auto 0;
 }
-.rt-auth-hero-copy h2 {
+.rt-auth-hero-copy .rt-auth-hero-title {
   margin: 0 0 14px;
   color: #fff;
   font-size: clamp(2rem, 3vw, 2.6rem);
@@ -3555,7 +3692,7 @@ a.rt-status { text-decoration: none !important; }
   letter-spacing: -.035em;
   line-height: 1.1;
 }
-.rt-auth-hero-copy p {
+.rt-auth-hero-copy p:not(.rt-auth-hero-title) {
   margin: 0 0 28px;
   color: rgba(237, 233, 254, .85);
   font-size: 1.05rem;
@@ -3699,6 +3836,194 @@ a.rt-status { text-decoration: none !important; }
 @media (max-width: 575.98px) {
   .rt-auth-main { padding: 28px 16px; justify-content: flex-start; }
   .rt-auth .card { padding: 20px; }
+}
+
+/* -------------------------------------------------------- shared pieces */
+/* Keyboard users can jump past the sidebar; the link shows only while focused */
+.rt-skip-link {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 2200;
+  padding: 10px 16px;
+  border-radius: var(--rt-radius-sm);
+  background: var(--rt-primary-fill);
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+  transform: translateY(-200%);
+}
+.rt-skip-link:focus { transform: none; color: #fff; }
+.rt-content:focus { outline: none; }
+
+/* Card titles are headings now (outline for screen readers) but look like before */
+.rt-card-title {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  color: var(--rt-text);
+  font-size: 1.02rem;
+  font-weight: 620;
+  letter-spacing: -.01em;
+}
+.rt-chart-title {
+  margin: 0 0 8px;
+  color: var(--rt-muted);
+  font-size: .78rem;
+  font-weight: 650;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+/* Summary: secondary lines and bars live inside <dd> */
+.rt-summary-stat dd .rt-summary-note {
+  display: block;
+  margin-top: 4px;
+  color: var(--rt-muted);
+  font-size: .84rem;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.rt-summary-stat dd .rt-usage { margin-top: 12px; }
+.rt-summary-hint { margin: 6px 0 0; color: var(--rt-warning-text); font-size: .86rem; }
+p.rt-summary-meta { margin: 6px 0 0; color: var(--rt-muted); font-size: .86rem; }
+.rt-usage-unlimited .rt-usage-caption { margin-bottom: 0; }
+
+/* Notes and inline help */
+.rt-panel-note {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0 0;
+  color: var(--rt-muted);
+  font-size: .84rem;
+  line-height: 1.5;
+}
+.rt-panel-note .bi { flex: 0 0 auto; margin-top: 2px; color: var(--rt-warning-text); }
+.rt-help {
+  display: inline-flex;
+  padding: 0;
+  color: var(--rt-muted);
+  background: none;
+  border: 0;
+  border-radius: 999px;
+  cursor: help;
+}
+.rt-help:hover { color: var(--rt-primary-text); }
+
+/* Session expiry warning (base.twig) */
+.rt-session-warning {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 2100;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(460px, calc(100vw - 32px));
+  padding: 12px 14px 12px 16px;
+  color: var(--rt-text);
+  background: var(--rt-surface);
+  border: 1px solid var(--rt-border);
+  border-left: 4px solid var(--rt-warning);
+  border-radius: var(--rt-radius);
+  box-shadow: var(--rt-shadow-lg);
+  font-size: .92rem;
+}
+.rt-session-warning > .bi { color: var(--rt-warning-text); font-size: 1.2rem; }
+.rt-session-warning .btn { flex: 0 0 auto; margin-left: auto; }
+@media (max-width: 575.98px) {
+  .rt-session-warning { left: 16px; right: 16px; bottom: 16px; flex-wrap: wrap; }
+}
+
+/* Sub-navigation that scrolls sideways fades at the edge it continues past
+   (014-rabbittech.js sets the classes) */
+.rt-subnav.is-overflowing:not(.at-end) {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent);
+}
+
+/* Long addresses and names break instead of overflowing (older Safari lacks "anywhere") */
+.rt-summary-title,
+.rt-summary-sub > *,
+.rt-page-title,
+.rt-overview-title h2,
+.rt-address-list > li { word-break: break-word; }
+
+/* css/site/mailbox.css sizes every button group to its content, which stops the table
+   toolbars from wrapping */
+.rt-has-shell [class*="mass-actions"] .btn-group { width: auto; }
+
+/* Bigger targets on touch screens */
+@media (pointer: coarse) {
+  .rt-icon-only,
+  .dataTable .rt-row-actions > .btn,
+  .rt-icon-btn { width: 40px !important; height: 40px !important; }
+  .paginate_button,
+  .page-link { min-width: 40px; min-height: 40px; }
+  .rt-nav-link { min-height: 44px; }
+  .btn-sm { min-height: 36px; }
+  table.dataTable tbody input[name="multi_select"],
+  .rt-select-all { width: 20px; height: 20px; }
+  table.dataTable.dtr-inline.collapsed > tbody > tr > td.dtr-control,
+  table.dataTable.dtr-inline.collapsed > tbody > tr > th.dtr-control { padding-left: 48px !important; }
+  table.dataTable.dtr-inline.collapsed > tbody > tr > td.dtr-control:before,
+  table.dataTable.dtr-inline.collapsed > tbody > tr > th.dtr-control:before,
+  table.dataTable td.dt-control:before {
+    width: 30px !important;
+    height: 30px !important;
+    margin-top: -15px;
+    line-height: 28px;
+  }
+}
+
+/* Less motion when the system asks for it */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Printing: content only, dark text on white whatever the theme */
+@media print {
+  :root,
+  :root[data-theme="dark"] {
+    color-scheme: light;
+    --rt-bg: #fff;
+    --rt-surface: #fff;
+    --rt-surface-2: #fff;
+    --rt-surface-3: #f2f2f2;
+    --rt-border: #cfcfcf;
+    --rt-text: #000;
+    --rt-text-2: #222;
+    --rt-muted: #444;
+    --rt-subtle: #555;
+    --rt-primary-text: #3b0f8f;
+  }
+  .rt-sidebar,
+  .rt-sidebar-backdrop,
+  .rt-topbar,
+  .rt-subnav,
+  .rt-page-actions,
+  .rt-palette,
+  .rt-footer,
+  .rt-session-warning,
+  .overlay,
+  .modal,
+  [class*="mass-actions"],
+  .dataTables_filter,
+  .dataTables_length,
+  .dataTables_paginate,
+  .rt-row-actions { display: none !important; }
+  .rt-has-shell { padding-left: 0 !important; }
+  .rt-content { padding: 0 !important; }
+  .card,
+  .rt-summary { box-shadow: none !important; break-inside: avoid; }
+  .rt-has-shell .card-body form .row { position: static !important; }
 }
 
 /* ------------------------------------------------------- responsive bits */

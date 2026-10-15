@@ -4,8 +4,9 @@
     data-action="edit_selected" data-item="{{ username }}" data-id="{{ id }}" data-api-url="{{ api_url }}" data-api-attr="{{ api_attr }}">{{ label }}</button>
 {% endmacro %}
 <div class="tab-pane fade" id="tab-user-settings" role="tabpanel" aria-labelledby="tab-user-settings">
+  {% set t = lang.rabbittech %}
   <section class="card rt-panel mb-4">
-    <div class="card-header"><h3 class="rt-panel-title"><i class="bi bi-envelope-paper"></i> Mail handling</h3></div>
+    <div class="card-header"><h2 class="rt-panel-title"><i class="bi bi-envelope-paper" aria-hidden="true"></i> {{ t.mail_handling }}</h2></div>
     <div class="rt-setting-list">
       <div class="rt-setting rt-setting-wrap">
         <span class="rt-setting-icon" aria-hidden="true"><i class="bi bi-tags"></i></span>
@@ -39,7 +40,7 @@
   </section>
 
   <section class="card rt-panel mb-4">
-    <div class="card-header"><h3 class="rt-panel-title"><i class="bi bi-shield-exclamation"></i> Quarantine</h3></div>
+    <div class="card-header"><h2 class="rt-panel-title"><i class="bi bi-shield-exclamation" aria-hidden="true"></i> {{ lang.header.quarantine }}</h2></div>
     <div class="rt-setting-list">
       <div class="rt-setting rt-setting-wrap">
         <span class="rt-setting-icon" aria-hidden="true"><i class="bi bi-bell"></i></span>
@@ -74,7 +75,7 @@
 
   {% if not skip_sogo %}
   <section class="card rt-panel rt-panel-danger mb-4">
-    <div class="card-header"><h3 class="rt-panel-title"><i class="bi bi-arrow-counterclockwise"></i> Reset</h3></div>
+    <div class="card-header"><h2 class="rt-panel-title"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> {{ t.reset }}</h2></div>
     <div class="rt-setting-list">
       <div class="rt-setting">
         <span class="rt-setting-icon" aria-hidden="true"><i class="bi bi-phone-vibrate"></i></span>
@@ -83,7 +84,7 @@
           <div class="rt-setting-desc">{{ lang.user.eas_reset_help|raw }}</div>
         </div>
         <div class="rt-setting-action">
-          <button class="btn btn-secondary" data-action="delete_selected" data-text="{{ lang.user.eas_reset }}?" data-item="{{ mailcow_cc_username }}" data-acl="{{ acl.eas_reset }}" data-id="eas_cache" data-api-url='delete/eas_cache' href="#">{{ lang.user.eas_reset_now }}</button>
+          <button class="btn btn-secondary" data-action="delete_selected" data-text="{{ lang.user.eas_reset }}?" data-item="{{ mailcow_cc_username }}" data-acl="{{ acl.eas_reset }}" data-id="eas_cache" data-api-url='delete/eas_cache' type="button">{{ lang.user.eas_reset_now }}</button>
         </div>
       </div>
       <div class="rt-setting">
@@ -93,7 +94,7 @@
           <div class="rt-setting-desc">{{ lang.user.sogo_profile_reset_help|raw }}</div>
         </div>
         <div class="rt-setting-action">
-          <button class="btn btn-outline-danger" data-action="delete_selected" data-text="{{ lang.user.sogo_profile_reset }}?" data-item="{{ mailcow_cc_username }}" data-acl="{{ acl.sogo_profile_reset }}" data-id="sogo_profile" data-api-url='delete/sogo_profile' href="#">{{ lang.user.sogo_profile_reset_now }}</button>
+          <button class="btn btn-outline-danger" data-action="delete_selected" data-text="{{ lang.user.sogo_profile_reset }}?" data-item="{{ mailcow_cc_username }}" data-acl="{{ acl.sogo_profile_reset }}" data-id="sogo_profile" data-api-url='delete/sogo_profile' type="button">{{ lang.user.sogo_profile_reset_now }}</button>
         </div>
       </div>
     </div>
