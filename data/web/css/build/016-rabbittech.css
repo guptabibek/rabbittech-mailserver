@@ -3886,6 +3886,7 @@ a.rt-status { text-decoration: none !important; }
 .rt-alert-text strong { font-weight: 700; }
 .rt-alert-hint { color: var(--rt-text-2); font-size: .92rem; }
 .rt-alert-hint a { color: inherit; font-weight: 600; text-decoration: underline; }
+.rt-alert-hint a + a { margin-left: .75rem; }
 
 /* -------------------------------------------------------- shared pieces */
 /* Keyboard users can jump past the sidebar; the link shows only while focused */

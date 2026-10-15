@@ -8,6 +8,8 @@
 //   HARNESS_SESSION_LIFETIME=n   session lifetime in seconds (default 3600)
 //   HARNESS_STOPPED=name, HARNESS_UNHEALTHY=name, HARNESS_DF=96, HARNESS_CERT_DAYS=6,
 //   HARNESS_QUEUE=64             Overview problem states (stopped container, disk, certificate, queue)
+//   HARNESS_CERT_PLACEHOLDER=1, HARNESS_ACME=aaaa, HARNESS_BACKUP=never|off|old|failed,
+//   HARNESS_DNS=1                more Overview states (no certificate yet, backups, mail DNS)
 $WEB = getenv('MAILCOW_WEB') ?: realpath(__DIR__ . '/../../data/web');
 $CACHE = getenv('HARNESS_CACHE') ?: sys_get_temp_dir() . '/rt-ui-cache';
 if (!is_dir($CACHE)) mkdir($CACHE, 0777, true);
@@ -200,15 +202,38 @@ if ($template === 'dashboard.twig') {
   $data['quarantine_count'] = getenv('HARNESS_NO_QCOUNT') ? null : 5;
   $data += ['log_lines' => 1000, 'vmail_df' => ['/dev/sda1', '78G', round(78 * $df / 100) . 'G', round(78 * (100 - $df) / 100) . 'G', $df . '%', '/var/vmail'], 'hostname' => 'mail.rabbittech.com.np', 'timezone' => 'Asia/Kathmandu',
     'gal' => ['valid' => false], 'license_guid' => '2d1f0c2e-7a1b-4c5e-9f00-rabbittech', 'clamd_status' => true, 'olefy_status' => true, 'containers' => $containers, 'ip_check' => 1];
-  // The alert rules are taken from admin/dashboard.php itself; the certificate check is stubbed
-  if (!function_exists('rt_cert_expiry')) {
-    function rt_cert_expiry($h) { $d = getenv('HARNESS_CERT_DAYS'); return $d === false ? null : time() + (int)$d * 86400; }
+  // The alert rules are taken from admin/dashboard.php itself; what they look at is stubbed
+  if (!function_exists('rt_cert_info')) {
+    function rt_cert_info($h) {
+      if (getenv('HARNESS_CERT_PLACEHOLDER')) return ['expires' => strtotime('2019-11-28 10:11:00 UTC'), 'placeholder' => true];
+      $d = getenv('HARNESS_CERT_DAYS');
+      return $d === false ? null : ['expires' => time() + (int)$d * 86400, 'placeholder' => false];
+    }
+    function rt_acme_reason() {
+      return getenv('HARNESS_ACME') === 'aaaa' ? ['aaaa', ['mail.rabbittech.com.np', '2400:d321:2286:5738:0000:0000:0000:0001']] : null;
+    }
+    function rt_backup_status() {
+      $ok = ['enabled' => true, 'ok' => true, 'time' => time() - 7200, 'error' => '', 'last_success' => time() - 7200, 'offsite' => 'off'];
+      switch (getenv('HARNESS_BACKUP') ?: 'ok') {
+        case 'never': return null;
+        case 'off': return ['enabled' => false];
+        case 'old': return ['time' => time() - 4 * 86400, 'last_success' => time() - 4 * 86400] + $ok;
+        case 'failed': return ['ok' => false, 'time' => time() - 3600, 'error' => 'Missing or empty archives: mariadb', 'last_success' => time() - 90000, 'offsite' => 'failed'] + $ok;
+        default: return $ok;
+      }
+    }
+    function rt_mail_dns_problems($h) {
+      $fine = ['ip' => '94.136.186.45', 'ptr' => null, 'mx' => [], 'spf' => [], 'dkim_key' => [], 'dkim' => [], 'dmarc' => []];
+      return getenv('HARNESS_DNS') ? ['ptr' => ['missing', ''], 'mx' => ['example.org'], 'spf' => ['rabbittech.com.np'], 'dkim_key' => ['shop.example'],
+        'dkim' => ['blog.example'], 'dmarc' => ['a.example', 'b.example', 'c.example', 'd.example', 'e.example']] + $fine : $fine;
+    }
   }
   $src = file_get_contents($WEB . '/admin/dashboard.php');
   $from = strpos($src, '// Overview: problems'); $to = strpos($src, "\$template = 'dashboard.twig';");
   $vmail_df = $data['vmail_df']; $hostname = 'mail.rabbittech.com.np';
   eval(substr($src, $from, $to - $from));
   $data['rt_alerts'] = $rt_alerts;
+  $data['rt_backup_last'] = $rt_backup_last;
 }
 if (strpos($template, 'edit/') === 0) {
   $data['result'] = ['username' => 'bibek@rabbittech.com.np', 'local_part' => 'bibek', 'domain' => 'rabbittech.com.np', 'domain_name' => 'rabbittech.com.np', 'name' => 'Bibek Gupta', 'active' => 1, 'active_int' => 1,

@@ -41,8 +41,9 @@ const main = serve(8088);
 const tfa = serve(8089, { HARNESS_TFA: '1' });
 const problems = serve(8090, { HARNESS_STOPPED: 'olefy', HARNESS_UNHEALTHY: 'rspamd', HARNESS_DF: '96', HARNESS_CERT_DAYS: '6', HARNESS_QUEUE: '64' });
 const session = serve(8091, { HARNESS_SESSION_LIFETIME: '300' });
+const setup = serve(8092, { HARNESS_CERT_PLACEHOLDER: '1', HARNESS_ACME: 'aaaa', HARNESS_BACKUP: 'failed', HARNESS_DNS: '1' });
 const webmail = existsSync(sogoRoot) ? serveStatic(8095, sogoRoot) : null;
-await Promise.all([main, tfa, problems, session].map(u => ready(u + '/admin')));
+await Promise.all([main, tfa, problems, session, setup].map(u => ready(u + '/admin')));
 if (webmail) await ready(webmail + '/mail.html');
 
 // ------------------------------------------------------------------ helpers
@@ -153,14 +154,41 @@ console.log('Behaviour');
   await page.goto(main + '/admin/dashboard', { waitUntil: 'networkidle' });
   check('Overview counts the quarantine without loading every item', !calls.some(u => u.includes('quarantine/all')));
   check('Overview shows no alerts when all is well', await page.locator('#rt-alerts').evaluate(e => e.hidden));
+  const backup = (await page.locator('.rt-meta [data-rt-time]').textContent()).trim();
+  check('Overview shows when the last backup was made', /ago/.test(backup), backup);
   await page.close();
 }
 {
   const { page } = await open(problems + '/admin/dashboard');
   const alerts = await page.locator('.rt-alert .rt-alert-text').allTextContents();
-  check('Overview lists stopped and unhealthy containers, disk, certificate and queue', alerts.length === 5
-    && /Office macro scanner/.test(alerts[0]) && /Spam filter/.test(alerts[1]) && /96%/.test(alerts[2]) && /certificate/.test(alerts[3]) && /64/.test(alerts[4]), alerts.join(' | '));
+  check('Overview lists stopped and unhealthy containers, disk, certificate and queue, most severe first', alerts.length === 5
+    && /Office macro scanner/.test(alerts[0]) && /96%/.test(alerts[1]) && /Spam filter/.test(alerts[2]) && /certificate/.test(alerts[3]) && /64/.test(alerts[4]), alerts.join(' | '));
   await page.screenshot({ path: join(output, 'overview-alerts.png') });
+  await page.close();
+}
+{
+  // A new server: no certificate yet (ACME blocked by an AAAA record), a failed backup, DNS gaps
+  const { page, errors } = await open(setup + '/admin/dashboard');
+  const alerts = await page.locator('.rt-alert').evaluateAll(items => items.map(item => ({
+    level: item.className.replace(/.*rt-alert-/, ''),
+    text: item.querySelector('.rt-alert-text').textContent.trim(),
+    hint: item.querySelector('.rt-alert-hint').textContent.replace(/\s+/g, ' ').trim(),
+  })));
+  const find = re => alerts.find(a => re.test(a.text)) || { text: '', hint: '' };
+  const cert = find(/No certificate has been issued for mail\.rabbittech\.com\.np/);
+  check('no certificate yet: says so, with the reason from the ACME log', /IPv6 \(AAAA\) record/.test(cert.hint) && cert.level === 'danger', JSON.stringify(cert));
+  check('a failed backup shows its reason', /Missing or empty archives: mariadb/.test(find(/last backup failed/).hint));
+  check('missing reverse DNS names the IP and hostname', /PTR record of 94\.136\.186\.45 to mail\.rabbittech\.com\.np/.test(find(/Reverse DNS/).hint));
+  check('domains with the same problem share one alert', find(/No DMARC record/).text === 'No DMARC record: a.example, b.example, c.example and 2 more');
+  check('every alert has a title and hint, with nothing left unformatted', alerts.length === 9
+    && alerts.every(a => a.text && a.hint && !/%[sd]/.test(a.text + a.hint)), JSON.stringify(alerts.map(a => a.text)));
+  const levels = alerts.map(a => a.level).join(',');
+  check('danger alerts come before warnings', /^(danger,)*(warning,?)*$/.test(levels), levels);
+  check('no page errors with every alert shown', errors.length === 0, errors.join(' | '));
+  await page.screenshot({ path: join(output, 'overview-setup-alerts.png'), fullPage: true });
+  await page.getByRole('link', { name: 'Open the ACME log' }).click();
+  await page.waitForTimeout(300);
+  check('"Open the ACME log" opens the ACME log', await page.locator('#tab-acme-logs').evaluate(e => e.classList.contains('active')));
   await page.close();
 }
 // Mailbox users and domain admins never see the mailcow, SOGo or Rspamd names, not even in dialogs

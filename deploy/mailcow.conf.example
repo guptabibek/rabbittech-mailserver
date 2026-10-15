@@ -55,6 +55,8 @@ FTS_PROCS=1
 ALLOW_ADMIN_EMAIL_LOGIN=n
 
 USE_WATCHDOG=y
+# Where the health monitor emails alerts (a service stops, an address is banned), e.g. you@example.com
+WATCHDOG_NOTIFY_EMAIL=
 WATCHDOG_NOTIFY_BAN=n
 WATCHDOG_NOTIFY_START=y
 WATCHDOG_EXTERNAL_CHECKS=n
@@ -72,3 +74,12 @@ WEBAUTHN_ONLY_TRUSTED_VENDORS=n
 SPAMHAUS_DQS_KEY=
 ENABLE_IPV6=false
 DISABLE_NETFILTER_ISOLATION_RULE=n
+
+# RabbitTech nightly backups (scripts/backup-mail.sh, scheduled by the deploy)
+RT_BACKUP=y
+# Hour of the day (0-23, in TZ above) after which the daily backup runs
+RT_BACKUP_HOUR=2
+# Backups older than this are deleted; the newest two are always kept
+RT_BACKUP_KEEP_DAYS=7
+# Optional copy to another server over SSH, e.g. backup@nas.example.com:/srv/rabbittech-mail
+RT_BACKUP_RSYNC_TARGET=

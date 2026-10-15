@@ -10,7 +10,7 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 apt-get update
-apt-get install -y ca-certificates curl git rsync openssh-server ufw
+apt-get install -y ca-certificates cron curl git rsync openssh-server ufw
 
 if ! command -v docker >/dev/null 2>&1; then
   install -m 0755 -d /etc/apt/keyrings
