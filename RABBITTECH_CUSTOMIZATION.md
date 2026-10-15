@@ -98,26 +98,86 @@ The content of every page follows the same patterns, so the console reads as one
 - **DKIM** shows one bordered row per domain. This also fixes an upstream bug: domains without a
   key were hidden although the "Key missing" filter was on.
 
+### Languages
+
+- Every string the RabbitTech layer adds lives in a `rabbittech` section of
+  `data/web/lang/lang.en-gb.json`. mailcow loads English first and merges the page language over it,
+  so the other 32 languages show these strings in English until a `rabbittech` section is added to
+  their file. Existing mailcow keys are reused wherever one fits.
+- Templates read them as `lang.rabbittech.*` (aliased to `t`). Scripts read them from the
+  `lang_rt` object through `rt.t('key')`, set up in `base.twig` from `inc/footer.inc.php`.
+- Dates, relative times ("2 hours ago") and numbers are formatted in the browser with `Intl` for the
+  page language. Templates print plain values marked `data-rt-date`, `data-rt-time` or
+  `data-rt-number`; sizes use binary units (KiB, MiB, GiB).
+
+### Accessibility and resilience
+
+- Colours meet WCAG AA contrast in both themes. Buttons use separate, darker fill tokens
+  (`--rt-primary-fill`, `--rt-danger-fill`), and form controls use `--rt-control-border`.
+- Every focusable element shows a 2px outline when reached by keyboard. A "Skip to content" link
+  jumps past the sidebar, and the closed mobile drawer is `inert`.
+- Headings follow the page outline (h1 page title, h2 cards, h3 items), logout and "Restart SOGo"
+  are real buttons, and pinch-zoom is allowed.
+- On touch screens, icon buttons, pagination and navigation links have larger hit areas. Motion is
+  reduced when the OS asks for it, and pages print without the shell.
+- The page stays usable without the shell script. mailcow's tab strips stay visible until
+  `014-rabbittech.js` has started (`html.rt-shell-ready`), and if a script fails the header falls
+  back to the plain back link. Layout rules that need `:has()` sit inside
+  `@supports selector(:has(*))`.
+- Two minutes before the session expires, a notice offers "Stay signed in" instead of the page
+  reloading without warning.
+
 ### Assets
 
 - `data/web/img/rabbittech_mailcow.svg` (light background) and `rabbittech_mailcow_dark.svg`:
   lockups with outlined text, so they render the same without the web font.
+- `data/web/img/rabbittech_webmail.svg` and `rabbittech_webmail_dark.svg`: the same lockups with
+  "Webmail" as the subtitle, used in SOGo.
 - `data/web/img/rabbittech_mark.svg`: the mark on its own.
 - `data/web/favicon.png`: generated from the mark.
 
 ### SOGo webmail
 
-- `data/conf/sogo/custom-theme.js`: violet primary and accent palettes with a cool grey background.
-  It is wrapped in `try/catch`, so a problem falls back to SOGo's default theme instead of breaking
-  webmail.
-- `data/conf/sogo/custom-sogo.js`: loads the Inter font from `/fonts`.
+Webmail keeps SOGo 5.12 for mail, calendar, contacts and ActiveSync. It is restyled through SOGo's
+two supported hooks, both loaded on every SOGo page (`SOGoUIAdditionalJSFiles` in
+`data/conf/sogo/sogo.conf`):
+
+- **`data/conf/sogo/custom-theme.js`** (mounted as `js/theme.js`): the colour palettes.
+  - Light uses the console's violet and greys. Dark uses a dark background palette, and only when
+    the stylesheet below is present.
+  - In production SOGo also links `css/theme-default.css`, a pre-built copy of its stock teal and
+    green theme. It loads after the colours generated from `theme.js` and wins, which is why
+    webmail used to look stock. Once the palette is configured, that link is removed.
+  - Any error leaves SOGo's own theme in place.
+- **`data/conf/sogo/custom-sogo.js`**: the RabbitTech stylesheet, embedded and added before
+  Angular starts, so pages never flash the stock look and no extra file or mount is needed.
+  - It covers the top bar, the folder sidebar, message and contact lists, the reading pane,
+    compose (including CKEditor 5), dialogs, menus, Preferences controls, calendar and contacts.
+  - The top bar becomes an app switcher that highlights the current app, and the big date is hidden.
+    The sidebar starts with the RabbitTech webmail logo (`data/web/img/rabbittech_webmail*.svg`).
+  - List rows keep the heights SOGo's virtual scrolling relies on (56px messages and contacts,
+    40px folders); separators are drawn with shadows so they add no height.
+  - HTML mail keeps the sender's styling: rules that reach into a message use `:where()`, so the
+    sender's CSS always wins. In dark mode, HTML mail and the compose area stay on a white sheet,
+    because replies and newsletters carry their own dark text colours.
+  - Webmail follows the console's light/dark choice (`localStorage.mailcow_theme`, same origin);
+    switch it in the console and reload webmail.
+  - The upstream `CKEDITOR.addCss(...)` line is guarded: SOGo 5 ships CKEditor 5, which has no
+    `CKEDITOR` global, so that line threw an error on every page.
+- **Caching:** these two files keep the same URL across releases, so nginx sends them with
+  `Cache-Control: no-cache` (`data/conf/nginx/templates/sites-default.conf.j2`). A deploy restarts
+  `sogo-mailcow` (which copies them into the web volume) and `nginx-mailcow`.
+- **If an upgrade breaks webmail styling**, restore the stock look with
+  `git checkout fd58a71 -- data/conf/sogo/custom-sogo.js data/conf/sogo/custom-theme.js` and
+  `docker compose restart sogo-mailcow`.
 - `custom-fulllogo.svg/png`, `custom-shortlogo.svg` and `custom-favicon.ico` carry the RabbitTech logo.
 
 ### CI
 
 `.github/workflows/ci.yml` checks the theme assets, runs `node --check` on the touched JavaScript,
-parses every Twig template with `scripts/check-twig-templates.php`, and tests that a release sync
-keeps runtime files and admin-edited maps.
+parses every Twig template with `scripts/check-twig-templates.php`, checks that every language file
+is valid JSON and every RabbitTech string in use exists (`scripts/check-rabbittech-lang.php`), and
+tests that a release sync keeps runtime files and admin-edited maps.
 
 ## Deployment
 
@@ -162,13 +222,17 @@ server, which calls `scripts/sync-release.sh` to copy it into `/opt/rabbittech-m
   open mailboxes, and Postfix creates its SQL and transport maps. If those files are missing, the
   deploy restarts the service that owns them. If they still don't appear, the deploy fails and names
   the files.
-- **Template changes clear the Twig cache.** CSS and JS bundles are re-hashed on the next request
-  anyway.
+- **Template and PHP changes restart PHP-FPM.** mailcow's PHP never re-reads a file it has already
+  compiled (`opcache.validate_timestamps=0`), and compiled templates keep their file names, so the
+  deploy clears the Twig cache and restarts `php-fpm-mailcow` whenever `data/web/templates/`,
+  `data/web/inc/` or any `data/web/**/*.php` changed. CSS and JS bundles are named by their content
+  and update without a restart.
 - **Old releases are pruned.** Only the newest three are kept in `releases/`.
 
 ### Manual updates
 
-On a manual `git pull`, run `docker compose restart php-fpm-mailcow` so updated templates show up.
+On a manual `git pull`, run `docker compose restart php-fpm-mailcow` so updated templates and PHP
+code show up (PHP keeps serving the old compiled files until it restarts).
 Run `docker compose restart sogo-mailcow` after SOGo theme or logo changes.
 
 ## Keeping upstream updates

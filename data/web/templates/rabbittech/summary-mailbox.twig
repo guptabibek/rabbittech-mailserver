@@ -1,4 +1,7 @@
-{# Summary of the mailbox being edited, shown above the edit tabs #}
+{# Summary of the mailbox being edited, shown above the edit tabs.
+   Dates and numbers are printed plainly and formatted for the page language by
+   014-rabbittech.js (data-rt-date, data-rt-number, data-rt-time). #}
+{% set t = lang.rabbittech %}
 {% set rt_display = result.name|default(result.local_part)|trim %}
 {% set rt_words = rt_display|split(' ')|filter(w => w != '') %}
 {% set rt_initials = (rt_words|first|first ~ (rt_words|length > 1 ? rt_words|last|first : ''))|upper %}
@@ -19,7 +22,7 @@
         {% if result.active == '1' %}
         <span class="rt-status rt-status-running">{{ lang.edit.active }}</span>
         {% elseif result.active == '2' %}
-        <span class="rt-status rt-status-warning" title="{{ lang.edit.disable_login }}">Login disabled</span>
+        <span class="rt-status rt-status-warning">{{ t.login_disabled }}</span>
         {% else %}
         <span class="rt-status rt-status-muted">{{ lang.edit.inactive }}</span>
         {% endif %}
@@ -29,40 +32,54 @@
         {% if result.authsource and result.authsource != 'mailcow' %}<span class="rt-chip">{{ result.authsource }}</span>{% endif %}
         {% for tag in result.tags|default([]) %}<span class="rt-chip">{{ tag }}</span>{% endfor %}
       </div>
+      {% if result.active == '2' %}<p class="rt-summary-hint">{{ lang.edit.disable_login }}</p>{% endif %}
     </div>
-    {% if acl.login_as == 1 and mailcow_cc_role in ['admin', 'domainadmin'] %}
+    {# Logging in as someone else isn't possible from inside another login-as session #}
+    {% if acl.login_as == 1 and mailcow_cc_role in ['admin', 'domainadmin'] and not dual_login %}
     <div class="rt-summary-actions">
-      <a class="btn btn-secondary" href="/index.php?duallogin={{ result.username|url_encode }}"><i class="bi bi-box-arrow-in-right"></i> Log in as</a>
+      <a class="btn btn-secondary" href="/index.php?duallogin={{ result.username|url_encode }}"><i class="bi bi-box-arrow-in-right" aria-hidden="true"></i> {{ t.log_in_as }}</a>
     </div>
     {% endif %}
   </div>
   <dl class="rt-summary-stats">
-    <div class="rt-summary-stat rt-summary-stat-wide">
-      <dt>Storage</dt>
-      <dd>{{ rt_used > 0 ? rt_used|formatBytes(1) : '0 B' }} <small>of {{ result.quota > 0 ? result.quota|formatBytes(1) : '∞' }}</small></dd>
-      {% if rt_pct is not null %}
-      <div class="rt-usage {% if rt_pct >= 90 %}rt-usage-danger{% elseif rt_pct >= 75 %}rt-usage-warning{% else %}rt-usage-ok{% endif %}">
-        <div class="rt-usage-track"><div class="rt-usage-bar" style="width: {{ rt_pct }}%"></div></div>
-      </div>
-      {% endif %}
+    <div class="rt-summary-stat">
+      <dt>{{ t.storage }}</dt>
+      <dd>
+        {{ t.of|format(rt_used > 0 ? rt_used|formatBytes(1) : '0 B', result.quota > 0 ? result.quota|formatBytes(1) : '∞') }}
+        {% if rt_pct is not null %}
+        <div class="rt-usage {% if rt_pct >= 90 %}rt-usage-danger{% elseif rt_pct >= 75 %}rt-usage-warning{% else %}rt-usage-ok{% endif %}" aria-hidden="true">
+          <div class="rt-usage-track"><div class="rt-usage-bar" style="width: {{ rt_pct }}%"></div></div>
+        </div>
+        {% endif %}
+      </dd>
     </div>
     <div class="rt-summary-stat">
       <dt>{{ lang.user.messages|capitalize }}</dt>
-      <dd>{{ result.messages|default(0)|number_format(0, '.', ',') }}</dd>
+      <dd data-rt-number>{{ result.messages|default(0) }}</dd>
     </div>
     <div class="rt-summary-stat">
       <dt>{{ lang.mailbox.last_mail_login }}</dt>
       {% if rt_last > 0 %}
-      <dd><time datetime="{{ rt_last|date('c') }}" data-rt-time="{{ rt_last }}" title="{{ rt_last|date('Y-m-d H:i') }}">{{ rt_last|date('Y-m-d H:i') }}</time></dd>
-      <div class="rt-summary-note">via {{ rt_last_via }}</div>
+      <dd>
+        <time datetime="{{ rt_last|date('c') }}" data-rt-time="{{ rt_last }}" title="{{ rt_last|date('Y-m-d H:i') }}">{{ rt_last|date('Y-m-d H:i') }}</time>
+        <span class="rt-summary-note">{{ t.via|format(rt_last_via) }}</span>
+      </dd>
       {% else %}
       <dd class="rt-summary-muted">{{ lang.user.never }}</dd>
       {% endif %}
     </div>
     <div class="rt-summary-stat">
       <dt>{{ lang.edit.created_on }}</dt>
-      <dd>{{ result.created|date('M j, Y') }}</dd>
-      <div class="rt-summary-note">{{ lang.edit.last_modified }}: {{ result.modified ? result.modified|date('M j, Y') : lang.user.never }}</div>
+      {% if result.created %}
+      <dd>
+        <time datetime="{{ result.created|date('Y-m-d') }}" data-rt-date>{{ result.created|date('Y-m-d') }}</time>
+        <span class="rt-summary-note">{{ lang.edit.last_modified }}:
+          {% if result.modified %}<time datetime="{{ result.modified|date('Y-m-d') }}" data-rt-date>{{ result.modified|date('Y-m-d') }}</time>{% else %}{{ lang.user.never }}{% endif %}
+        </span>
+      </dd>
+      {% else %}
+      <dd class="rt-summary-muted">—</dd>
+      {% endif %}
     </div>
   </dl>
 </section>

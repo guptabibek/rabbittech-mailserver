@@ -72,6 +72,7 @@ $globalVariables = [
   'lang_fido2' => json_encode($lang['fido2']),
   'lang_success' => json_encode($lang['success']),
   'lang_danger' => json_encode($lang['danger']),
+  'lang_rt' => json_encode($lang['rabbittech'] ?? []),
   'docker_timeout' => $DOCKER_TIMEOUT,
   'session_lifetime' => (int)$SESSION_LIFETIME,
   'csrf_token' => $_SESSION['CSRF']['TOKEN'],

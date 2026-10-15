@@ -1,12 +1,14 @@
-{# Summary of the domain being edited, shown above the edit tabs #}
+{# Summary of the domain being edited, shown above the edit tabs.
+   Dates and numbers are formatted for the page language by 014-rabbittech.js. #}
 {% macro usage(used, total) %}
   {% if total > 0 %}
   {% set pct = min(100, (used / total * 100)|round) %}
-  <div class="rt-usage {% if pct >= 90 %}rt-usage-danger{% elseif pct >= 75 %}rt-usage-warning{% else %}rt-usage-ok{% endif %}">
+  <div class="rt-usage {% if pct >= 90 %}rt-usage-danger{% elseif pct >= 75 %}rt-usage-warning{% else %}rt-usage-ok{% endif %}" aria-hidden="true">
     <div class="rt-usage-track"><div class="rt-usage-bar" style="width: {{ pct }}%"></div></div>
   </div>
   {% endif %}
 {% endmacro %}
+{% set t = lang.rabbittech %}
 {% set rt_alloc = result.quota_used_in_domain|default(0) %}
 <section class="rt-summary" aria-label="{{ lang.mailbox.domain }}">
   <div class="rt-summary-head">
@@ -25,30 +27,44 @@
         {% if result.description %}<span>{{ result.description }}</span>{% endif %}
         {% if result.domain_h_name != result.domain_name %}<span class="rt-chip">{{ result.domain_name }}</span>{% endif %}
         {% for tag in result.tags|default([]) %}<span class="rt-chip">{{ tag }}</span>{% endfor %}
-        {% if result.created %}<span class="rt-summary-meta" title="{{ lang.edit.last_modified }}: {{ result.modified|default(lang.user.never) }}">{{ lang.edit.created_on }} {{ result.created|date('M j, Y') }}</span>{% endif %}
       </div>
+      {% if result.created %}
+      <p class="rt-summary-meta">
+        {{ lang.edit.created_on }} <time datetime="{{ result.created|date('Y-m-d') }}" data-rt-date>{{ result.created|date('Y-m-d') }}</time>
+        &middot; {{ lang.edit.last_modified }}
+        {% if result.modified %}<time datetime="{{ result.modified|date('Y-m-d') }}" data-rt-date>{{ result.modified|date('Y-m-d') }}</time>{% else %}{{ lang.user.never }}{% endif %}
+      </p>
+      {% endif %}
     </div>
   </div>
   <dl class="rt-summary-stats">
     <div class="rt-summary-stat">
       <dt>{{ lang.mailbox.mailboxes }}</dt>
-      <dd>{{ result.mboxes_in_domain|default(0) }} <small>of {{ result.max_num_mboxes_for_domain }}</small></dd>
-      {{ _self.usage(result.mboxes_in_domain|default(0), result.max_num_mboxes_for_domain) }}
+      <dd>
+        {{ t.of|format(result.mboxes_in_domain|default(0), result.max_num_mboxes_for_domain) }}
+        {{ _self.usage(result.mboxes_in_domain|default(0), result.max_num_mboxes_for_domain) }}
+      </dd>
     </div>
     <div class="rt-summary-stat">
       <dt>{{ lang.mailbox.aliases }}</dt>
-      <dd>{{ result.aliases_in_domain|default(0) }} <small>of {{ result.max_num_aliases_for_domain }}</small></dd>
-      {{ _self.usage(result.aliases_in_domain|default(0), result.max_num_aliases_for_domain) }}
+      <dd>
+        {{ t.of|format(result.aliases_in_domain|default(0), result.max_num_aliases_for_domain) }}
+        {{ _self.usage(result.aliases_in_domain|default(0), result.max_num_aliases_for_domain) }}
+      </dd>
     </div>
     <div class="rt-summary-stat">
-      <dt>Quota allocated</dt>
-      <dd>{{ rt_alloc > 0 ? rt_alloc|formatBytes(1) : '0 B' }} <small>of {{ result.max_quota_for_domain > 0 ? result.max_quota_for_domain|formatBytes(1) : '∞' }}</small></dd>
-      {{ _self.usage(rt_alloc, result.max_quota_for_domain) }}
+      <dt>{{ t.quota_allocated }}</dt>
+      <dd>
+        {{ t.of|format(rt_alloc > 0 ? rt_alloc|formatBytes(1) : '0 B', result.max_quota_for_domain > 0 ? result.max_quota_for_domain|formatBytes(1) : '∞') }}
+        {{ _self.usage(rt_alloc, result.max_quota_for_domain) }}
+      </dd>
     </div>
     <div class="rt-summary-stat">
-      <dt>Stored</dt>
-      <dd>{{ result.bytes_total > 0 ? result.bytes_total|formatBytes(1) : '0 B' }}</dd>
-      <div class="rt-summary-note">{{ result.msgs_total|default(0)|number_format(0, '.', ',') }} {{ lang.user.messages }}</div>
+      <dt>{{ t.stored }}</dt>
+      <dd>
+        {{ result.bytes_total > 0 ? result.bytes_total|formatBytes(1) : '0 B' }}
+        <span class="rt-summary-note">{{ t.n_messages|format('<span data-rt-number>' ~ result.msgs_total|default(0) ~ '</span>')|raw }}</span>
+      </dd>
     </div>
   </dl>
 </section>

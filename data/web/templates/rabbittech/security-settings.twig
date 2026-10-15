@@ -1,12 +1,19 @@
 {# Two-factor and FIDO2 rows for the signed-in account, placed inside .rt-setting-list.
    The IDs are used by the TFA/FIDO2 scripts in base.twig. #}
+{% set t = lang.rabbittech %}
 {% if rt_show_tfa is not defined or rt_show_tfa %}
 <div class="rt-setting">
   <span class="rt-setting-icon" aria-hidden="true"><i class="bi bi-phone"></i></span>
   <div class="rt-setting-body">
     <div class="rt-setting-title">
       {{ lang.tfa.tfa }}
-      <span id="tfa_pretty" class="rt-status {% if tfa_data.name|default('none') == 'none' %}rt-status-warning{% else %}rt-status-running{% endif %}">{% if tfa_data.name|default('none') == 'none' %}Off{% else %}{{ tfa_data.pretty }}{% endif %}</span>
+      {# get_tfa() lists the active methods in "additional"; "name" is only set when there are none #}
+      {% set rt_tfa_methods = tfa_data.additional|default([])|map(k => {'totp': 'TOTP', 'webauthn': 'WebAuthn', 'yubi_otp': 'Yubico OTP', 'u2f': 'U2F'}[k.authmech]|default(k.authmech))|filter(m => m)|reduce((list, m) => m in list ? list : list|merge([m]), []) %}
+      {% if tfa_data.additional|default([])|length > 0 %}
+      <span id="tfa_pretty" class="rt-status rt-status-running">{{ t.on }}{% if rt_tfa_methods %} · {{ rt_tfa_methods|join(', ') }}{% endif %}</span>
+      {% else %}
+      <span id="tfa_pretty" class="rt-status rt-status-warning">{{ t.off }}</span>
+      {% endif %}
     </div>
     <div class="rt-setting-desc">{{ lang.user.tfa_info }}</div>
     {% include 'tfa_keys.twig' %}
@@ -26,12 +33,12 @@
   <span class="rt-setting-icon" aria-hidden="true"><i class="bi bi-fingerprint"></i></span>
   <div class="rt-setting-body">
     <div class="rt-setting-title">{{ lang.fido2.fido2_auth }}</div>
-    <div class="rt-setting-desc">Sign in with a security key, Windows Hello or Touch ID instead of a password.</div>
+    <div class="rt-setting-desc">{{ t.fido2_desc }}</div>
   </div>
   <div class="rt-setting-action">
     <div class="btn-group">
       <button class="btn btn-secondary" id="register-fido2"><i class="bi bi-plus-lg"></i> {{ lang.fido2.set_fido2 }}</button>
-      <button type="button" class="btn btn-secondary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false" aria-label="More options"></button>
+      <button type="button" class="btn btn-secondary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false" aria-label="{{ t.more_options }}"></button>
       <ul class="dropdown-menu dropdown-menu-end">
         <li><a class="dropdown-item" href="#" id="register-fido2-touchid"><i class="bi bi-apple"></i> {{ lang.fido2.set_fido2_touchid }}</a></li>
       </ul>
@@ -45,7 +52,7 @@
       </tr>
       {% include 'fido2.twig' %}
       {% if not fido2_data %}
-      <tr class="rt-empty-row"><td colspan="2">No security keys registered yet.</td></tr>
+      <tr class="rt-empty-row"><td colspan="2">{{ t.no_security_keys }}</td></tr>
       {% endif %}
     </table>
     <div class="rt-setting-status" id="status-fido2">

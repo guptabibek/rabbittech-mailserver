@@ -2,13 +2,13 @@
 
 {% block content %}
 <section class="card rt-panel mb-4">
-  <div class="card-header"><h3 class="rt-panel-title"><i class="bi bi-shield-lock"></i> Your sign-in security</h3></div>
+  <div class="card-header"><h2 class="rt-panel-title"><i class="bi bi-shield-lock" aria-hidden="true"></i> {{ lang.rabbittech.your_security }}</h2></div>
   <div class="rt-setting-list">
     <div class="rt-setting">
       <span class="rt-setting-icon" aria-hidden="true"><i class="bi bi-key"></i></span>
       <div class="rt-setting-body">
-        <div class="rt-setting-title">Password</div>
-        <div class="rt-setting-desc">Use a long, unique password for this domain administrator account.</div>
+        <div class="rt-setting-title">{{ lang.user.password }}</div>
+        <div class="rt-setting-desc">{{ lang.rabbittech.password_desc_domainadmin }}</div>
         <div class="last-ui-login"></div>
       </div>
       <div class="rt-setting-action">
@@ -20,7 +20,7 @@
       <span class="rt-setting-icon" aria-hidden="true"><i class="bi bi-clock-history"></i></span>
       <div class="rt-setting-body">
         <div class="rt-setting-title">{{ lang.user.recent_successful_connections }}</div>
-        <div class="rt-setting-desc">Forget the sign-ins recorded for this account.</div>
+        <div class="rt-setting-desc">{{ lang.rabbittech.clear_signins_desc }}</div>
       </div>
       <div class="rt-setting-action">
         <button type="button" class="btn btn-secondary clear-last-logins">{{ lang.user.clear_recent_successful_connections }}</button>

@@ -3,6 +3,7 @@
   <div class="alert alert-danger">{{ lang.user.force_pw_update|raw }}</div>
   {% endif %}
 
+  {% set t = lang.rabbittech %}
   {# Account summary #}
   {% set rt_display = mailboxdata.name|default(mailboxdata.local_part)|trim %}
   {% set rt_words = rt_display|split(' ')|filter(w => w != '') %}
@@ -21,35 +22,39 @@
       {% if not skip_sogo %}
       <div class="rt-summary-actions">
         {% if dual_login and allow_admin_email_login == 'n' or mailboxdata.attributes.force_pw_update == '1' %}
-        <button disabled class="btn btn-secondary btn-lg">{{ lang.user.open_webmail_sso }} <i class="bi bi-arrow-right"></i></button>
+        <button disabled class="btn btn-secondary btn-lg">{{ lang.user.open_webmail_sso }} <i class="bi bi-arrow-right" aria-hidden="true"></i></button>
         {% elseif dual_login %}
-        <a href="/sogo-auth.php?login={{ mailcow_cc_username }}" role="button" class="btn btn-primary btn-lg"><i class="bi bi-envelope-open"></i> {{ lang.user.open_webmail_sso }} <i class="bi bi-arrow-right"></i></a>
+        <a href="/sogo-auth.php?login={{ mailcow_cc_username|url_encode }}" class="btn btn-primary btn-lg"><i class="bi bi-envelope-open" aria-hidden="true"></i> {{ lang.user.open_webmail_sso }} <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
         {% else %}
-        <a href="/SOGo/so" role="button" class="btn btn-primary btn-lg"><i class="bi bi-envelope-open"></i> {{ lang.user.open_webmail_sso }} <i class="bi bi-arrow-right"></i></a>
+        <a href="/SOGo/so" class="btn btn-primary btn-lg"><i class="bi bi-envelope-open" aria-hidden="true"></i> {{ lang.user.open_webmail_sso }} <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
         {% endif %}
       </div>
       {% endif %}
     </div>
     <dl class="rt-summary-stats">
       <div class="rt-summary-stat">
-        <dt>Storage</dt>
-        <dd>{{ mailboxdata.quota_used > 0 ? mailboxdata.quota_used|formatBytes(1) : '0 B' }} <small>of {{ mailboxdata.quota > 0 ? mailboxdata.quota|formatBytes(1) : '∞' }}</small></dd>
-        {% if mailboxdata.quota > 0 %}
-        {% set rt_pct = min(100, (mailboxdata.quota_used / mailboxdata.quota * 100)|round) %}
-        <div class="rt-usage {% if rt_pct >= 90 %}rt-usage-danger{% elseif rt_pct >= 75 %}rt-usage-warning{% else %}rt-usage-ok{% endif %}" role="progressbar" aria-valuenow="{{ rt_pct }}" aria-valuemin="0" aria-valuemax="100" aria-label="Storage {{ rt_pct }}%">
-          <div class="rt-usage-track"><div class="rt-usage-bar" style="width: {{ rt_pct }}%"></div></div>
-        </div>
-        {% endif %}
+        <dt>{{ t.storage }}</dt>
+        <dd>
+          {{ t.of|format(mailboxdata.quota_used > 0 ? mailboxdata.quota_used|formatBytes(1) : '0 B', mailboxdata.quota > 0 ? mailboxdata.quota|formatBytes(1) : '∞') }}
+          {% if mailboxdata.quota > 0 %}
+          {% set rt_pct = min(100, (mailboxdata.quota_used / mailboxdata.quota * 100)|round) %}
+          <div class="rt-usage {% if rt_pct >= 90 %}rt-usage-danger{% elseif rt_pct >= 75 %}rt-usage-warning{% else %}rt-usage-ok{% endif %}" role="progressbar" aria-valuenow="{{ rt_pct }}" aria-valuemin="0" aria-valuemax="100" aria-label="{{ t.storage }}">
+            <div class="rt-usage-track"><div class="rt-usage-bar" style="width: {{ rt_pct }}%"></div></div>
+          </div>
+          {% endif %}
+        </dd>
       </div>
       <div class="rt-summary-stat">
         <dt>{{ lang.user.messages|capitalize }}</dt>
-        <dd>{{ mailboxdata.messages|default(0)|number_format(0, '.', ',') }}</dd>
+        <dd data-rt-number>{{ mailboxdata.messages|default(0) }}</dd>
       </div>
       <div class="rt-summary-stat">
         <dt>{{ lang.user.last_mail_login }}</dt>
         {% if rt_last > 0 %}
-        <dd><time datetime="{{ rt_last|date('c') }}" data-rt-time="{{ rt_last }}" title="{{ rt_last|date('Y-m-d H:i') }}">{{ rt_last|date('Y-m-d H:i') }}</time></dd>
-        <div class="rt-summary-note">via {{ rt_last_via }}</div>
+        <dd>
+          <time datetime="{{ rt_last|date('c') }}" data-rt-time="{{ rt_last }}" title="{{ rt_last|date('Y-m-d H:i') }}">{{ rt_last|date('Y-m-d H:i') }}</time>
+          <span class="rt-summary-note">{{ t.via|format(rt_last_via) }}</span>
+        </dd>
         {% else %}
         <dd class="rt-summary-muted">{{ lang.user.never }}</dd>
         {% endif %}
@@ -57,7 +62,7 @@
       <div class="rt-summary-stat">
         <dt>{{ lang.user.last_pw_change }}</dt>
         {% if mailboxdata.attributes.passwd_update and mailboxdata.attributes.passwd_update != '0' %}
-        <dd>{{ mailboxdata.attributes.passwd_update|date('M j, Y') }}</dd>
+        <dd><time datetime="{{ mailboxdata.attributes.passwd_update|date('Y-m-d') }}" data-rt-date>{{ mailboxdata.attributes.passwd_update|date('Y-m-d') }}</time></dd>
         {% else %}
         <dd class="rt-summary-muted">{{ lang.user.never }}</dd>
         {% endif %}
@@ -70,14 +75,14 @@
       {# Sign-in security #}
       {% if mailboxdata.authsource in ['mailcow', 'ldap'] %}
       <section class="card rt-panel">
-        <div class="card-header"><h3 class="rt-panel-title"><i class="bi bi-shield-lock"></i> {{ lang.user.authentication }}</h3></div>
+        <div class="card-header"><h2 class="rt-panel-title"><i class="bi bi-shield-lock" aria-hidden="true"></i> {{ lang.user.authentication }}</h2></div>
         <div class="rt-setting-list">
           {% if mailboxdata.authsource == 'mailcow' %}
           <div class="rt-setting">
             <span class="rt-setting-icon" aria-hidden="true"><i class="bi bi-key"></i></span>
             <div class="rt-setting-body">
-              <div class="rt-setting-title">Password</div>
-              <div class="rt-setting-desc">Use a long, unique password. Mail apps that can't do two-factor sign-in use app passwords instead.</div>
+              <div class="rt-setting-title">{{ lang.user.password }}</div>
+              <div class="rt-setting-desc">{{ t.password_desc }}</div>
             </div>
             <div class="rt-setting-action">
               <a class="btn btn-secondary" href="#pwChangeModal" data-bs-toggle="modal">{{ lang.user.change_password }}</a>
@@ -88,7 +93,7 @@
             <span class="rt-setting-icon" aria-hidden="true"><i class="bi bi-envelope-check"></i></span>
             <div class="rt-setting-body">
               <div class="rt-setting-title">{{ lang.user.pw_recovery_email }}</div>
-              <div class="rt-setting-desc">Where we send a reset link if you forget your password.</div>
+              <div class="rt-setting-desc">{{ t.recovery_email_desc }}</div>
             </div>
             <div class="rt-setting-action">
               <a class="btn btn-secondary" href="#pwRecoveryEmailModal" data-bs-toggle="modal">{{ lang.user.edit }}</a>
@@ -103,11 +108,11 @@
 
       {# Mail apps and devices #}
       <section class="card rt-panel">
-        <div class="card-header"><h3 class="rt-panel-title"><i class="bi bi-plug"></i> Mail apps and devices</h3></div>
+        <div class="card-header"><h2 class="rt-panel-title"><i class="bi bi-plug" aria-hidden="true"></i> {{ t.mail_apps }}</h2></div>
         <div class="card-body">
           <div class="rt-panel-label">
             {{ lang.user.protocols }}
-            <i class="bi bi-info-circle" tabindex="0" data-bs-toggle="tooltip" data-bs-html="true" data-bs-placement="bottom" title="{{ lang.user.direct_protocol_access|e('html_attr') }}"></i>
+            <button type="button" class="rt-help" data-bs-toggle="tooltip" data-bs-html="true" data-bs-placement="bottom" title="{{ lang.user.direct_protocol_access|e('html_attr') }}" aria-label="{{ lang.user.direct_protocol_access|striptags }}"><i class="bi bi-info-circle" aria-hidden="true"></i></button>
           </div>
           <ul class="rt-protocols">
             {% for proto in [['IMAP', 'imap_access'], ['SMTP', 'smtp_access'], ['Sieve', 'sieve_access'], ['POP3', 'pop3_access'], ['ActiveSync', 'eas_access'], ['CalDAV/CardDAV', 'dav_access']] %}
@@ -122,34 +127,35 @@
           <div class="rt-panel-label mt-4">{{ lang.user.apple_connection_profile }}</div>
           <div class="rt-download-grid">
             <a class="rt-download" href="/mobileconfig.php?only_email" title="{{ lang.user.apple_connection_profile_mailonly }}">
-              <span class="rt-download-icon"><i class="bi bi-apple"></i></span>
+              <span class="rt-download-icon" aria-hidden="true"><i class="bi bi-apple"></i></span>
               <span class="rt-download-text"><strong>{{ lang.user.email }}</strong><small>IMAP, SMTP</small></span>
               <i class="bi bi-download rt-download-go" aria-hidden="true"></i>
             </a>
             {% if not skip_sogo %}
             <a class="rt-download" href="/mobileconfig.php" title="{{ lang.user.apple_connection_profile_complete }}">
-              <span class="rt-download-icon"><i class="bi bi-apple"></i></span>
+              <span class="rt-download-icon" aria-hidden="true"><i class="bi bi-apple"></i></span>
               <span class="rt-download-text"><strong>{{ lang.user.email_and_dav }}</strong><small>IMAP, SMTP, CalDAV, CardDAV</small></span>
               <i class="bi bi-download rt-download-go" aria-hidden="true"></i>
             </a>
             {% endif %}
             <a class="rt-download" href="/mobileconfig.php?only_email&amp;app_password" title="{{ lang.user.apple_connection_profile_mailonly }} {{ lang.user.apple_connection_profile_with_app_password }}">
-              <span class="rt-download-icon"><i class="bi bi-key"></i></span>
+              <span class="rt-download-icon" aria-hidden="true"><i class="bi bi-key"></i></span>
               <span class="rt-download-text"><strong>{{ lang.user.email }}</strong><small>{{ lang.user.with_app_password }}</small></span>
               <i class="bi bi-download rt-download-go" aria-hidden="true"></i>
             </a>
             {% if not skip_sogo %}
             <a class="rt-download" href="/mobileconfig.php?app_password" title="{{ lang.user.apple_connection_profile_complete }} {{ lang.user.apple_connection_profile_with_app_password }}">
-              <span class="rt-download-icon"><i class="bi bi-key"></i></span>
+              <span class="rt-download-icon" aria-hidden="true"><i class="bi bi-key"></i></span>
               <span class="rt-download-text"><strong>{{ lang.user.email_and_dav }}</strong><small>{{ lang.user.with_app_password }}</small></span>
               <i class="bi bi-download rt-download-go" aria-hidden="true"></i>
             </a>
             {% endif %}
           </div>
+          <p class="rt-panel-note"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i> {{ lang.user.apple_connection_profile_with_app_password }}</p>
 
           <div class="rt-link-row">
-            <a target="_blank" rel="noopener" href="https://mailcow.github.io/mailcow-dockerized-docs/client/client/#{{ clientconfigstr }}"><i class="bi bi-journal-text"></i> {{ lang.user.client_configuration }} <i class="bi bi-box-arrow-up-right"></i></a>
-            <a href="#userFilterModal" data-bs-toggle="modal"><i class="bi bi-funnel"></i> {{ lang.user.show_sieve_filters }}</a>
+            <a target="_blank" rel="noopener" href="https://mailcow.github.io/mailcow-dockerized-docs/client/client/#{{ clientconfigstr }}"><i class="bi bi-journal-text" aria-hidden="true"></i> {{ lang.user.client_configuration }} <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>
+            <a href="#userFilterModal" data-bs-toggle="modal" role="button"><i class="bi bi-funnel" aria-hidden="true"></i> {{ lang.user.show_sieve_filters }}</a>
           </div>
         </div>
       </section>
@@ -159,9 +165,9 @@
     <div class="col-xl-4">
       <section class="card rt-panel rt-logins h-100" id="recent-logins">
         <div class="card-header">
-          <h3 class="rt-panel-title"><i class="bi bi-clock-history"></i> {{ lang.user.recent_successful_connections }}</h3>
+          <h2 class="rt-panel-title"><i class="bi bi-clock-history" aria-hidden="true"></i> {{ lang.user.recent_successful_connections }}</h2>
           <div id="spinner-last-login" class="ms-auto spinner-border spinner-border-sm d-none" role="status">
-            <span class="visually-hidden">Loading...</span>
+            <span class="visually-hidden">{{ lang.user.loading }}</span>
           </div>
         </div>
         <div class="rt-logins-toolbar">
@@ -176,7 +182,7 @@
           </div>
           <button type="button" class="btn btn-link btn-sm clear-last-logins">{{ lang.user.clear_recent_successful_connections }}</button>
         </div>
-        <ul class="list-group list-group-flush last-sasl-login"></ul>
+        <ul class="list-group list-group-flush last-sasl-login" data-rt-empty="{{ t.no_signins }}"></ul>
       </section>
     </div>
   </div>

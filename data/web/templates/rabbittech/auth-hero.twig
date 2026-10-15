@@ -1,14 +1,18 @@
-{# Brand panel beside the sign-in forms (hidden on narrow screens) #}
-<aside class="rt-auth-hero">
+{# Brand panel beside the sign-in forms (hidden on narrow screens). Its headline is not a
+   page heading: the sign-in form carries the page's h1. #}
+{% set t = lang.rabbittech %}
+<aside class="rt-auth-hero" aria-label="{{ ui_texts.main_name|striptags }}">
   <div class="rt-auth-hero-brand">{% include 'rabbittech/brand.twig' %}</div>
   <div class="rt-auth-hero-copy">
-    <h2>Your mail, secured.</h2>
-    <p>Email, calendars and contacts on infrastructure we run ourselves, protected on every message.</p>
+    <p class="rt-auth-hero-title">{{ t.hero_title }}</p>
+    <p>{{ skip_sogo ? t.hero_text_mail : t.hero_text }}</p>
     <ul class="rt-auth-points">
-      <li><i class="bi bi-shield-check" aria-hidden="true"></i><span>Spam and malware filtering on all incoming mail</span></li>
-      <li><i class="bi bi-calendar-week" aria-hidden="true"></i><span>Webmail, shared calendars and contacts in one place</span></li>
-      <li><i class="bi bi-phone" aria-hidden="true"></i><span>Works with Outlook, Apple Mail and mobile apps</span></li>
-      <li><i class="bi bi-fingerprint" aria-hidden="true"></i><span>Two-factor and passkey sign-in</span></li>
+      <li><i class="bi bi-shield-check" aria-hidden="true"></i><span>{{ t.hero_point_filtering }}</span></li>
+      {% if not skip_sogo %}
+      <li><i class="bi bi-calendar-week" aria-hidden="true"></i><span>{{ t.hero_point_groupware }}</span></li>
+      {% endif %}
+      <li><i class="bi bi-phone" aria-hidden="true"></i><span>{{ t.hero_point_clients }}</span></li>
+      <li><i class="bi bi-fingerprint" aria-hidden="true"></i><span>{{ t.hero_point_2fa }}</span></li>
     </ul>
   </div>
   <div class="rt-auth-hero-foot"><i class="bi bi-hdd-network" aria-hidden="true"></i>{{ mailcow_hostname }}</div>

@@ -84,9 +84,13 @@ docker compose up -d --remove-orphans
 
 # Containers read their config at start (SOGo also copies its web files into a volume
 # that nginx serves), so restart the services whose config changed in this release.
+# PHP-FPM caches compiled PHP without checking files again (opcache.validate_timestamps=0),
+# and compiled Twig templates keep their file names, so changed PHP code or templates only
+# show up after a restart. CSS, JS and images are content-hashed and need none.
 restart=()
 while IFS= read -r path; do
   case "$path" in
+    data/web/templates/*|data/web/inc/*|data/web/*.php) service=php-fpm-mailcow ;;
     data/conf/acme/*) service=acme-mailcow ;;
     data/conf/clamav/*) service=clamd-mailcow ;;
     data/conf/dovecot/*) service=dovecot-mailcow ;;
@@ -106,7 +110,7 @@ while IFS= read -r path; do
 done < "$STATE_DIR/release-changes"
 
 if [ "${#restart[@]}" -gt 0 ]; then
-  echo "Restarting services with changed config: ${restart[*]}"
+  echo "Restarting services with changed config or code: ${restart[*]}"
   docker compose restart "${restart[@]}"
 fi
 
