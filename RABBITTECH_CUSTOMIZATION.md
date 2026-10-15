@@ -192,6 +192,31 @@ parses every Twig template with `scripts/check-twig-templates.php`, checks that 
 is valid JSON and every RabbitTech string in use exists (`scripts/check-rabbittech-lang.php`), and
 tests that a release sync keeps runtime files and admin-edited maps.
 
+A second job runs the UI smoke tests and uploads their screenshots as the `ui-screenshots` artifact.
+
+### UI tests
+
+`tests/ui` checks the console and webmail in a real browser (Playwright, Chromium) without a mail
+server:
+
+- `router.php` renders the real templates and CSS/JS bundles from `data/web` with stub data and a
+  stub API. Environment switches select 2FA, a language, a session lifetime or Overview problem
+  states (see the top of the file). Run it on its own with
+  `php -S 127.0.0.1:8088 tests/ui/router.php` to look at pages by hand.
+- `sogo/prepare.sh` builds a webmail mock from SOGo's own stylesheets and scripts at the version in
+  `docker-compose.yml`, plus `data/conf/sogo`, with page markup copied from SOGo's templates.
+- `smoke.mjs` starts both and checks every main page in light, dark and phone width (no errors, the
+  shell starts, no sideways scrolling). It also checks the behaviour that broke before: select-all,
+  the bulk toolbars, the 2FA status, the Overview alerts, the session warning across tabs, and the
+  webmail palette, top bar and selected message.
+
+Run locally:
+
+```sh
+cd tests/ui && npm ci && npx playwright install chromium
+bash sogo/prepare.sh && node smoke.mjs   # screenshots in tests/ui/output
+```
+
 ## Deployment
 
 Use this repo exactly like upstream Mailcow:

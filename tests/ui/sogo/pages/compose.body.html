@@ -1,0 +1,292 @@
+<main class="view" layout="row" layout-fill="layout-fill" ui-view="mailboxes">
+    <md-sidenav class="md-sidenav-left md-whiteframe-z1" layout="column" layout-fill="layout-fill"
+                md-component-id="left" md-is-locked-open="$mdMedia('gt-md')">
+      <md-toolbar class="sg-padded md-hue-2 md-tall" flex-none="flex-none">
+        <sg-avatar-image class="md-tile-left" sg-email="::activeUser.email" size="40">person</sg-avatar-image>
+        <div layout="row" layout-align="space-between center">
+          <div style="overflow: hidden">
+            <p class="sg-md-title sg-no-wrap" ng-bind="::activeUser.identification"></p>
+            <p class="md-caption sg-no-wrap" ng-bind="::activeUser.email"></p>
+          </div>
+          <md-button class="md-icon-button" ng-href="#"><md-icon>settings</md-icon></md-button>
+        </div>
+      </md-toolbar>
+      <md-content class="md-flex" layout="column" md-scroll-y="md-scroll-y"
+                  md-colors="::{ backgroundColor: 'default-background-300' }">
+        <section class="sg-account-section md-flex" layout="column">
+          <md-list class="md-dense">
+            <md-list-item ng-click="noop()">
+              <div class="sg-no-wrap">bibek@rabbittech.com.np</div>
+              <md-menu class="md-secondary"><md-icon ng-click="$mdMenu.open($event)">more_vert</md-icon><md-menu-content width="3"><md-menu-item><md-button>New Folder...</md-button></md-menu-item></md-menu-content></md-menu>
+            </md-list-item>
+          </md-list>
+          <div class="sg-quota">
+            <md-progress-linear md-mode="determinate" value="62"></md-progress-linear>
+            <div class="sg-md-caption md-default-theme md-fg md-primary">Quota used: 62% (6.2 GB of 10 GB)</div>
+          </div>
+          <md-virtual-repeat-container class="md-flex">
+            <md-list class="md-dense">
+              <md-list-item
+                  class="sg-mailbox-list-item md-clickable md-default-theme md-background md-hue-1"
+                  ng-class="{'md-bg sg-selected': folder.selected}"
+                  md-virtual-repeat="folder in folders" md-item-size="40">
+                <div class="sg-child-level-0" ng-class="'sg-child-level-' + folder.level">
+                  <md-checkbox class="sg-folder" ng-class="folder.icon" aria-label="Expanded" ng-model="folder.expanded" ng-disabled="!folder.children"></md-checkbox>
+                </div>
+                <p class="sg-item-name">
+                  <md-icon>{{folder.icon}}</md-icon>
+                  <span ng-class="{ 'sg-font-medium': folder.unseen }">{{folder.name}}</span>
+                  <span class="sg-counter-badge" ng-show="folder.unseen">{{folder.unseen}}</span>
+                </p>
+                <md-icon class="md-menu md-secondary-container" aria-label="Options">more_vert</md-icon>
+              </md-list-item>
+            </md-list>
+          </md-virtual-repeat-container>
+          <md-divider></md-divider>
+        </section>
+      </md-content>
+    </md-sidenav>
+
+    <section layout="column" layout-fill="layout-fill" ui-view="mailbox">
+      <md-toolbar layout="row" layout-align="space-between center" class="toolbar-main">
+        <div class="md-toolbar-tools sg-toolbar-group-1" layout="row">
+          <md-button class="md-icon-button hide show-gt-md" aria-label="Toggle Menu"><md-icon>fullscreen</md-icon></md-button>
+          <md-button class="md-icon-button hide-gt-md" aria-label="Toggle Menu" ng-click="toggleLeft()"><md-icon>menu</md-icon></md-button>
+          <div class="sg-date-group sg-padded hide show-gt-md" layout="column" layout-align="space-between end">
+            <p class="sg-day" ng-bind="currentDay.weekday"></p>
+            <p class="sg-month" ng-bind="currentDay.month"></p>
+            <p class="sg-year" ng-bind="currentDay.year"></p>
+          </div>
+          <p class="sg-md-display-3 sg-date-today hide show-gt-md" ng-bind="currentDay.day"></p>
+        </div>
+        <div class="md-toolbar-tools sg-toolbar-group-last" layout="row" layout-align="end center">
+          <md-button class="md-icon-button" ng-href="#"><md-tooltip>Calendar</md-tooltip><md-icon>event</md-icon></md-button>
+          <md-button class="md-icon-button" ng-href="#"><md-icon>contacts</md-icon><md-tooltip>Address Book</md-tooltip></md-button>
+          <md-button class="md-icon-button" ng-disabled="true" ng-href="#"><md-icon>email</md-icon><md-tooltip>Mail</md-tooltip></md-button>
+          <md-button class="md-icon-button" ng-href="/user"><md-icon>build</md-icon><md-tooltip>mailcow Preferences</md-tooltip></md-button>
+          <div class="hide-xs" style="width: 40px"></div>
+          <md-button class="md-icon-button" onclick="mc_logout();" ng-href="#"><md-icon>settings_power</md-icon><md-tooltip>Disconnect</md-tooltip></md-button>
+        </div>
+      </md-toolbar>
+
+      <div layout="row" class="md-flex sg-block-print">
+        <div class="view-list hide-print" layout="column">
+          <md-toolbar class="md-accent md-hue-1" ng-hide="multi">
+            <div class="md-toolbar-tools">
+              <md-button class="sg-icon-button" aria-label="Search"><md-icon>search</md-icon></md-button>
+              <a href="#" class="sg-folder-name">Inbox</a>
+              <md-menu><md-button class="sg-icon-button" aria-label="Filter" ng-click="$mdMenu.open()"><md-icon>filter_list</md-icon></md-button><md-menu-content width="4"><md-menu-item><md-button>Show unread messages only</md-button></md-menu-item></md-menu-content></md-menu>
+              <md-menu><md-button class="sg-icon-button" aria-label="Sort" ng-click="$mdMenu.open()"><md-icon>sort</md-icon></md-button><md-menu-content width="4"><md-menu-item><md-button>Date</md-button></md-menu-item></md-menu-content></md-menu>
+              <md-button class="sg-icon-button" aria-label="Reload"><md-icon>refresh</md-icon></md-button>
+            </div>
+          </md-toolbar>
+          <md-toolbar class="md-hue-1 sg-toolbar-secondary" ng-show="multi">
+            <div class="md-toolbar-tools">
+              <md-button class="sg-icon-button" aria-label="Close"><md-icon>arrow_back</md-icon></md-button>
+              <label class="md-truncate">2 selected</label>
+              <div class="md-flex"></div>
+              <md-button class="sg-icon-button" aria-label="Select all"><md-icon>select_all</md-icon></md-button>
+              <md-button class="sg-icon-button" aria-label="Delete"><md-icon>delete</md-icon></md-button>
+            </div>
+          </md-toolbar>
+
+          <md-divider></md-divider>
+
+          <md-content id="messagesList" layout="column" class="md-flex">
+            <md-subheader>
+              <div layout="row" layout-align="space-between center">
+                <div class="md-truncate"><span><span>8</span> messages</span></div>
+                <div class="md-truncate"><md-icon>sort</md-icon> <span>Date</span></div>
+              </div>
+            </md-subheader>
+            <md-virtual-repeat-container class="md-flex">
+              <md-list class="sg-section-list" ng-class="{ 'sg-list-selectable': multi }">
+                <md-list-item
+                    aria-label="{{m.subject}}"
+                    class="sg-message-list-item"
+                    ng-class="{'md-default-theme md-accent md-bg md-hue-2': m.open, 'sg-star-bg': m.flagged, unread: m.unread}"
+                    md-virtual-repeat="m in messages" md-item-size="56"
+                    ng-click="noop()">
+                  <div class="md-secondary sg-avatar-selectable" aria-label="Select Message"
+                       ng-class="{ 'sg-avatar-selected': m.selected }" ng-click="noop()">
+                    <sg-avatar-image sg-email="m.email" size="40">person</sg-avatar-image>
+                  </div>
+                  <div class="md-list-item-inner sg-message-list-item-main">
+                    <div class="sg-tile-content">
+                      <div class="sg-md-subhead">
+                        <div>
+                          <span class="sg-label-outline ng-hide"></span>
+                          <md-icon ng-class="{'ng-hide': !m.priority, 'md-warn': m.priority}">error</md-icon>
+                          <span>{{m.from}}</span>
+                        </div>
+                        <div class="sg-tile-date">{{m.date}}</div>
+                      </div>
+                      <div class="sg-md-body">
+                        <div class="sg-category-dot-container"><div class="sg-category-dot" ng-repeat="c in m.tags" style="background-color: {{c}}"></div></div>
+                        <div class="sg-tile-subject">{{m.subject}}</div>
+                        <div class="sg-tile-size">{{m.size}}</div>
+                      </div>
+                    </div>
+                    <div class="sg-tile-icons">
+                      <md-icon class="sg-icon-star" ng-class="{'ng-hide': !m.flagged}">star</md-icon>
+                      <md-icon ng-class="{'ng-hide': !m.answered}">reply</md-icon>
+                      <md-icon class="ng-hide">forward</md-icon>
+                      <md-icon ng-class="{'ng-hide': !m.attach}">attach_file</md-icon>
+                    </div>
+                  </div>
+                </md-list-item>
+              </md-list>
+            </md-virtual-repeat-container>
+          </md-content>
+        </div>
+
+        <md-fab-speed-dial class="md-scale sg-fab-bottom-center" md-direction="up">
+          <md-fab-trigger>
+            <md-button class="md-fab md-accent" aria-label="Write a new message"><md-icon>edit</md-icon></md-button>
+          </md-fab-trigger>
+          <md-fab-actions>
+            <md-button class="md-fab md-raised md-mini" aria-label="Write a new message"><md-icon>open_in_browser</md-icon></md-button>
+            <md-button class="md-fab md-raised md-mini" aria-label="Write a message in new window"><md-icon>open_in_new</md-icon></md-button>
+          </md-fab-actions>
+        </md-fab-speed-dial>
+
+        <div id="detailView" class="view-detail sg-block-print" layout="column" layout-align="start center"
+             md-colors="::{backgroundColor: 'default-background-200'}" ui-view="message">
+          <div class="sg-reversible">
+            <div class="sg-face" layout="column" layout-fill="layout-fill">
+              <md-card>
+                <md-card-actions flex-none="flex-none" layout="row" layout-align="end center">
+                  <md-button class="md-icon-button md-primary md-hue-1 hide show-gt-xs" aria-hidden="true"><md-icon>fullscreen</md-icon></md-button>
+                  <div class="md-flex"></div>
+                  <md-button class="sg-icon-button" aria-label="Flagged"><md-icon>star_border</md-icon></md-button>
+                  <md-button class="sg-icon-button" aria-label="Junk"><md-icon>report</md-icon></md-button>
+                  <md-button class="sg-icon-button" aria-label="Reply"><md-icon>reply</md-icon></md-button>
+                  <md-button class="sg-icon-button" aria-label="Reply all"><md-icon>reply_all</md-icon></md-button>
+                  <md-button class="sg-icon-button" aria-label="Forward"><md-icon>forward</md-icon></md-button>
+                  <md-button class="sg-icon-button" aria-label="Delete"><md-icon>delete</md-icon></md-button>
+                  <md-menu><md-button class="sg-icon-button" aria-label="Move" ng-click="$mdMenu.open()"><md-icon>call_split</md-icon></md-button><md-menu-content width="3"><md-menu-item><md-button>Archive</md-button></md-menu-item></md-menu-content></md-menu>
+                  <md-menu><md-button class="sg-icon-button" aria-label="More" ng-click="$mdMenu.open()"><md-icon>more_vert</md-icon></md-button><md-menu-content width="3"><md-menu-item><md-button>View Message Source</md-button></md-menu-item><md-menu-item><md-button>Print...</md-button></md-menu-item></md-menu-content></md-menu>
+                </md-card-actions>
+                <md-card-content>
+                  <div class="sg-padded">
+                    <h5 class="sg-md-headline">Q4 infrastructure review and migration timeline</h5>
+                    <time class="msg-date">10/15/2026 09:42</time>
+                  </div>
+                  <div layout="row" layout-wrap="layout-wrap">
+                    <div class="pseudo-input-container--compact" flex="50" flex-xs="100">
+                      <div layout="row" layout-align="start center">
+                        <sg-avatar-image class="md-tile-left" sg-email="'sita@rabbittech.com.np'" size="40">person</sg-avatar-image>
+                        <div>
+                          <span>Sita Sharma</span>
+                          <a href="#" class="md-caption">sita@rabbittech.com.np</a>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="msg-recipients" layout="column" flex="50" flex-xs="100">
+                      <div class="pseudo-input-container--compact">
+                        <label class="pseudo-input-label">To</label>
+                        <div class="pseudo-input-field"><a href="#">Bibek Gupta, Ram Thapa</a></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="sg-padded"><md-chips class="sg-readonly" ng-model="tags" readonly="true" md-removable="false"><md-chip-template><span>{{$chip}}</span></md-chip-template></md-chips></div>
+                  <md-divider></md-divider>
+                  <div>
+                    <div class="msg-body">
+                      <div layout="row" layout-wrap="layout-wrap">
+                        <div class="mailer_mailcontent" layout="row" layout-wrap="layout-wrap">
+                          <div class="md-flex sg-mail-part" tabindex="-1">
+                            <style>.SOGoHTMLMail-CSS-Delimiter .btn { background: #0b5fff; color: #fff; padding: 10px 18px; border-radius: 6px; text-decoration: none; display: inline-block; }</style>
+                            <div class="SOGoHTMLMail-CSS-Delimiter mailer_htmlcontent">
+                              <p>Hi team,</p>
+                              <p>Here is the plan for moving the remaining services to the new cluster. Please review the timeline below before Friday's call and flag anything that clashes with your releases.</p>
+                              <table style="border-collapse: collapse; width: 100%; max-width: 560px; font-family: Arial, sans-serif; font-size: 13px;">
+                                <tr style="background: #f2f4f7;"><th style="text-align: left; padding: 8px; border: 1px solid #d0d5dd;">Phase</th><th style="text-align: left; padding: 8px; border: 1px solid #d0d5dd;">Window</th><th style="text-align: left; padding: 8px; border: 1px solid #d0d5dd;">Owner</th></tr>
+                                <tr><td style="padding: 8px; border: 1px solid #d0d5dd;">Mail relays</td><td style="padding: 8px; border: 1px solid #d0d5dd;">Oct 20–22</td><td style="padding: 8px; border: 1px solid #d0d5dd;">Ram</td></tr>
+                                <tr><td style="padding: 8px; border: 1px solid #d0d5dd;">Webmail</td><td style="padding: 8px; border: 1px solid #d0d5dd;">Oct 27</td><td style="padding: 8px; border: 1px solid #d0d5dd;">Bibek</td></tr>
+                              </table>
+                              <p style="margin-top: 16px;"><a class="btn" href="#">Open the migration board</a></p>
+                              <p>Thanks,<br>Sita</p>
+                              <blockquote type="cite">On Tue, Oct 13, Ram Thapa wrote:<br>Relays are ready on our side.</blockquote>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="mailer_mailcontent msg-attachment-link" layout="row" layout-wrap="layout-wrap">
+                          <div class="md-flex sg-mail-part">
+                            <md-card>
+                              <md-card-content><p class="md-caption sg-attachment-name"><span class="sg-label-outline">pdf</span> migration-plan.pdf</p></md-card-content>
+                              <md-dialog-actions layout="row"><div class="md-flex sg-attachment-size">248 KB</div>
+                                <md-button class="sg-icon-button" href="#"><md-icon>open_in_new</md-icon></md-button>
+                                <md-button class="sg-icon-button" href="#"><md-icon>file_download</md-icon></md-button></md-dialog-actions>
+                            </md-card>
+                          </div>
+                        </div>
+                        <div class="mailer_mailcontent msg-attachment-link" layout="row" layout-wrap="layout-wrap">
+                          <div class="md-flex sg-mail-part">
+                            <md-card>
+                              <md-card-content><p class="md-caption sg-attachment-name"><span class="sg-label-outline">xlsx</span> capacity.xlsx</p></md-card-content>
+                              <md-dialog-actions layout="row"><div class="md-flex sg-attachment-size">36 KB</div>
+                                <md-button class="sg-icon-button" href="#"><md-icon>open_in_new</md-icon></md-button>
+                                <md-button class="sg-icon-button" href="#"><md-icon>file_download</md-icon></md-button></md-dialog-actions>
+                            </md-card>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </md-card-content>
+              </md-card>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+</main>
+<script type="text/ng-template" id="compose-tpl">
+  <md-dialog id="mailEditor" class="sg-mail-editor" flex="60" flex-sm="90" flex-xs="100" ui-view="maileditor">
+    <form name="messageForm">
+      <md-toolbar>
+        <div class="md-toolbar-tools">
+          <md-button class="md-icon-button hide show-gt-xs" aria-hidden="true"><md-icon>fullscreen</md-icon></md-button>
+          <sg-avatar-image class="hide-xs" sg-email="'bibek@rabbittech.com.np'" size="32">person</sg-avatar-image>
+          <md-autocomplete class="md-margin md-default-theme md-bg md-hue-1" flex="flex" md-input-name="from"
+              md-search-text="editor.identity" md-items="i in []" md-item-text="i" md-min-length="0" placeholder="Choose which identity to send this message from">
+            <md-item-template><span>{{i}}</span></md-item-template>
+          </md-autocomplete>
+          <md-button class="sg-icon-button" ng-click="editor.send()"><md-icon>send</md-icon></md-button>
+          <md-button class="sg-icon-button" ng-click="editor.save()"><md-icon>save</md-icon></md-button>
+          <md-button class="sg-icon-button" ng-click="editor.cancel()"><md-icon>close</md-icon></md-button>
+        </div>
+      </md-toolbar>
+      <div class="sg-dropzone"><div layout="column" layout-align="center center" layout-fill="layout-fill"><md-icon>file_upload</md-icon></div></div>
+      <md-dialog-content>
+        <header class="sg-padded">
+          <div class="msg-header-content">
+            <div class="pseudo-input-container">
+              <label class="pseudo-input-label">To</label>
+              <md-chips ng-model="editor.message.editable.to" md-add-on-blur="true">
+                <md-autocomplete md-search-text="searchTo" md-items="u in []" placeholder="Add a recipient"><md-item-template>{{u}}</md-item-template></md-autocomplete>
+                <md-chip-template><div class="sg-tile-content">{{$chip.name || $chip}}</div></md-chip-template>
+              </md-chips>
+            </div>
+            <md-input-container class="md-block md-flex">
+              <label>Subject</label>
+              <input type="text" name="subject" ng-model="editor.message.editable.subject"/>
+            </md-input-container>
+          </div>
+          <div class="msg-header-buttons" layout="column" layout-align="start end">
+            <md-button class="sg-icon-button">Cc</md-button>
+            <md-button class="sg-icon-button">Bcc</md-button>
+          </div>
+        </header>
+        <md-input-container class="md-block sg-mail-editor-content">
+          <sg-ckeditor id="message-content" ng-model="editor.message.editable.text"></sg-ckeditor>
+        </md-input-container>
+      </md-dialog-content>
+      <md-dialog-actions class="sg-mail-editor-attachments" layout="row" layout-align="space-between start">
+        <md-chips ng-model="attachments" class="md-flex sg-readonly" readonly="true"><md-chip-template><a href="#">{{$chip}}</a></md-chip-template></md-chips>
+        <div class="msg-header-buttons"><label class="md-button md-icon-button" for="fileInput"><md-icon>attach_file</md-icon></label></div>
+      </md-dialog-actions>
+    </form>
+  </md-dialog>
+</script>
