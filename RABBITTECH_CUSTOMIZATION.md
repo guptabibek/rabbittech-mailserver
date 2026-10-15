@@ -194,6 +194,7 @@ admins act on them (container names, `/SOGo` URLs, Rspamd settings).
 - `data/web/img/rabbittech_webmail.svg` and `rabbittech_webmail_dark.svg`: the same lockups with
   "Webmail" as the subtitle, used in SOGo.
 - `data/web/img/rabbittech_mark.svg`: the mark on its own.
+- `data/web/fonts/rabbittech-icons-outlined.woff2`: the webmail icon font (licence next to it).
 - `data/web/favicon.png`: generated from the mark.
 
 ### SOGo webmail
@@ -215,6 +216,11 @@ two supported hooks, both loaded on every SOGo page (`SOGoUIAdditionalJSFiles` i
     compose (including CKEditor 5), dialogs, menus, Preferences controls, calendar and contacts.
   - The top bar becomes an app switcher that highlights the current app, and the big date is hidden.
     The sidebar starts with the RabbitTech webmail logo (`data/web/img/rabbittech_webmail*.svg`).
+  - Icons are outlined instead of SOGo's heavy filled set: `data/web/fonts/rabbittech-icons-outlined.woff2`
+    is Google's Material Icons Outlined (Apache-2.0) with two extra names, built by
+    `scripts/build-webmail-icons.py`. SOGo writes icons as names ("inbox", "delete"); every name in
+    SOGo 5.12's templates and scripts exists in it. A flagged star stays filled, so flagged
+    messages still stand out.
   - List rows keep the heights SOGo's virtual scrolling relies on (56px messages and contacts,
     40px folders); separators are drawn with shadows so they add no height.
   - HTML mail keeps the sender's styling: rules that reach into a message use `:where()`, so the
@@ -228,7 +234,7 @@ two supported hooks, both loaded on every SOGo page (`SOGoUIAdditionalJSFiles` i
   - Top bar: the folder search is a search box in the middle that is always there (the `s` key
     still focuses it, and emptying it shows the whole folder again). The menu button hides the
     folder list; the logo then moves into the top bar.
-  - Folder list: a Compose button at the top, folders as pills with bold unread counts.
+  - Folder list: a solid violet Compose button at the top, and folders as pills with bold unread counts.
   - Message list, in a card: from 960px wide one line per message (checkbox, star, sender,
     subject, icons, date). Read messages are tinted, unread ones white and bold. Under the pointer,
     Archive, Delete and Mark as read/unread take the date's place, and the star flags a message.
