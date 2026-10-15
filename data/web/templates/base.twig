@@ -703,17 +703,33 @@ function recursiveBase64StrToArrayBuffer(obj) {
   // The server ends a session after session_lifetime seconds without a request (every
   // page load and API call counts). Warn two minutes before so unsaved input isn't lost,
   // and reload once it has ended so the sign-in page shows instead of failing actions.
+  // Requests from other console tabs keep the same session alive, so the last contact is
+  // shared through localStorage.
   (function() {
     var lifetime = {{ session_lifetime * 1000 }};
+    var key = 'rt_last_contact';
     var lastContact = Date.now();
     var warning = null;
+    function shared() {
+      try { return parseInt(localStorage.getItem(key), 10) || 0; } catch (e) { return 0; }
+    }
+    function touch() {
+      lastContact = Date.now();
+      try { localStorage.setItem(key, String(lastContact)); } catch (e) {}
+      hideWarning();
+    }
+    function idle() {
+      return Date.now() - Math.max(lastContact, shared());
+    }
     function hideWarning() {
       if (warning) { warning.remove(); warning = null; }
     }
     function staySignedIn() {
+      // Once the session has ended a request would only reach the sign-in page
+      if (idle() > lifetime) { location.reload(); return; }
       // Any request refreshes the session; HEAD on this page works for every role
       fetch(window.location.pathname, { method: 'HEAD', credentials: 'same-origin', cache: 'no-store' })
-        .then(function(response) { if (response.ok) { lastContact = Date.now(); hideWarning(); } });
+        .then(function(response) { if (response.ok) touch(); });
     }
     function showWarning() {
       if (warning) return;
@@ -723,11 +739,15 @@ function recursiveBase64StrToArrayBuffer(obj) {
       warning.find('button').text(lang_rt.stay_signed_in).on('click', staySignedIn);
       $('body').append(warning);
     }
-    $(document).ajaxComplete(function() { lastContact = Date.now(); hideWarning(); });
+    touch();
+    $(document).ajaxComplete(touch);
+    window.addEventListener('storage', function(e) {
+      if (e.key === key && idle() <= lifetime - 120000) hideWarning();
+    });
     setInterval(function() {
-      var idle = Date.now() - lastContact;
-      if (idle > lifetime + 15000) location.reload();
-      else if (idle > lifetime - 120000) showWarning();
+      var time = idle();
+      if (time > lifetime) location.reload();
+      else if (time > lifetime - 120000) showWarning();
     }, 5000);
   })();
   {% endif %}

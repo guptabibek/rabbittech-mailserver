@@ -55,6 +55,13 @@ foreach ($containers_info as $container => $container_info) {
   $containers[$container] = $container_info;
 }
 
+// Overview: quarantine size, counted here instead of loading every item through the API
+try {
+  $quarantine_count = (int)$pdo->query('SELECT COUNT(*) FROM `quarantine`')->fetchColumn();
+} catch (PDOException $e) {
+  $quarantine_count = null;
+}
+
 // get mailcow data
 $hostname = getenv('MAILCOW_HOSTNAME');
 $timezone = getenv('TZ');
@@ -70,6 +77,7 @@ $template_data = [
   'clamd_status' => $clamd_status,
   'olefy_status' => $olefy_status,
   'containers' => $containers,
+  'quarantine_count' => $quarantine_count,
   'ip_check' => customize('get', 'ip_check'),
   'lang_admin' => json_encode($lang['admin']),
   'lang_debug' => json_encode($lang['debug']),

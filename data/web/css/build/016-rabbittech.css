@@ -3962,6 +3962,10 @@ p.rt-summary-meta { margin: 6px 0 0; color: var(--rt-muted); font-size: .86rem; 
   .page-link { min-width: 40px; min-height: 40px; }
   .rt-nav-link { min-height: 44px; }
   .btn-sm { min-height: 36px; }
+  /* iOS zooms into any field below 16px when it gets focus */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea { font-size: 16px !important; }
   table.dataTable tbody input[name="multi_select"],
   .rt-select-all { width: 20px; height: 20px; }
   table.dataTable.dtr-inline.collapsed > tbody > tr > td.dtr-control,

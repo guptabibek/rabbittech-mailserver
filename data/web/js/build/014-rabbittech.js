@@ -508,8 +508,11 @@ $(document).ready(function() {
       setKpi('queue', number.format(count), count ? rt.t('kpi_queue_waiting', 'Waiting for delivery') : rt.t('kpi_queue_empty', 'Nothing waiting'), count > 0);
     }).catch(unavailable(['queue']));
 
-    getJSON('/api/v1/get/quarantine/all').then(function(items) {
-      var count = Array.isArray(items) ? items.length : 0;
+    // The page counts the quarantine itself; the API would send every held message
+    var held = kpis.getAttribute('data-quarantine-count');
+    (held !== null ? Promise.resolve(parseInt(held, 10) || 0) : getJSON('/api/v1/get/quarantine/all').then(function(items) {
+      return Array.isArray(items) ? items.length : 0;
+    })).then(function(count) {
       setKpi('quarantine', number.format(count), count ? rt.t('kpi_quarantine_held', 'Held for review') : rt.t('kpi_quarantine_empty', 'Nothing held'));
     }).catch(unavailable(['quarantine']));
   }

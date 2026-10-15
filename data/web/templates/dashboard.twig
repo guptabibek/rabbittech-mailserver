@@ -35,7 +35,7 @@
         {% set t = lang.rabbittech %}
 
         {# Live counts, loaded by 014-rabbittech.js from the API #}
-        <div class="rt-kpi-grid mb-4" id="rt-kpis">
+        <div class="rt-kpi-grid mb-4" id="rt-kpis"{% if quarantine_count is not null %} data-quarantine-count="{{ quarantine_count }}"{% endif %}>
           {% for kpi in [
             { key: 'domains', label: lang.mailbox.domains, icon: 'globe2', href: '/admin/mailbox#/domains' },
             { key: 'mailboxes', label: lang.mailbox.mailboxes, icon: 'inbox', href: '/admin/mailbox#/mailboxes' },
