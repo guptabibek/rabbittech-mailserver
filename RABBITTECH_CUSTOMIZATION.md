@@ -162,13 +162,17 @@ server, which calls `scripts/sync-release.sh` to copy it into `/opt/rabbittech-m
   open mailboxes, and Postfix creates its SQL and transport maps. If those files are missing, the
   deploy restarts the service that owns them. If they still don't appear, the deploy fails and names
   the files.
-- **Template changes clear the Twig cache.** CSS and JS bundles are re-hashed on the next request
-  anyway.
+- **Template and PHP changes restart PHP-FPM.** mailcow's PHP never re-reads a file it has already
+  compiled (`opcache.validate_timestamps=0`), and compiled templates keep their file names, so the
+  deploy clears the Twig cache and restarts `php-fpm-mailcow` whenever `data/web/templates/`,
+  `data/web/inc/` or any `data/web/**/*.php` changed. CSS and JS bundles are named by their content
+  and update without a restart.
 - **Old releases are pruned.** Only the newest three are kept in `releases/`.
 
 ### Manual updates
 
-On a manual `git pull`, run `docker compose restart php-fpm-mailcow` so updated templates show up.
+On a manual `git pull`, run `docker compose restart php-fpm-mailcow` so updated templates and PHP
+code show up (PHP keeps serving the old compiled files until it restarts).
 Run `docker compose restart sogo-mailcow` after SOGo theme or logo changes.
 
 ## Keeping upstream updates

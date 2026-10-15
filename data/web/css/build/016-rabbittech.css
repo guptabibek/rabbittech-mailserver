@@ -2658,8 +2658,9 @@ table.dataTable td.dtr-col-md:has(> .rt-row-actions) {
 }
 @media (min-width: 576px) {
   [class*="mass-actions"].d-sm-block { display: flex !important; }
-  /* mailcow repeats the toolbar under the table; keep it for phones only */
-  .dataTables_wrapper ~ [class*="mass-actions"] { display: none !important; }
+  /* Some tables repeat their toolbar under the table; the copy is for phones only.
+     014-rabbittech.js marks it, so tables whose only toolbar is below keep it. */
+  [class*="mass-actions"].rt-toolbar-repeat { display: none !important; }
 }
 .rt-selection-count {
   display: none;

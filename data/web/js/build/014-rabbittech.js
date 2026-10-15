@@ -622,12 +622,19 @@ $(document).ready(function() {
   'use strict';
   if (!$.fn.dataTable) return;
 
+  // Set while the header checkbox changes every row, so the counter is updated once
+  var bulkChange = false;
+
   function textNodes(el) {
     return $(el).contents().filter(function() { return this.nodeType === 3; });
   }
 
+  // The toolbar that belongs to a table: the one right before it, else the one right after it
   function selectionBar(table) {
-    return table.closest('.card-body, .tab-pane, .card').find('[class*="mass-actions"]').first();
+    var wrapper = table.closest('.dataTables_wrapper');
+    var bar = wrapper.prevAll('[class*="mass-actions"]').first();
+    if (!bar.length) bar = wrapper.nextAll('[class*="mass-actions"]').first();
+    return bar;
   }
 
   function updateSelection(table) {
@@ -651,6 +658,11 @@ $(document).ready(function() {
     var wrapper = $(api.table().container());
     if (wrapper.data('rtReady')) return;
     wrapper.data('rtReady', true);
+
+    // With a toolbar above the table, the copy below it is only needed on phones
+    if (wrapper.prevAll('[class*="mass-actions"]').length) {
+      wrapper.nextAll('[class*="mass-actions"]').first().addClass('rt-toolbar-repeat');
+    }
 
     wrapper.find('.dataTables_filter label').each(function() {
       var label = (textNodes(this).text() || '').replace(/[:：]\s*$/, '').trim() || 'Search';
@@ -677,11 +689,19 @@ $(document).ready(function() {
         $(this.header()).empty().append(box);
         box.on('click', function(e) { e.stopPropagation(); });
         box.on('change', function() {
+          // mailcow builds its list of selected items from change events (011-api.js) and
+          // doesn't de-duplicate it. Do what its own "Toggle all" does: mass_action makes the
+          // first event start the list afresh, then every row reports its new state once.
+          window.mass_action = true;
+          bulkChange = true;
           table.find('tbody input[name="multi_select"]:enabled').prop('checked', this.checked).trigger('change');
+          bulkChange = false;
           updateSelection(table);
         });
-        // the header checkbox replaces mailcow's "Toggle all" buttons
-        selectionBar(table).closest('.card-body, .tab-pane').find('[id="toggle_multi_select_all"]').addClass('rt-hidden');
+        // the header checkbox replaces mailcow's "Toggle all" buttons for this table
+        var wrapper = table.closest('.dataTables_wrapper');
+        wrapper.prevAll('[class*="mass-actions"]').first().add(wrapper.nextAll('[class*="mass-actions"]').first())
+          .find('[id="toggle_multi_select_all"]').addClass('rt-hidden');
       });
     }
     updateSelection(table);
@@ -718,6 +738,7 @@ $(document).ready(function() {
   $(document).on('init.dt', function(e, settings) { setup(settings); });
   $(document).on('draw.dt', function(e, settings) { setup(settings); decorate(settings); });
   $(document).on('change', 'table.dataTable tbody input[name="multi_select"]', function() {
+    if (bulkChange) return;
     updateSelection($(this).closest('table'));
   });
 

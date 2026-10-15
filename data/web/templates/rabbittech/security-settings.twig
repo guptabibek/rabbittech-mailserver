@@ -6,7 +6,13 @@
   <div class="rt-setting-body">
     <div class="rt-setting-title">
       {{ lang.tfa.tfa }}
-      <span id="tfa_pretty" class="rt-status {% if tfa_data.name|default('none') == 'none' %}rt-status-warning{% else %}rt-status-running{% endif %}">{% if tfa_data.name|default('none') == 'none' %}Off{% else %}{{ tfa_data.pretty }}{% endif %}</span>
+      {# get_tfa() lists the active methods in "additional"; "name" is only set when there are none #}
+      {% set rt_tfa_methods = tfa_data.additional|default([])|map(k => {'totp': 'TOTP', 'webauthn': 'WebAuthn', 'yubi_otp': 'Yubico OTP', 'u2f': 'U2F'}[k.authmech]|default(k.authmech))|filter(m => m)|reduce((list, m) => m in list ? list : list|merge([m]), []) %}
+      {% if tfa_data.additional|default([])|length > 0 %}
+      <span id="tfa_pretty" class="rt-status rt-status-running">On{% if rt_tfa_methods %} · {{ rt_tfa_methods|join(', ') }}{% endif %}</span>
+      {% else %}
+      <span id="tfa_pretty" class="rt-status rt-status-warning">Off</span>
+      {% endif %}
     </div>
     <div class="rt-setting-desc">{{ lang.user.tfa_info }}</div>
     {% include 'tfa_keys.twig' %}
