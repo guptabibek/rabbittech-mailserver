@@ -131,6 +131,15 @@ The content of every page follows the same patterns, so the console reads as one
 - Two minutes before the session expires, a notice offers "Stay signed in" instead of the page
   reloading without warning.
 
+### Emails
+
+The default quota warning, quarantine digest and password reset emails
+(`data/assets/templates/quota.tpl`, `quarantine.tpl`, `pw_reset_html.tpl`) use the RabbitTech
+look: a text wordmark (no remote images, so nothing is blocked), a single violet button and
+table-based, inline-styled markup that works across mail apps and on phones. They are read on
+every send, so no restart is needed. A template saved in the admin UI takes
+precedence over these files; reset it there to use them.
+
 ### Assets
 
 - `data/web/img/rabbittech_mailcow.svg` (light background) and `rabbittech_mailcow_dark.svg`:
