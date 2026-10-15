@@ -182,6 +182,30 @@ fi
 
 docker compose ps
 
+# A release that doesn't come up healthy is replaced by the last one that did, with the
+# mailcow.conf it ran with: sync-release.sh restores its files exactly (changed files are written
+# back, files only the new release had are removed) and the compose file brings back its images.
+# Data is not rolled back. RT_SKIP_HEALTH_CHECK=1 skips the check, e.g. while debugging it.
+if [ -n "${RT_SKIP_HEALTH_CHECK:-}" ] || bash "$RELEASE_DIR/scripts/check-health.sh" "$APP_DIR"; then
+  printf '%s\n' "$RELEASE_DIR" > "$STATE_DIR/current-release"
+  if [ ! "$ENV_FILE" -ef "$STATE_DIR/last-good-mailcow.conf" ]; then
+    install -m 600 "$ENV_FILE" "$STATE_DIR/last-good-mailcow.conf"
+  fi
+else
+  previous=$(cat "$STATE_DIR/current-release" 2>/dev/null || true)
+  if [ -n "${RT_ROLLBACK:-}" ]; then
+    echo "The previous release is not healthy either. The mail server needs attention." >&2
+  elif [ -z "$previous" ] || [ "$previous" = "$RELEASE_DIR" ] || [ ! -d "$previous" ] || [ ! -f "$STATE_DIR/last-good-mailcow.conf" ]; then
+    echo "There is no earlier healthy release to roll back to." >&2
+  else
+    echo "Rolling back to the last healthy release, $(basename "$previous")" >&2
+    if RT_ROLLBACK=1 bash "$previous/scripts/deploy-vps.sh" "$previous" "$STATE_DIR/last-good-mailcow.conf"; then
+      echo "Rolled back: the mail server runs $(basename "$previous") again. This deploy failed." >&2
+    fi
+  fi
+  exit 1
+fi
+
 # Keep the newest releases for reference; older ones only use disk space.
 if [ "$(dirname "$RELEASE_DIR")" = "$APP_ROOT/releases" ]; then
   ls -1dt "$APP_ROOT"/releases/*/ 2>/dev/null \

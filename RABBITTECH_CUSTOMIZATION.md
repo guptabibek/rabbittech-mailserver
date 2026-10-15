@@ -238,8 +238,9 @@ two supported hooks, both loaded on every SOGo page (`SOGoUIAdditionalJSFiles` i
 parses every Twig template with `scripts/check-twig-templates.php`, checks that every language file
 is valid JSON and every RabbitTech string in use exists (`scripts/check-rabbittech-lang.php`), and
 tests that a release sync keeps runtime files and admin-edited maps. It also runs the backup
-script against a fake mailcow helper (`tests/backup/test-backup.sh`) and tests the ACME log reader
-and SPF range check behind the Overview alerts (`tests/php/overview-checks.php`).
+script against a fake mailcow helper (`tests/backup/test-backup.sh`), the health check and a full
+deploy and rollback with fake Docker (`tests/deploy/test-deploy.sh`), and the ACME log reader and
+SPF range check behind the Overview alerts (`tests/php/overview-checks.php`).
 
 A second job runs the UI smoke tests and uploads their screenshots as the `ui-screenshots` artifact.
 
@@ -315,6 +316,15 @@ server, which calls `scripts/sync-release.sh` to copy it into `/opt/rabbittech-m
   deploy clears the Twig cache and restarts `php-fpm-mailcow` whenever `data/web/templates/`,
   `data/web/inc/` or any `data/web/**/*.php` changed. CSS and JS bundles are named by their content
   and update without a restart.
+- **Every deploy ends with a health check** (`scripts/check-health.sh`): all services in
+  `docker-compose.yml` running, the console rendering a complete page (so PHP, the database and
+  Redis answer), and SMTP and IMAP greeting. It allows up to 5 minutes for slow starts.
+- **An unhealthy release is rolled back.** The deploy records the last healthy release
+  (`shared/current-release`) and the `mailcow.conf` it ran with (`shared/last-good-mailcow.conf`).
+  When a new release fails its health check, that release is deployed again: its files come back
+  exactly, its images are started, and the GitHub deploy is marked failed with "Rolled back" in its
+  log. Data (mailboxes, the database) is not rolled back. If the previous release fails too, the
+  deploy stops and says so. `RT_SKIP_HEALTH_CHECK=1` skips the check.
 - **Old releases are pruned.** Only the newest three are kept in `releases/`.
 
 ### Backups

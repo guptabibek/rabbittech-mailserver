@@ -19,7 +19,7 @@ jobs:
 
       - name: Validate shell scripts
         run: |
-          bash -n scripts/bootstrap-vps.sh scripts/deploy-vps.sh scripts/backup-mail.sh
+          bash -n scripts/bootstrap-vps.sh scripts/deploy-vps.sh scripts/backup-mail.sh scripts/check-health.sh
           sh -n scripts/sync-release.sh
 
       - name: Test release sync
@@ -42,6 +42,9 @@ jobs:
 
       - name: Test nightly backups
         run: bash tests/backup/test-backup.sh
+
+      - name: Test the deploy health check and rollback
+        run: bash tests/deploy/test-deploy.sh
 
       - name: Validate Docker Compose file
         run: docker compose config >/dev/null
