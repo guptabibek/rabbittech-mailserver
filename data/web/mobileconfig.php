@@ -119,7 +119,7 @@ echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
         <key>PayloadIdentifier</key>
         <string><?=$identifier?>.email</string>
         <key>PayloadOrganization</key>
-        <string></string>
+        <string>RabbitTech Mail</string>
         <key>PayloadType</key>
         <string>com.apple.mail.managed</string>
         <key>PayloadUUID</key>
@@ -166,7 +166,7 @@ echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
         <key>PayloadIdentifier</key>
         <string><?=$identifier?>.CalDAV</string>
         <key>PayloadOrganization</key>
-        <string></string>
+        <string>RabbitTech Mail</string>
         <key>PayloadType</key>
         <string>com.apple.caldav.account</string>
         <key>PayloadUUID</key>
@@ -198,7 +198,7 @@ echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
         <key>PayloadIdentifier</key>
         <string><?=$identifier?>.carddav</string>
         <key>PayloadOrganization</key>
-        <string></string>
+        <string>RabbitTech Mail</string>
         <key>PayloadType</key>
         <string>com.apple.carddav.account</string>
         <key>PayloadUUID</key>

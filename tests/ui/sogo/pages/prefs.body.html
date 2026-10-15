@@ -4,6 +4,7 @@
     <div class="md-toolbar-tools sg-toolbar-group-last" layout="row" layout-align="end center">
       <md-button class="md-icon-button"><md-icon>event</md-icon></md-button>
       <md-button class="md-icon-button"><md-icon>email</md-icon></md-button>
+      <span ng-include="'rt-console-button'"></span>
     </div>
   </md-toolbar>
   <md-content class="md-padding md-flex">
@@ -26,3 +27,7 @@
     </md-card>
   </md-content>
 </main>
+<!-- As in SOGo's Mail module, the console button sits inside a page template here -->
+<script type="text/ng-template" id="rt-console-button">
+  <md-button class="md-icon-button" ng-href="/user"><md-icon>build</md-icon><md-tooltip>mailcow Preferences</md-tooltip></md-button>
+</script>

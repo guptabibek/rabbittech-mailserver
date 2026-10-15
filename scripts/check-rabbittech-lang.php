@@ -1,6 +1,7 @@
 <?php
-// Check the RabbitTech UI strings: every language file must be valid JSON, and every
-// "rabbittech" key the templates and scripts use must exist in lang.en-gb.json.
+// Check the RabbitTech UI strings: every language file must be valid JSON, every key in the
+// RabbitTech wording files must exist in lang.en-gb.json, and every "rabbittech" key the
+// templates and scripts use must exist there too.
 // Twig runs with strict_variables off, so a missing key would silently render as nothing.
 // Usage: php scripts/check-rabbittech-lang.php [path/to/data/web]
 
@@ -20,6 +21,25 @@ $keys = $english['rabbittech'] ?? [];
 if (!$keys) {
   fwrite(STDERR, 'lang.en-gb.json has no "rabbittech" section' . PHP_EOL);
   exit(1);
+}
+
+// The RabbitTech wording files (rabbittech.<locale>.json) replace existing mailcow strings, so each
+// of their keys has to be one the English file has; a typo would leave the old wording on screen
+foreach (glob($web . '/lang/rabbittech.*.json') as $file) {
+  $wording = json_decode(file_get_contents($file), true);
+  if (!is_array($wording)) {
+    fwrite(STDERR, basename($file) . ': ' . (json_last_error() !== JSON_ERROR_NONE ? json_last_error_msg() : 'not a JSON object') . PHP_EOL);
+    $failed++;
+    continue;
+  }
+  foreach ($wording as $section => $strings) {
+    foreach ((array) $strings as $key => $text) {
+      if (!isset($english[$section][$key]) || !is_string($text)) {
+        fwrite(STDERR, basename($file) . ': ' . $section . '.' . $key . ' is not a string in lang.en-gb.json' . PHP_EOL);
+        $failed++;
+      }
+    }
+  }
 }
 
 $used = [];

@@ -20,7 +20,7 @@
       <li role="presentation"><span class="dropdown-header fs-6">{{ lang.debug.external_logs }}</span></li>
       <li role="presentation"><button class="dropdown-item" data-bs-target="#tab-rspamd-history" aria-selected="false" aria-controls="tab-rspamd-history" role="tab" data-bs-toggle="tab">Rspamd</button></li>
       <li role="presentation"><span class="dropdown-header fs-6">{{ lang.debug.static_logs }}</span></li>
-      <li role="presentation"><button class="dropdown-item" data-bs-target="#tab-ui" aria-selected="false" aria-controls="tab-ui" role="tab" data-bs-toggle="tab">Mailcow UI</button></li>
+      <li role="presentation"><button class="dropdown-item" data-bs-target="#tab-ui" aria-selected="false" aria-controls="tab-ui" role="tab" data-bs-toggle="tab">{{ lang.rabbittech.logs_console }}</button></li>
       <li role="presentation"><button class="dropdown-item" data-bs-target="#tab-sasl" aria-selected="false" aria-controls="tab-sasl" role="tab" data-bs-toggle="tab">SASL</button></li>
     </ul>
   </li>
@@ -41,6 +41,8 @@
             {% for alert in rt_alerts|default([]) %}
             {%- if alert.key starts with 'cert_' -%}
               {%- set rt_value = '<time datetime="' ~ alert.value|date('Y-m-d') ~ '" data-rt-date>' ~ alert.value|date('Y-m-d') ~ '</time>' -%}
+            {%- elseif alert.key starts with 'container_' -%}
+              {%- set rt_value = '<strong>' ~ (t['svc_' ~ alert.value]|default(alert.value))|e ~ '</strong>' -%}
             {%- else -%}
               {%- set rt_value = '<strong>' ~ alert.value|e ~ '</strong>' -%}
             {%- endif %}
@@ -224,7 +226,8 @@
                   <div class="rt-container-head">
                     <span class="rt-container-icon" aria-hidden="true"><i class="bi bi-box-seam"></i></span>
                     <div class="rt-container-body">
-                      <h3 class="rt-container-name"><span>{{ container }}</span></h3>
+                      {% set rt_service = container|replace({'-mailcow': ''}) %}
+                      <h3 class="rt-container-name"><span>{{ t['svc_' ~ rt_service]|default(rt_service) }}</span><span class="rt-container-id">{{ container }}</span></h3>
                       <div class="rt-container-meta">
                         <span class="rt-image-tag" title="{{ container_info.Config.Image }}">{{ container_info.Config.Image }}</span>
                         <span><i class="bi bi-clock-history me-1" aria-hidden="true"></i><span class="visually-hidden">{{ lang.debug.started_on }}: </span><span class="parse_date">{{ container_info.State.StartedAtHR }}</span></span>
@@ -271,35 +274,7 @@
           </div>
         </div>
 
-        <div class="card mb-4">
-          <div class="card-header d-flex">
-            <h2 class="rt-card-title"><i class="bi bi-suit-heart me-2" aria-hidden="true"></i>{{ lang.admin.guid_and_license }}</h2>
-          </div>
-          <div class="card-body">
-            <div id="license">
-              <form class="form-horizontal" autocapitalize="none" autocorrect="off" role="form" method="post">
-                <div class="row g-3 align-items-start">
-                  <label class="control-label col-md-3 pt-md-2" for="guid">{{ lang.admin.guid }}</label>
-                  <div class="col-md-9">
-                    <div class="input-group">
-                      <span class="input-group-text">
-                        <i class="bi bi-suit-heart{% if gal.valid == true %}-fill text-danger{% endif %}"></i>
-                      </span>
-                      <input type="text" id="guid" class="form-control" value="{{ license_guid }}" readonly>
-                    </div>
-                    <p class="text-muted small mt-2 mb-3">
-                      {{ lang.admin.customer_id }}: {{ gal.c|default('?')|raw }} &middot;
-                      {{ lang.admin.service_id }}: {{ gal.s|default('?')|raw }} &middot;
-                      {{ lang.admin.sal_level }}: {{ gal.m|default('?')|raw }}
-                    </p>
-                    <p class="text-muted">{{ lang.admin.license_info|raw }}</p>
-                    <button class="btn btn-sm btn-secondary" name="license_validate_now" type="submit" href="#">{{ lang.admin.validate_license_now }}</button>
-                  </div>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
+        {# mailcow's GUID and support-license card is left out: it belongs to mailcow's own support offer #}
       </div>
 
       <div role="tabpanel" class="tab-pane" id="tab-postfix-logs">
@@ -329,7 +304,7 @@
         <div class="debug-log-info">{{ lang.debug.log_info|format(log_lines+1)|raw }}</div>
         <div class="card">
           <div class="card-header d-flex align-items-center fs-5">
-            <span class="mt-2 ms-2">Mailcow UI</span>
+            <span class="mt-2 ms-2">{{ lang.rabbittech.logs_console }}</span>
             <div class="btn-group ms-auto">
               <button class="btn btn-sm btn-secondary refresh_table" data-draw="draw_ui_logs" data-table="ui_logs">{{ lang.admin.refresh }}</button>
             </div>

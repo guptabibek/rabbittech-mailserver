@@ -90,13 +90,16 @@ require $WEB . '/inc/lib/vendor/autoload.php';
 require $WEB . '/inc/lib/CSSminifierExtended.php';
 require $WEB . '/inc/lib/JSminifierExtended.php';
 
-$lang = json_decode(file_get_contents($WEB . '/lang/lang.en-gb.json'), true);
+require $WEB . '/inc/functions.rabbittech.inc.php';
+
+$lang = $lang_en = json_decode(file_get_contents($WEB . '/lang/lang.en-gb.json'), true);
 $rt_locale = getenv('HARNESS_LOCALE') ?: 'en-gb';
+if ($rt_locale !== 'en-gb') $lang = array_replace_recursive($lang, json_decode(file_get_contents($WEB . "/lang/lang.$rt_locale.json"), true));
+$lang = rabbittech_wording($lang, $lang_en, $rt_locale, $WEB . '/lang');
 // Pseudo-localisation: wrap every translatable string so hardcoded text stands out
 if (getenv('HARNESS_PSEUDO')) {
   array_walk_recursive($lang, function (&$v) { if (is_string($v) && $v !== '') $v = '⟦' . $v . '⟧'; });
 }
-if ($rt_locale !== 'en-gb') $lang = array_replace_recursive($lang, json_decode(file_get_contents($WEB . "/lang/lang.$rt_locale.json"), true));
 
 $css = new CSSminifierExtended();
 $css->add($WEB . '/css/themes/lumen-bootstrap.css');
@@ -147,7 +150,8 @@ $twig->addFilter(new \Twig\TwigFilter('formatBytes', function ($size, $precision
   return round(pow(1024, $base - floor($base)), $precision) . $suffixes[floor($base)];
 }));
 
-$apps = [['name' => 'Webmail', 'link' => '/SOGo/', 'user_link' => '/SOGo/', 'description' => 'SOGo groupware', 'hide' => false]];
+// As in inc/vars.inc.php, but shown in the Apps menu
+$apps = [['name' => 'Webmail', 'link' => '/webmail', 'user_link' => '/webmail', 'hide' => false]];
 $globals = [
   'mailcow_hostname' => 'mail.rabbittech.com.np',
   'mailcow_locale' => $rt_locale,

@@ -93,6 +93,6 @@ if (count($records) == 0 || $records[0]['target'] != '') { ?>
     </emailProvider>
 
     <webMail>
-      <loginPage url="https://<?=$mailcow_hostname; ?><?php if ($port != 443) echo ':'.$port; ?>/SOGo/" />
+      <loginPage url="https://<?=$mailcow_hostname; ?><?php if ($port != 443) echo ':'.$port; ?>/webmail" />
     </webMail>
 </clientConfig>
