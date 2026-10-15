@@ -1,0 +1,3 @@
+$rootScope.noop = function() {}; $rootScope.tags = ['Colleague'];
+$rootScope.books = [{name: 'Personal Address Book', icon: 'contacts', active: true}, {name: 'Collected Addresses', icon: 'contacts'}, {name: 'Global Address Book', icon: 'import_contacts'}];
+$rootScope.contacts = [{name: 'Anita Rai', email: 'anita@example.org'}, {name: 'Nabin Karki', email: 'nabin@example.com'}, {name: 'Ram Thapa', email: 'ram@rabbittech.com.np'}, {name: 'Sita Sharma', email: 'sita@rabbittech.com.np', selected: true}, {name: 'Support Team', email: 'support@rabbittech.com.np'}];

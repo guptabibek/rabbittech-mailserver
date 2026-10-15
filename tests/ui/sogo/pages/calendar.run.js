@@ -1,0 +1,2 @@
+$rootScope.calendars = [{id: 'personal', name: 'Personal calendar', active: 1}, {id: 'work', name: 'Work', active: 1}, {id: 'family', name: 'Family', active: 0}]; $rootScope.today = new Date(2026, 9, 15);
+$timeout(function() { var c = document.querySelector('[sg-calendar-scroll-view]'); if (c) c.scrollTop = 300; }, 300);

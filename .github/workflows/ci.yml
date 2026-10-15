@@ -92,3 +92,37 @@ jobs:
 
       - name: Check RabbitTech UI strings
         run: php scripts/check-rabbittech-lang.php
+
+  ui:
+    name: UI smoke tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tests/ui/package-lock.json
+
+      - name: Install Playwright
+        working-directory: tests/ui
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Prepare the webmail mock
+        run: bash tests/ui/sogo/prepare.sh
+
+      - name: Run UI smoke tests
+        working-directory: tests/ui
+        run: node smoke.mjs
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-screenshots
+          path: tests/ui/output
+          if-no-files-found: ignore

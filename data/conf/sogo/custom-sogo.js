@@ -819,12 +819,22 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
   .view-detail md-card.md-default-theme { border-radius: 0; border-width: 0; box-shadow: none; }
   .view-detail .sg-md-headline { font-size: 19px; line-height: 26px; }
 }
+/* iOS zooms into any field below 16px when it gets focus */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea { font-size: 16px !important; }
+}
 @media print {
   html, body { background: #fff; color: #000; }
 }
 `;
     (document.head || root).appendChild(style);
     window.rtSogoStyle = true;
+
+    // SOGo's page sets maximum-scale=1, which blocks pinch-zoom on Android phones
+    var viewport = document.querySelector('meta[name="viewport"]');
+    if (viewport) viewport.setAttribute('content', 'width=device-width, initial-scale=1');
   } catch (e) {
     if (window.console) console.warn('RabbitTech SOGo stylesheet not applied', e);
   }

@@ -52,7 +52,11 @@ How it works:
   If upstream adds a tab that `nav.twig` doesn't list, that strip reappears automatically, so the new
   page stays reachable until it gets a sidebar entry.
 - **Overview** (`dashboard.twig`):
-  - Live counts of domains, mailboxes, aliases, queued mail and quarantine, read from `/api/v1`.
+  - A "Needs attention" card, shown only when something is wrong: a stopped or unhealthy
+    container, mail storage at 85% or more, a TLS certificate that expires within 14 days (checked
+    against what nginx actually serves, cached for up to 6 hours), or 50+ messages in the mail queue.
+  - Live counts of domains, mailboxes, aliases, queued mail and quarantine. The quarantine is
+    counted on the server; the others are read from `/api/v1`.
   - A server status card and quick actions.
   - CPU and memory charts.
   - A service grid, where expanding a container shows its I/O charts.
@@ -127,6 +131,15 @@ The content of every page follows the same patterns, so the console reads as one
 - Two minutes before the session expires, a notice offers "Stay signed in" instead of the page
   reloading without warning.
 
+### Emails
+
+The default quota warning, quarantine digest and password reset emails
+(`data/assets/templates/quota.tpl`, `quarantine.tpl`, `pw_reset_html.tpl`) use the RabbitTech
+look: a text wordmark (no remote images, so nothing is blocked), a single violet button and
+table-based, inline-styled markup that works across mail apps and on phones. They are read on
+every send, so no restart is needed. A template saved in the admin UI takes
+precedence over these files; reset it there to use them.
+
 ### Assets
 
 - `data/web/img/rabbittech_mailcow.svg` (light background) and `rabbittech_mailcow_dark.svg`:
@@ -178,6 +191,31 @@ two supported hooks, both loaded on every SOGo page (`SOGoUIAdditionalJSFiles` i
 parses every Twig template with `scripts/check-twig-templates.php`, checks that every language file
 is valid JSON and every RabbitTech string in use exists (`scripts/check-rabbittech-lang.php`), and
 tests that a release sync keeps runtime files and admin-edited maps.
+
+A second job runs the UI smoke tests and uploads their screenshots as the `ui-screenshots` artifact.
+
+### UI tests
+
+`tests/ui` checks the console and webmail in a real browser (Playwright, Chromium) without a mail
+server:
+
+- `router.php` renders the real templates and CSS/JS bundles from `data/web` with stub data and a
+  stub API. Environment switches select 2FA, a language, a session lifetime or Overview problem
+  states (see the top of the file). Run it on its own with
+  `php -S 127.0.0.1:8088 tests/ui/router.php` to look at pages by hand.
+- `sogo/prepare.sh` builds a webmail mock from SOGo's own stylesheets and scripts at the version in
+  `docker-compose.yml`, plus `data/conf/sogo`, with page markup copied from SOGo's templates.
+- `smoke.mjs` starts both and checks every main page in light, dark and phone width (no errors, the
+  shell starts, no sideways scrolling). It also checks the behaviour that broke before: select-all,
+  the bulk toolbars, the 2FA status, the Overview alerts, the session warning across tabs, and the
+  webmail palette, top bar and selected message.
+
+Run locally:
+
+```sh
+cd tests/ui && npm ci && npx playwright install chromium
+bash sogo/prepare.sh && node smoke.mjs   # screenshots in tests/ui/output
+```
 
 ## Deployment
 

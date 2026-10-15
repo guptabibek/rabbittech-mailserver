@@ -3838,6 +3838,46 @@ a.rt-status { text-decoration: none !important; }
   .rt-auth .card { padding: 20px; }
 }
 
+/* ------------------------------------------------- overview health alerts */
+.rt-alerts {
+  padding: 14px 16px 16px;
+  border: 1px solid var(--rt-border);
+  border-radius: var(--rt-radius-lg);
+  background: var(--rt-surface);
+  box-shadow: var(--rt-shadow-sm);
+}
+.rt-alerts[hidden] { display: none; }
+.rt-alerts-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  color: var(--rt-text);
+  font-size: 1rem;
+  font-weight: 650;
+}
+.rt-alerts-title .bi { color: var(--rt-warning); }
+.rt-alerts-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rt-alert {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px 10px 14px;
+  border-left: 3px solid;
+  border-radius: var(--rt-radius-sm);
+}
+.rt-alert-danger { background: var(--rt-danger-soft); border-left-color: var(--rt-danger); }
+.rt-alert-warning { background: var(--rt-warning-soft); border-left-color: var(--rt-warning); }
+.rt-alert-text { color: var(--rt-text); font-weight: 600; }
+.rt-alert-text strong { font-weight: 700; }
+.rt-alert-hint { color: var(--rt-text-2); font-size: .92rem; }
+.rt-alert-hint a { color: inherit; font-weight: 600; text-decoration: underline; }
+
 /* -------------------------------------------------------- shared pieces */
 /* Keyboard users can jump past the sidebar; the link shows only while focused */
 .rt-skip-link {
@@ -3962,6 +4002,10 @@ p.rt-summary-meta { margin: 6px 0 0; color: var(--rt-muted); font-size: .86rem; 
   .page-link { min-width: 40px; min-height: 40px; }
   .rt-nav-link { min-height: 44px; }
   .btn-sm { min-height: 36px; }
+  /* iOS zooms into any field below 16px when it gets focus */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea { font-size: 16px !important; }
   table.dataTable tbody input[name="multi_select"],
   .rt-select-all { width: 20px; height: 20px; }
   table.dataTable.dtr-inline.collapsed > tbody > tr > td.dtr-control,

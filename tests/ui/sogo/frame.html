@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SOGo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1,maximum-scale=1" />
+<link type="text/css" rel="stylesheet" href="/SOGo.woa/WebServerResources/css/theme-default.css" />
+<link type="text/css" rel="stylesheet" href="/SOGo.woa/WebServerResources/css/styles.css" />
+</head>
+<body class="main" ng-app="mock" md-no-ink="">
+{BODY}
+<script type="text/javascript">
+  var ApplicationBaseURL = '/SOGo/so/bibek/{MODULE}';
+  var ResourcesURL = '/SOGo.woa/WebServerResources';
+  var minimumSearchLength = 2;
+  var minimumSearchLengthLabel = '';
+  var DebugEnabled = false;
+  var IsSuperUser = false;
+  var usesCASAuthentication = false;
+  var usesSAML2Authentication = false;
+  var UserFolderURL = '/SOGo/so/bibek/';
+  var UserLogin = 'bibek@rabbittech.com.np';
+  var UserIdentification = "Bibek Gupta";
+  var UserEmail = 'bibek@rabbittech.com.np';
+  var UserLanguage = 'English';
+  var UserCalendarPath = '/SOGo/so/bibek/Calendar';
+  var UserContactsPath = '/SOGo/so/bibek/Contacts';
+  var UserMailPath = '/SOGo/so/bibek/Mail';
+  var UserPreferencesPath = '/SOGo/so/bibek/Preferences';
+  var UserLogoffPath = '/SOGo/so/bibek/logoff';
+  var HelpURL = '';
+  var currentDay = {"weekday":"Thursday","month":"October","year":"2026","day":"15"};
+  var clabels = {}; var labels = {};
+  var UserDefaults = {SOGoMailComposeWindow: 'inline'}; var UserSettings = {};
+</script>
+<script src="/SOGo.woa/WebServerResources/js/vendor/lodash.min.js"></script>
+<script src="/SOGo.woa/WebServerResources/js/vendor/angular.min.js"></script>
+<script src="/SOGo.woa/WebServerResources/js/vendor/angular-animate.min.js"></script>
+<script src="/SOGo.woa/WebServerResources/js/vendor/angular-sanitize.min.js"></script>
+<script src="/SOGo.woa/WebServerResources/js/vendor/angular-aria.min.js"></script>
+<script src="/SOGo.woa/WebServerResources/js/vendor/angular-cookies.min.js"></script>
+<script src="/SOGo.woa/WebServerResources/js/vendor/angular-messages.min.js"></script>
+<script src="/SOGo.woa/WebServerResources/js/vendor/angular-material.min.js"></script>
+<script src="/SOGo.woa/WebServerResources/js/vendor/angular-ui-router.min.js"></script>
+{EXTRA_VENDOR}
+<script src="/SOGo.woa/WebServerResources/js/Common.js"></script>
+{EXTRA_AFTER}
+<script>
+  angular.module('mock', ['SOGo.Common'].concat(window.mockDeps || []))
+    .factory('Preferences', function() { return { defaults: { SOGoGravatarEnabled: 0 }, settings: {}, ready: function() { return { then: function(f) { f(); } }; } }; })
+    .run(['$rootScope', '$mdMedia', '$mdDialog', '$timeout', function($rootScope, $mdMedia, $mdDialog, $timeout) {
+      $rootScope.$mdMedia = $mdMedia;
+      $rootScope.activeUser = { identification: 'Bibek Gupta', email: 'bibek@rabbittech.com.np', path: { preferences: '#', calendar: '#', contacts: '#', mail: '#', logoff: '#' } };
+      $rootScope.baseURL = ApplicationBaseURL + '/';
+      $rootScope.currentDay = currentDay;
+      {RUN}
+    }]);
+</script>
+<!-- SOGoUIAdditionalJSFiles, as in data/conf/sogo/sogo.conf -->
+<script src="/SOGo.woa/WebServerResources/js/theme.js"></script>
+<script src="/SOGo.woa/WebServerResources/js/custom-sogo.js"></script>
+</body>
+</html>

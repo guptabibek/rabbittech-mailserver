@@ -1,0 +1,28 @@
+<main class="view" layout="column" layout-fill="layout-fill" ui-view="preferences">
+  <md-toolbar layout="row" layout-align="space-between center" class="toolbar-main">
+    <div class="md-toolbar-tools sg-toolbar-group-1" layout="row"><md-button class="md-icon-button"><md-icon>menu</md-icon></md-button></div>
+    <div class="md-toolbar-tools sg-toolbar-group-last" layout="row" layout-align="end center">
+      <md-button class="md-icon-button"><md-icon>event</md-icon></md-button>
+      <md-button class="md-icon-button"><md-icon>email</md-icon></md-button>
+    </div>
+  </md-toolbar>
+  <md-content class="md-padding md-flex">
+    <md-card>
+      <md-tabs md-dynamic-height="true">
+        <md-tab label="General">
+          <md-content class="md-padding">
+            <md-input-container class="md-block"><label>Full name</label><input ng-model="name"/></md-input-container>
+            <md-input-container class="md-block"><label>Language</label><md-select ng-model="lang"><md-option value="en">English</md-option><md-option value="de">Deutsch</md-option></md-select></md-input-container>
+            <md-checkbox ng-model="c1">Show subscribed mailboxes only</md-checkbox>
+            <md-switch ng-model="s1">Enable vacation auto reply</md-switch>
+            <md-switch ng-model="s2">Forward incoming messages</md-switch>
+            <md-radio-group ng-model="r"><md-radio-button value="a">Inline</md-radio-button><md-radio-button value="b">Popup window</md-radio-button></md-radio-group>
+            <div layout="row" layout-align="end center"><md-button>Cancel</md-button><md-button class="md-raised md-primary">Save</md-button></div>
+          </md-content>
+        </md-tab>
+        <md-tab label="Mail"></md-tab>
+        <md-tab label="Calendar"></md-tab>
+      </md-tabs>
+    </md-card>
+  </md-content>
+</main>

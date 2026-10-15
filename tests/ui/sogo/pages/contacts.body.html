@@ -1,0 +1,109 @@
+<main class="view" layout="row" layout-fill="layout-fill" ui-view="addressbooks">
+  <md-sidenav class="md-sidenav-left md-whiteframe-z1" layout="column" md-component-id="left" md-is-locked-open="$mdMedia('gt-md')">
+    <md-toolbar class="sg-padded md-hue-2 md-tall" flex-none="flex-none">
+        <sg-avatar-image class="md-tile-left" sg-email="::activeUser.email" size="40">person</sg-avatar-image>
+        <div layout="row" layout-align="space-between center">
+          <div style="overflow: hidden">
+            <p class="sg-md-title sg-no-wrap" ng-bind="::activeUser.identification"></p>
+            <p class="md-caption sg-no-wrap" ng-bind="::activeUser.email"></p>
+          </div>
+          <md-button class="md-icon-button" ng-href="#"><md-icon>settings</md-icon></md-button>
+        </div>
+      </md-toolbar>
+    <md-content class="md-flex" md-scroll-y="md-scroll-y" md-colors="::{ backgroundColor: 'default-background-300' }">
+      <section>
+        <md-subheader class="sg-md-subheader--with-secondary-icon" md-colors="::{color: 'default-background-700', background: 'default-background-300'}">
+          <div layout="row" layout-align="space-between center"><span>Address Books</span>
+            <md-button class="sg-icon-button"><md-icon>add_circle_outline</md-icon></md-button></div>
+        </md-subheader>
+        <md-list>
+          <md-list-item ng-repeat="b in books" ui-sref="app.addressbook" ng-class="{'md-default-theme md-background md-bg md-hue-1': b.active}" ng-click="noop()">
+            <md-icon>{{b.icon}}</md-icon>
+            <p class="sg-item-name">{{b.name}}</p>
+            <md-icon class="md-menu md-secondary-container">more_vert</md-icon>
+          </md-list-item>
+        </md-list>
+      </section>
+    </md-content>
+  </md-sidenav>
+  <section ui-view="addressbook" layout="column" layout-fill="layout-fill">
+    <md-toolbar layout="row" layout-align="space-between center" class="toolbar-main">
+        <div class="md-toolbar-tools sg-toolbar-group-1" layout="row">
+          <md-button class="md-icon-button hide show-gt-md" aria-label="Toggle Menu"><md-icon>fullscreen</md-icon></md-button>
+          <md-button class="md-icon-button hide-gt-md" aria-label="Toggle Menu" ng-click="toggleLeft()"><md-icon>menu</md-icon></md-button>
+          <div class="sg-date-group sg-padded hide show-gt-md" layout="column" layout-align="space-between end">
+            <p class="sg-day" ng-bind="currentDay.weekday"></p>
+            <p class="sg-month" ng-bind="currentDay.month"></p>
+            <p class="sg-year" ng-bind="currentDay.year"></p>
+          </div>
+          <p class="sg-md-display-3 sg-date-today hide show-gt-md" ng-bind="currentDay.day"></p>
+        </div>
+        <div class="md-toolbar-tools sg-toolbar-group-last" layout="row" layout-align="end center">
+          <md-button class="md-icon-button" ng-href="#"><md-tooltip>Calendar</md-tooltip><md-icon>event</md-icon></md-button>
+          <md-button class="md-icon-button" ng-disabled="true" ng-href="#"><md-icon>contacts</md-icon><md-tooltip>Address Book</md-tooltip></md-button>
+          <md-button class="md-icon-button" ng-href="#"><md-icon>email</md-icon><md-tooltip>Mail</md-tooltip></md-button>
+          <md-button class="md-icon-button" ng-href="/user"><md-icon>build</md-icon><md-tooltip>mailcow Preferences</md-tooltip></md-button>
+          <div class="hide-xs" style="width: 40px"></div>
+          <md-button class="md-icon-button" onclick="mc_logout();" ng-href="#"><md-icon>settings_power</md-icon><md-tooltip>Disconnect</md-tooltip></md-button>
+        </div>
+      </md-toolbar>
+    <div layout="row" class="md-flex">
+      <div class="view-list hide-print" layout="column">
+        <md-toolbar class="md-accent md-hue-1">
+          <div class="md-toolbar-tools">
+            <md-button class="sg-icon-button"><md-icon>search</md-icon></md-button>
+            <a href="#" class="sg-folder-name">Personal Address Book</a>
+            <md-button class="sg-icon-button"><md-icon>sort</md-icon></md-button>
+          </div>
+        </md-toolbar>
+        <md-divider></md-divider>
+        <md-content id="contactsList" class="md-flex" layout="column">
+          <md-subheader><div layout="row" layout-align="space-between center"><div class="md-truncate">5 contacts</div></div></md-subheader>
+          <md-virtual-repeat-container class="md-flex">
+            <md-list class="sg-section-list">
+              <md-list-item class="md-default-theme md-accent md-hue-2" ng-class="{ 'md-bg': c.selected }" md-virtual-repeat="c in contacts" md-item-size="56" ng-click="noop()">
+                <div class="sg-tile-content">
+                  <div class="sg-md-subhead"><div>{{c.name}}</div></div>
+                  <div class="sg-md-body"><div>{{c.email}}</div></div>
+                </div>
+                <div class="sg-tile-icons"></div>
+                <div class="md-secondary sg-avatar-selectable" ng-click="noop()"><sg-avatar-image sg-email="c.email" size="40">person</sg-avatar-image></div>
+              </md-list-item>
+            </md-list>
+          </md-virtual-repeat-container>
+        </md-content>
+      </div>
+      <md-fab-speed-dial class="md-scale sg-fab-bottom-center" md-direction="up">
+        <md-fab-trigger><md-button class="md-fab md-accent"><md-icon>add</md-icon></md-button></md-fab-trigger>
+      </md-fab-speed-dial>
+      <div id="detailView" class="view-detail sg-block-print" layout="column" md-colors="::{backgroundColor: 'default-background-200'}" ui-view="card">
+        <div class="sg-reversible"><div class="sg-face" layout="column" layout-fill="layout-fill">
+          <md-card>
+            <md-card-actions class="md-toolbar-tools" flex-none="flex-none" layout="row" layout-align="end center">
+              <md-button class="sg-icon-button md-primary md-hue-1 hide show-gt-xs"><md-icon>fullscreen</md-icon></md-button>
+              <div class="md-flex"></div>
+              <md-button class="sg-icon-button"><md-icon>mode_edit</md-icon></md-button>
+              <md-button class="sg-icon-button"><md-icon>delete</md-icon></md-button>
+              <md-button class="sg-icon-button"><md-icon>more_vert</md-icon></md-button>
+            </md-card-actions>
+            <md-card-content>
+              <header class="msg-header">
+                <sg-avatar-image class="md-avatar md-tile-left" size="40">person</sg-avatar-image>
+                <div class="msg-header-content">
+                  <div class="sg-md-display-2--thin">Sita Sharma</div>
+                  <div class="sg-md-display-2-subheader--thin">Operations lead, RabbitTech</div>
+                  <md-chips class="sg-readonly" readonly="true" ng-model="tags"><md-chip-template>{{$chip}}</md-chip-template></md-chips>
+                </div>
+              </header>
+              <section class="msg-body">
+                <div class="pseudo-input-container"><label class="pseudo-input-label">Email</label><div class="pseudo-input-field"><a href="#">sita@rabbittech.com.np</a></div></div>
+                <div class="pseudo-input-container"><label class="pseudo-input-label">Mobile</label><div class="pseudo-input-field">+977 98 0000 0000</div></div>
+                <div class="pseudo-input-container"><label class="pseudo-input-label">Birthday</label><div class="pseudo-input-field">March 4</div></div>
+              </section>
+            </md-card-content>
+          </md-card>
+        </div></div>
+      </div>
+    </div>
+  </section>
+</main>
