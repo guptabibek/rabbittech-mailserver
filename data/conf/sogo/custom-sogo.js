@@ -853,6 +853,711 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
   }
 })();
 
+// Mail laid out like Gmail ----------------------------------------------------------------------
+// The Mail screen's templates are <script type="text/ng-template"> blocks in the page, which
+// Angular reads after this script. Before that, this section changes them:
+//   search   SOGo's folder search moves into the top bar as a search box that is always there
+//   compose  a Compose button at the top of the folder list, and one compose button on phones
+//   rows     a star on every message and Archive, Delete and Read/Unread when the pointer is on it
+//   back     the open message gets a back arrow and Archive; the list hides while one is open
+//   layout   a top bar button to switch to SOGo's classic three-pane layout and back
+// and its stylesheet (rt-gmail-mail below) does the rest: one-line rows, folders as pills, the
+// list in a card, compose in a window at the bottom right. Each change first looks for all the
+// markup it needs and is skipped (with a console warning) if a SOGo upgrade changed it; the html
+// element carries an rt-gmail-<change> class for each change that was made, and the styles that
+// depend on a change only apply with its class, so a mismatch leaves SOGo's own behaviour.
+// localStorage rt_webmail_layout = "classic" turns all of it off except the switch back.
+(function () {
+  'use strict';
+  var warn = function (what) { if (window.console) console.warn('RabbitTech mail layout: ' + what); };
+  try {
+    var body = document.body;
+    if (!body || body.getAttribute('ng-app') !== 'SOGo.MailerUI' || !body.classList.contains('main')) return;
+    var root = document.documentElement;
+    var classic = false;
+    try { classic = localStorage.getItem('rt_webmail_layout') === 'classic'; } catch (e) {}
+
+    // SOGo's own translation of a label (the l() function and labels of the page), or the label
+    var say = function (key) {
+      try { return typeof window.l === 'function' ? window.l(key) : key; } catch (e) { return key; }
+    };
+    var esc = function (text) {
+      return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    };
+
+    window.rtSetWebmailLayout = function (layout) {
+      try {
+        if (layout === 'classic') localStorage.setItem('rt_webmail_layout', 'classic');
+        else localStorage.removeItem('rt_webmail_layout');
+      } catch (e) {}
+      window.location.reload();
+    };
+
+    // Templates are parsed the way Angular parses them (innerHTML of an element), in a document
+    // that never loads or runs anything, changed, and written back only if a change was made.
+    var inert = document.implementation.createHTMLDocument('');
+    var html = function (markup) {
+      var t = inert.createElement('template');
+      t.innerHTML = markup;
+      return t.content;
+    };
+    var done = [];
+    var rewrite = function (id, changes) {
+      var script = document.getElementById(id), box, changed = false;
+      if (!script) return warn(id + ' not found');
+      box = inert.createElement('div');
+      box.innerHTML = script.text;
+      changes.forEach(function (change) {
+        var ok = false;
+        try { ok = change[1](box) === true; } catch (e) { warn(id + ': ' + change[0] + ': ' + e); }
+        if (ok) {
+          changed = true;
+          if (done.indexOf(change[0]) < 0) done.push(change[0]);
+        } else {
+          warn(id + ': "' + change[0] + '" skipped, the template is not as expected');
+        }
+      });
+      if (changed) script.text = box.innerHTML;
+    };
+
+    // ---- top bar (Mail screen and "No mailbox selected")
+    var layoutSwitch = function (box) {
+      var last = box.querySelector('md-toolbar.toolbar-main .sg-toolbar-group-last');
+      if (!last) return false;
+      var spacer = last.querySelector(':scope > div.hide-xs');
+      var title = classic ? 'Switch to the new layout' : 'Switch to the classic layout';
+      last.insertBefore(html(
+        '<md-button class="md-icon-button rt-layout-switch" aria-label="' + title + '"' +
+        ' onclick="rtSetWebmailLayout(\'' + (classic ? 'new' : 'classic') + '\')">' +
+        '<md-icon>' + (classic ? 'view_list' : 'view_column') + '</md-icon>' +
+        '<md-tooltip md-direction="bottom">' + title + '</md-tooltip></md-button>'), spacer);
+      return true;
+    };
+    var brand = function (box) {
+      var first = box.querySelector('md-toolbar.toolbar-main .sg-toolbar-group-1');
+      var toggle = first && first.querySelector('md-button[ng-click="toggleLeft()"].show-gt-md md-icon');
+      if (!toggle) return false;
+      // The button that hides the folder list is Gmail's menu button
+      toggle.textContent = 'menu';
+      first.appendChild(html('<a class="rt-brand" ng-href="{{::activeUser.path.mail}}" aria-label="' + esc(say('Mail')) + '"></a>'));
+      return true;
+    };
+
+    // ---- folder list: Compose at the top
+    var composeLabel = window.UserLanguage === 'English' ? 'Compose' : say('Write');
+    var compose = function (box) {
+      var header = box.querySelector('md-sidenav.md-sidenav-left > md-toolbar');
+      if (!header) return false;
+      header.parentNode.insertBefore(html(
+        '<div class="rt-compose-bar" flex-none="flex-none">' +
+        '<button type="button" class="rt-compose" ng-click="rtCompose($event)">' +
+        '<md-icon>edit</md-icon><span>' + esc(composeLabel) + '</span></button></div>'), header.nextSibling);
+      return true;
+    };
+    // One compose button on phones instead of SOGo's two-button menu
+    var fab = function (box) {
+      var dial = box.querySelector('md-fab-speed-dial.sg-fab-bottom-center');
+      var single = box.querySelector('md-button.md-fab.sg-fab-bottom-center[ng-if]');
+      if (!dial || !single) return false;
+      dial.parentNode.removeChild(dial);
+      single.removeAttribute('ng-if');
+      return true;
+    };
+
+    // ---- message list: search in the top bar
+    var search = function (box) {
+      var last = box.querySelector('md-toolbar.toolbar-main > .sg-toolbar-group-last');
+      var form = box.querySelector('.view-list form[sg-search]');
+      var input = form && form.querySelector('md-input-container > input[type="search"]');
+      var cancel = form && form.querySelector('md-button[sg-search-cancel]');
+      var tools = box.querySelector('.view-list md-toolbar > .md-toolbar-tools[ng-hide*="mode.search"]');
+      // sgSearch wires up every md-button in the form as its cancel button, so there must be one
+      if (!last || !input || !cancel || !tools || form.querySelectorAll('md-button').length !== 1) return false;
+      form.removeAttribute('ng-show');
+      form.classList.remove('md-toolbar-tools');
+      form.classList.add('rt-search');
+      form.insertBefore(html('<md-icon class="rt-search-icon" aria-hidden="true">search</md-icon>'), form.firstChild);
+      // The back arrow that ended a search becomes the clear button after the text
+      input.parentNode.parentNode.insertBefore(cancel, input.parentNode.nextSibling);
+      cancel.setAttribute('ng-show', '$sgSearchController.searchText');
+      cancel.setAttribute('aria-label', say('Close'));
+      var icon = cancel.querySelector('md-icon');
+      if (icon) icon.textContent = 'close';
+      input.setAttribute('rt-search-reset', '');
+      var more = form.querySelector('a.show-advanced-search md-icon');
+      if (more) more.textContent = 'tune';
+      last.parentNode.insertBefore(form, last);
+      // The list toolbar no longer gives way to the search form; its search button goes
+      tools.removeAttribute('ng-hide');
+      var button = tools.querySelector('md-button[ng-click^="mailbox.searchMode"]');
+      if (button) button.parentNode.removeChild(button);
+      return true;
+    };
+
+    // ---- message list: star and actions in each row
+    var rows = function (box) {
+      var item = box.querySelector('md-list-item.sg-message-list-item[md-virtual-repeat]');
+      var main = item && item.querySelector(':scope > .sg-message-list-item-main');
+      var name = ((item && item.getAttribute('md-virtual-repeat')) || '').match(/^\s*([\w$]+)\s+in\s/);
+      if (!main || !name) return false;
+      var m = name[1];
+      // Above the row's click target; mousedown stops here so a click doesn't start a drag
+      item.insertBefore(html(
+        '<div class="rt-star-cell" ng-mousedown="$event.stopPropagation()">' +
+        '<button type="button" class="rt-star" ng-class="{ \'rt-on\': ' + m + '.isflagged }"' +
+        ' ng-click="rtRow.star($event, ' + m + ')" aria-label="{{ ' + m + '.isflagged ? rtText.unflag : rtText.flag }}">' +
+        '<md-icon>{{ ' + m + '.isflagged ? \'star\' : \'star_border\' }}</md-icon></button></div>'), main);
+      item.appendChild(html(
+        '<div class="rt-row-actions" ng-if="::!rtRow.virtual()" ng-mousedown="$event.stopPropagation()">' +
+        '<button type="button" class="rt-act" ng-show="rtRow.canArchive(' + m + ')" ng-click="rtRow.archive($event, ' + m + ')"' +
+        ' title="{{ ::rtText.archive }}" aria-label="{{ ::rtText.archive }}"><md-icon>archive</md-icon></button>' +
+        '<button type="button" class="rt-act" ng-show="rtRow.canDelete(' + m + ')" ng-click="rtRow.remove($event, ' + m + ')"' +
+        ' title="{{ ::rtText.remove }}" aria-label="{{ ::rtText.remove }}"><md-icon>delete</md-icon></button>' +
+        '<button type="button" class="rt-act" ng-click="rtRow.read($event, ' + m + ')"' +
+        ' title="{{ ' + m + '.isread ? rtText.unread : rtText.read }}" aria-label="{{ ' + m + '.isread ? rtText.unread : rtText.read }}">' +
+        '<md-icon>{{ ' + m + '.isread ? \'markunread\' : \'drafts\' }}</md-icon></button></div>'));
+      return true;
+    };
+
+    // ---- open message: back arrow and Archive
+    var back = function (box) {
+      var actions = box.querySelector('md-card-actions');
+      var close = actions && actions.querySelector('md-button[ng-click="viewer.close()"]');
+      var icon = close && close.querySelector('md-icon');
+      if (!icon) return false;
+      close.classList.remove('hide-gt-xs');
+      close.classList.add('rt-back');
+      close.setAttribute('aria-label', say('Back'));
+      icon.textContent = 'arrow_back';
+      // SOGo's button that hides the list; the list is already hidden while a message is open
+      var center = actions.querySelector('md-button[ng-click^="toggleCenter"]');
+      if (center) center.parentNode.removeChild(center);
+      close.parentNode.insertBefore(html(
+        '<md-button class="sg-icon-button rt-archive" ng-show="rtRow.canArchive(viewer.message)"' +
+        ' ng-click="rtRow.archive($event, viewer.message)" aria-label="{{ ::rtText.archive }}">' +
+        '<md-tooltip md-direction="bottom">{{ ::rtText.archive }}</md-tooltip><md-icon>archive</md-icon></md-button>'), close.nextSibling);
+      return true;
+    };
+
+    var layout = ['layout', layoutSwitch];
+    if (classic) {
+      rewrite('UIxMailMainFrame', [layout]);
+      rewrite('UIxMailFolderTemplate', [layout]);
+      return;
+    }
+
+    // ---- Angular: the functions the new markup calls, and compose as a window. Registered
+    // before any template changes, so if this fails nothing is changed.
+    var mail = angular.module('SOGo.MailerUI');
+    mail.directive('rtSearchReset', function () {
+      // Emptying the search box shows the whole folder again
+      return {
+        restrict: 'A',
+        link: function (scope, element) {
+          element.on('input', function () {
+            if (element.val()) return;
+            scope.$evalAsync(function () {
+              var list = window.$mailboxController;
+              if (list && list.cancelSearch) list.cancelSearch();
+            });
+          });
+        }
+      };
+    });
+
+    mail.config(['$provide', function ($provide) {
+      $provide.decorator('$mdDialog', ['$delegate', '$injector', function ($delegate, $injector) {
+        var show = $delegate.show, open = 0;
+        $delegate.show = function (options) {
+          var o = options && options._options ? options._options : options;
+          try {
+            if (o && o.templateUrl === 'UIxMailEditor' && $injector.get('$mdMedia')('gt-sm')) {
+              // A window at the bottom right; the mail behind it stays usable
+              var index = open, showing = o.onShowing;
+              o.hasBackdrop = false;
+              o.disableParentScroll = false;
+              o.multiple = true;
+              o.onShowing = function (scope, element) {
+                element.addClass('rt-float');
+                element[0].style.setProperty('--rt-float-index', index);
+                if (showing) return showing.apply(this, arguments);
+              };
+              open++;
+              var closed = function () { open--; };
+              var promise = show.apply(this, arguments);
+              promise.then(closed, closed);
+              return promise;
+            }
+            // Other dialogs would close an open compose window
+            if (o && open > 0) o.multiple = true;
+          } catch (e) {
+            warn('compose window: ' + e);
+          }
+          return show.apply(this, arguments);
+        };
+        return $delegate;
+      }]);
+    }]);
+
+    mail.run(['$rootScope', '$state', '$injector', function ($rootScope, $state, $injector) {
+      var get = function (name) { return $injector.has(name) ? $injector.get(name) : null; };
+      var Mailbox = get('Mailbox'), $mdToast = get('$mdToast'), $mdSidenav = get('$mdSidenav'), sgConstant = get('sgConstant');
+      $rootScope.rtText = {
+        archive: say('Archive'),
+        remove: say('Delete'),
+        read: say('Mark as Read'),
+        unread: say('Mark as Unread'),
+        flag: say('Flag'),
+        unflag: say('Unflag')
+      };
+      var stop = function ($event) {
+        if ($event) {
+          $event.stopPropagation();
+          $event.preventDefault();
+        }
+      };
+      var toast = function (message) {
+        if ($mdToast) $mdToast.show($mdToast.simple().textContent(message)
+          .position(sgConstant ? sgConstant.toastPosition : 'bottom right').hideDelay(2000));
+      };
+      // mailcow creates an Archive folder (special-use \Archive) in every mailbox
+      var archiveOf = function (message) {
+        var account = message && message.$mailbox && message.$mailbox.$account;
+        if (!account || !account.$getMailboxByPath) return null;
+        if (account.$rtArchiveOf !== account.$mailboxes) {
+          account.$rtArchiveOf = account.$mailboxes;
+          account.$rtArchive = account.$getMailboxByPath('Archive') || null;
+        }
+        return account.$rtArchive;
+      };
+      // Removes a message from its folder; an open message closes and the list shows again
+      var remove = function (message, action, done) {
+        var folder = message.$mailbox;
+        var open = folder.$selectedMessage == message.uid;
+        action(folder).then(function () {
+          if (open) $state.go('mail.account.mailbox');
+          if (done) toast(done);
+        }, function () {
+          toast(say('Error'));
+        });
+      };
+      $rootScope.rtRow = {
+        virtual: function () { return !!(Mailbox && Mailbox.$virtualMode); },
+        canArchive: function (message) {
+          var archive = archiveOf(message);
+          return !!archive && message.$mailbox.path !== archive.path && !this.virtual();
+        },
+        // In Trash, SOGo deletes for good; that stays behind its confirmation in the message view
+        canDelete: function (message) { return !!(message && message.$mailbox) && message.$mailbox.type !== 'trash'; },
+        star: function ($event, message) {
+          stop($event);
+          if (message && message.toggleFlag) message.toggleFlag();
+        },
+        read: function ($event, message) {
+          stop($event);
+          if (message && message.toggleRead) message.toggleRead();
+        },
+        remove: function ($event, message) {
+          stop($event);
+          if (!this.canDelete(message)) return;
+          remove(message, function (folder) { return folder.$deleteMessages([message]); });
+        },
+        archive: function ($event, message) {
+          stop($event);
+          if (!this.canArchive(message)) return;
+          var archive = archiveOf(message);
+          remove(message, function (folder) { return folder.$moveMessages([message], '/' + archive.id); },
+            say('%{0} message(s) moved').replace('%{0}', '1'));
+        }
+      };
+      $rootScope.rtCompose = function ($event) {
+        var list = window.$mailboxController;
+        if (list && list.newMessage) list.newMessage($event);
+        try {
+          var nav = $mdSidenav && $mdSidenav('left');
+          if (nav && !nav.isLockedOpen()) nav.close();
+        } catch (e) {}
+      };
+    }]);
+
+    rewrite('UIxMailMainFrame', [layout, ['brand', brand], ['compose', compose]]);
+    rewrite('UIxMailFolderTemplate', [layout, ['brand', brand], ['search', search], ['rows', rows], ['fab', fab]]);
+    rewrite('UIxMailViewTemplate', [['back', back]]);
+    root.classList.add('rt-gmail');
+    done.forEach(function (change) { root.classList.add('rt-gmail-' + change); });
+
+    var style = document.createElement('style');
+    style.id = 'rabbittech-sogo-mail';
+    style.textContent = String.raw`
+:root.rt-gmail {
+  --rt-g-search: #eceef5;
+  --rt-g-row: var(--rt-surface-2);
+  --rt-g-row-unread: var(--rt-surface);
+  --rt-g-lift: 0 1px 2px rgba(16, 18, 40, .16), 0 1px 3px 1px rgba(16, 18, 40, .1);
+  --rt-g-gap: 16px;
+  --rt-g-left: 0;
+}
+:root.rt-gmail[data-theme="dark"] {
+  --rt-g-search: #1c212c;
+  --rt-g-row: var(--rt-surface);
+  --rt-g-row-unread: var(--rt-surface-2);
+  --rt-g-lift: 0 1px 2px rgba(0, 0, 0, .5), 0 1px 4px 1px rgba(0, 0, 0, .35);
+}
+/* No folder list beside the mail (narrow window, or hidden with the menu button) */
+html.rt-gmail body:not(:has(md-sidenav.md-locked-open:not(.sg-close))) { --rt-g-left: 1; }
+@media (max-width: 599px) {
+  :root.rt-gmail { --rt-g-gap: 0px; }
+}
+
+/* ------------------------------------------------------------ page and folders */
+html.rt-gmail body,
+html.rt-gmail main.view { background-color: var(--rt-bg); }
+html.rt-gmail md-sidenav.md-sidenav-left,
+html.rt-gmail md-sidenav.md-sidenav-left > md-content { background-color: var(--rt-bg) !important; box-shadow: none; }
+html.rt-gmail md-sidenav.md-sidenav-left:not(.md-locked-open) { box-shadow: var(--rt-shadow-lg); }
+@media (min-width: 960px) {
+  html.rt-gmail md-sidenav.md-sidenav-left.md-locked-open { flex: 0 0 256px; width: 256px; min-width: 256px; max-width: 256px; }
+  html.rt-gmail md-sidenav.md-sidenav-left.md-locked-open.sg-close { margin-right: -256px; }
+}
+/* The top of the folder list lines up with the top bar: logo and settings, the user is in the account row */
+html.rt-gmail md-sidenav > md-toolbar.md-tall:not(.md-menu-toolbar),
+html.rt-gmail md-sidenav > md-toolbar.md-tall.md-default-theme:not(.md-menu-toolbar) {
+  height: 64px;
+  min-height: 64px;
+  max-height: 64px;
+  justify-content: center;
+  padding: 0 8px 0 16px;
+  background-color: transparent;
+  box-shadow: none;
+}
+html.rt-gmail md-sidenav > md-toolbar.md-tall::before { top: 15px; left: 22px; }
+html.rt-gmail md-sidenav > md-toolbar.md-tall > sg-avatar-image,
+html.rt-gmail md-sidenav > md-toolbar.md-tall > div[layout="row"] > div { display: none; }
+html.rt-gmail md-sidenav > md-toolbar.md-tall > div[layout="row"] { justify-content: flex-end; padding-left: 0; }
+
+.rt-compose-bar { padding: 4px 0 12px 8px; }
+.rt-compose {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  height: 56px;
+  min-width: 140px;
+  padding: 0 24px 0 18px;
+  border: 0;
+  border-radius: 16px;
+  background-color: var(--rt-primary-soft-2);
+  color: var(--rt-primary-text);
+  font: 600 14px/1 var(--rt-font);
+  cursor: pointer;
+  transition: box-shadow .15s;
+}
+.rt-compose:hover { box-shadow: var(--rt-g-lift); }
+html .rt-compose md-icon { color: inherit; margin: 0; }
+
+/* Account row and quota, quieter */
+html.rt-gmail md-sidenav .sg-account-section > md-list > md-list-item { padding-left: 12px; }
+/* Folders: pills against the left edge, unread counts as bold numbers */
+html.rt-gmail md-sidenav.md-sidenav-left md-list-item.sg-mailbox-list-item.md-clickable {
+  margin: 0 12px 0 0;
+  padding-left: 12px;
+  border-radius: 0 999px 999px 0;
+}
+html.rt-gmail md-sidenav md-list-item.sg-mailbox-list-item.md-background.md-hue-1.md-bg {
+  background-color: var(--rt-primary-soft-2) !important;
+}
+html.rt-gmail md-sidenav md-list-item.sg-mailbox-list-item .sg-counter-badge,
+html.rt-gmail md-sidenav md-list-item.sg-mailbox-list-item.md-bg .sg-counter-badge {
+  min-width: 0;
+  padding: 0 0 0 8px;
+  background-color: transparent;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------------- top bar */
+html.rt-gmail md-toolbar.toolbar-main:not(.md-menu-toolbar),
+html.rt-gmail md-toolbar.toolbar-main.md-default-theme:not(.md-menu-toolbar) {
+  background-color: var(--rt-bg);
+  box-shadow: none;
+}
+html.rt-gmail .toolbar-main > .md-toolbar-tools { flex: 0 0 auto; width: auto; }
+html.rt-gmail .toolbar-main > .sg-toolbar-group-1 { padding: 0 4px 0 8px; }
+html.rt-gmail .toolbar-main > .sg-toolbar-group-last { padding: 0 8px 0 4px; }
+html.rt-gmail .rt-brand {
+  display: none;
+  flex: none;
+  width: 150px;
+  height: 32px;
+  margin: 0 8px 0 4px;
+  background: var(--rt-logo) no-repeat left center / contain;
+}
+@media (min-width: 600px) {
+  html.rt-gmail body:not(:has(md-sidenav.md-locked-open:not(.sg-close))) .rt-brand { display: block; }
+}
+
+/* Search box */
+html.rt-gmail-search .toolbar-main > form.rt-search {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
+  max-width: 720px;
+  height: 48px;
+  margin: 0 auto 0 8px;
+  padding: 0 4px 0 6px;
+  border-radius: 24px;
+  background-color: var(--rt-g-search);
+  transition: background-color .15s, box-shadow .15s;
+}
+html.rt-gmail-search .toolbar-main > form.rt-search:focus-within { background-color: var(--rt-surface); box-shadow: var(--rt-g-lift); }
+html.rt-gmail-search form.rt-search md-icon,
+html.rt-gmail-search form.rt-search .md-button md-icon { color: var(--rt-muted); }
+html.rt-gmail-search form.rt-search .rt-search-icon { flex: none; margin: 0 6px 0 8px; }
+html.rt-gmail-search form.rt-search md-input-container { margin: 0; padding: 0; }
+html.rt-gmail-search form.rt-search md-input-container.md-flex { flex: 1 1 auto; min-width: 0; }
+html.rt-gmail-search form.rt-search md-input-container .md-errors-spacer { display: none; }
+html.rt-gmail-search form.rt-search md-input-container .md-input {
+  height: 46px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--rt-text);
+  font-size: 16px;
+}
+html.rt-gmail-search form.rt-search md-input-container .md-input::placeholder { color: var(--rt-muted); opacity: 1; }
+html.rt-gmail-search form.rt-search [ng-messages] {
+  position: absolute;
+  top: 52px;
+  left: 48px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background-color: var(--rt-tooltip);
+  color: var(--rt-tooltip-text);
+  font-size: 12px;
+}
+html.rt-gmail-search form.rt-search [ng-messages]:empty { display: none; }
+html.rt-gmail-search form.rt-search md-input-container[flex] { flex: 0 0 auto; max-width: 180px; margin: 0 4px; }
+html.rt-gmail-search form.rt-search md-select { margin: 0; }
+html.rt-gmail-search form.rt-search md-select .md-select-value {
+  min-height: 32px;
+  padding: 0 4px 0 8px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--rt-muted);
+  font-size: 13px;
+}
+html.rt-gmail-search form.rt-search md-select:not([disabled]):focus .md-select-value { color: var(--rt-text); border: 0; padding-bottom: 0; }
+html.rt-gmail-search form.rt-search .md-button,
+html.rt-gmail-search form.rt-search a.sg-icon-button {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  margin: 0;
+  padding: 8px;
+  border-radius: 50%;
+  line-height: 24px;
+}
+html.rt-gmail-search form.rt-search a.sg-icon-button:hover { background-color: var(--rt-hover); }
+@media (max-width: 959px) {
+  html.rt-gmail-search form.rt-search md-input-container[flex] { display: none; }
+}
+/* Phones: the search box gets its own row under the menu and app buttons */
+@media (max-width: 759px) {
+  html.rt-gmail-search md-toolbar.toolbar-main:not(.md-menu-toolbar) { flex-wrap: wrap; }
+  html.rt-gmail-search .toolbar-main > .sg-toolbar-group-last { margin-left: auto; }
+  html.rt-gmail-search .toolbar-main > form.rt-search { order: 3; flex: 1 0 calc(100% - 24px); max-width: none; margin: 0 12px 8px; }
+}
+
+/* ------------------------------------------------------------ message list */
+html.rt-gmail [ui-view="mailbox"] .sg-block-print {
+  position: relative;
+  padding: 0 var(--rt-g-gap) var(--rt-g-gap) calc(var(--rt-g-gap) * var(--rt-g-left));
+}
+html.rt-gmail .view-list {
+  border-radius: 16px;
+  box-shadow: none;
+  overflow: hidden;
+}
+@media (max-width: 599px) {
+  html.rt-gmail .view-list { border-radius: 0; }
+}
+html.rt-gmail .view-list > md-toolbar:not(.md-menu-toolbar) { min-height: 48px; }
+html.rt-gmail .view-list > md-toolbar > .md-toolbar-tools,
+html.rt-gmail .view-list > md-toolbar > form.md-toolbar-tools { height: 48px; max-height: 48px; padding: 0 8px 0 12px; }
+html.rt-gmail .view-list .sg-folder-name { margin: 0 4px; font-size: 15px; }
+html.rt-gmail .view-list md-content > md-subheader,
+html.rt-gmail .view-list md-subheader.md-default-theme { font-size: 11.5px; }
+
+html.rt-gmail md-list-item.sg-message-list-item { background-color: var(--rt-g-row); }
+html.rt-gmail md-list-item.sg-message-list-item.unread { background-color: var(--rt-g-row-unread); }
+html.rt-gmail md-list-item.sg-message-list-item.unread::before { display: none; }
+html.rt-gmail md-list-item.sg-message-list-item:not(.md-bg):hover { z-index: 2; background-color: var(--rt-g-row); box-shadow: var(--rt-g-lift); }
+html.rt-gmail md-list-item.sg-message-list-item.unread:not(.md-bg):hover { background-color: var(--rt-g-row-unread); }
+html.rt-gmail md-list-item.sg-message-list-item:not(.md-bg):has(.sg-avatar-selected) { background-color: var(--rt-primary-soft); }
+
+/* Wide windows: one line per message, the avatar is a checkbox */
+@media (min-width: 960px) {
+  html.rt-gmail md-list-item.sg-message-list-item .sg-message-list-item-main { display: flex; align-items: center; min-width: 0; }
+  html.rt-gmail md-list-item.sg-message-list-item:not(.sg-skeleton) .sg-tile-content,
+  html.rt-gmail md-list-item.sg-message-list-item:not(.sg-skeleton) .sg-tile-content > .sg-md-subhead,
+  html.rt-gmail md-list-item.sg-message-list-item:not(.sg-skeleton) .sg-tile-content > .sg-md-body { display: contents; }
+  html.rt-gmail md-list-item.sg-message-list-item .sg-md-subhead > div:first-child {
+    order: 1;
+    flex: 0 0 200px;
+    width: 200px;
+    padding-right: 20px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  html.rt-gmail md-list-item.sg-message-list-item .sg-md-body > .sg-tile-btn { order: 2; margin: 0 6px 0 -14px !important; }
+  html.rt-gmail md-list-item.sg-message-list-item .sg-md-body > .sg-category-dot-container { order: 3; }
+  html.rt-gmail md-list-item.sg-message-list-item .sg-md-body > .sg-tile-subject {
+    order: 4;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px;
+    color: var(--rt-text-2);
+  }
+  html.rt-gmail md-list-item.sg-message-list-item.unread .sg-md-body > .sg-tile-subject { color: var(--rt-text); }
+  html.rt-gmail md-list-item.sg-message-list-item .sg-md-body > .sg-tile-size { display: none; }
+  html.rt-gmail md-list-item.sg-message-list-item .sg-tile-icons { order: 5; flex-direction: row; width: auto; height: auto; padding-left: 8px; }
+  html.rt-gmail-rows md-list-item.sg-message-list-item .sg-tile-icons .sg-icon-star { display: none; }
+  html.rt-gmail md-list-item.sg-message-list-item .sg-md-subhead > .sg-tile-date {
+    order: 6;
+    flex: 0 0 auto;
+    min-width: 64px;
+    padding-left: 12px;
+    text-align: right;
+    font-size: 12.5px;
+  }
+  html.rt-gmail .view-list md-list-item.sg-message-list-item .sg-avatar-selectable {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    font-family: "Material Icons";
+    font-size: 40px;
+  }
+  html.rt-gmail .view-list md-list-item.sg-message-list-item .sg-avatar-selectable::before { content: "\e835"; margin: 0 8px; font-size: 20px; color: var(--rt-subtle); }
+  html.rt-gmail .view-list md-list-item.sg-message-list-item .sg-avatar-selectable.sg-avatar-selected::before { content: "\e834"; color: var(--rt-primary); }
+  html.rt-gmail .view-list md-list-item.sg-message-list-item .sg-avatar-selectable > * { display: none; }
+}
+
+/* Star, and the actions that take the date's place under the pointer */
+html.rt-gmail-rows .rt-star-cell,
+html.rt-gmail-rows .rt-row-actions { display: none; }
+html.rt-gmail-rows .rt-star,
+html.rt-gmail-rows .rt-act {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--rt-subtle);
+  cursor: pointer;
+}
+html.rt-gmail-rows .rt-star md-icon,
+html.rt-gmail-rows .rt-act md-icon { color: inherit; }
+html.rt-gmail-rows .rt-star:hover,
+html.rt-gmail-rows .rt-act:hover { background-color: var(--rt-hover); color: var(--rt-text); }
+html.rt-gmail-rows .rt-star.rt-on { color: var(--rt-flag); }
+@media (min-width: 960px) {
+  html.rt-gmail-rows .rt-star-cell { position: relative; z-index: 2; display: flex; flex: none; margin: 0 6px 0 -4px; }
+  html.rt-gmail-rows .rt-star { width: 32px; height: 32px; }
+  html.rt-gmail-rows .rt-star md-icon { font-size: 20px; min-width: 20px; min-height: 20px; width: 20px; height: 20px; }
+}
+@media (min-width: 960px) and (hover: hover) {
+  html.rt-gmail-rows md-list-item.sg-message-list-item:hover .rt-row-actions {
+    position: absolute;
+    z-index: 2;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    padding: 0 8px 0 4px;
+    background-color: var(--rt-g-row);
+  }
+  html.rt-gmail-rows md-list-item.sg-message-list-item.unread:hover .rt-row-actions { background-color: var(--rt-g-row-unread); }
+  html.rt-gmail-rows md-list-item.sg-message-list-item:has(.sg-avatar-selected):hover .rt-row-actions { background-color: var(--rt-primary-soft); }
+  html.rt-gmail-rows md-list-item.sg-message-list-item:hover .sg-tile-date,
+  html.rt-gmail-rows md-list-item.sg-message-list-item:hover .sg-tile-icons { visibility: hidden; }
+  html.rt-gmail-rows .rt-act { width: 40px; height: 40px; }
+  html.rt-gmail-rows .rt-act md-icon { font-size: 20px; min-width: 20px; min-height: 20px; width: 20px; height: 20px; }
+}
+
+/* ------------------------------------------- the open message takes the list's place */
+html.rt-gmail-back .view-list,
+html.rt-gmail-back .view-list.view-list--close { flex: 1 1 auto; max-width: none; margin-right: 0; transform: none; }
+html.rt-gmail-back #detailView.view-detail {
+  position: absolute;
+  z-index: 11;
+  top: 0;
+  right: var(--rt-g-gap);
+  bottom: var(--rt-g-gap);
+  left: calc(var(--rt-g-gap) * var(--rt-g-left));
+  border-radius: 16px;
+  background-color: var(--rt-surface) !important;
+}
+html.rt-gmail-back #detailView.view-detail.sg-close { display: none; }
+html.rt-gmail-back .sg-block-print:has(> #detailView:not(.sg-close)) > .view-list { visibility: hidden; }
+html.rt-gmail-back .sg-block-print:has(> #detailView:not(.sg-close)) > .sg-fab-bottom-center { display: none; }
+html.rt-gmail-back .view-detail md-card,
+html.rt-gmail-back .view-detail md-card.md-default-theme { border: 0; border-radius: 0; box-shadow: none; }
+@media (max-width: 599px) {
+  html.rt-gmail-back #detailView.view-detail { border-radius: 0; }
+}
+
+/* Compose button on narrow windows; the Compose pill replaces it when the folder list shows */
+html.rt-gmail .sg-fab-bottom-center,
+html.rt-gmail .sg-fab-bottom-center.sg-center-close,
+html.rt-gmail .sg-fab-bottom-center.sg-sidenav-close { top: auto; right: calc(var(--rt-g-gap) + 16px); bottom: calc(var(--rt-g-gap) + 16px); left: auto; }
+html.rt-gmail-compose body:has(md-sidenav.md-locked-open:not(.sg-close)) .sg-fab-bottom-center { display: none; }
+
+/* ---------------------------------------------- compose window at the bottom right */
+.md-dialog-container.rt-float {
+  justify-content: flex-end;
+  align-items: flex-end;
+  padding-right: 24px;
+  pointer-events: none;
+}
+.md-dialog-container.rt-float > md-dialog.sg-mail-editor {
+  flex: none;
+  width: 560px;
+  max-width: calc(100vw - 48px);
+  height: min(640px, calc(100vh - 72px));
+  min-height: 0;
+  max-height: none;
+  margin-right: calc(var(--rt-float-index, 0) * 576px);
+  border-radius: 14px 14px 0 0;
+  border-bottom: 0;
+  box-shadow: 0 8px 10px 1px rgba(16, 18, 40, .14), 0 3px 14px 2px rgba(16, 18, 40, .12), 0 5px 5px -3px rgba(16, 18, 40, .2);
+  pointer-events: auto;
+}
+/* SOGo's expand button makes it large and centred */
+.md-dialog-container.rt-float:has(> md-dialog.sg-mail-editor.flex-100) { justify-content: center; align-items: center; padding: 0; }
+.md-dialog-container.rt-float > md-dialog.sg-mail-editor.flex-100 {
+  width: min(1100px, calc(100vw - 96px));
+  height: calc(100vh - 96px);
+  margin: 0;
+  border-radius: 14px;
+  border-bottom: 1px solid var(--rt-border);
+}
+`;
+    (document.head || root).appendChild(style);
+  } catch (e) {
+    warn('not applied: ' + e);
+  }
+})();
+
 // redirect to mailcow login form
 document.addEventListener('DOMContentLoaded', function () {
     var loginForm = document.forms.namedItem("loginForm");
