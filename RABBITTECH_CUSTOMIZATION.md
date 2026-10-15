@@ -52,9 +52,20 @@ How it works:
   If upstream adds a tab that `nav.twig` doesn't list, that strip reappears automatically, so the new
   page stays reachable until it gets a sidebar entry.
 - **Overview** (`dashboard.twig`):
-  - A "Needs attention" card, shown only when something is wrong: a stopped or unhealthy
-    container, mail storage at 85% or more, a TLS certificate that expires within 14 days (checked
-    against what nginx actually serves, cached for up to 6 hours), or 50+ messages in the mail queue.
+  - A "Needs attention" card, shown only when something is wrong, most severe first:
+    - a stopped or unhealthy container, mail storage at 85% or more, or 50+ messages in the queue;
+    - the TLS certificate nginx actually serves: still mailcow's placeholder (no certificate issued
+      yet), expired, or expiring within 14 days. The reason comes from the ACME container's own log
+      (for example "DNS has an IPv6 (AAAA) record … but mailcow runs without IPv6"), with a link to
+      that log;
+    - backups: none yet, turned off, failed (with the reason), older than 36 hours, or the
+      off-site copy failed (see [Backups](#backups));
+    - mail DNS, for every active domain: MX pointing here, SPF including this server's IP (`ip4:`
+      ranges included), the DKIM key published, a DMARC record, and reverse DNS of the server's IP.
+      Domains with the same problem share one alert.
+  - The certificate and DNS results are cached in Redis (6 hours when fine, 1 hour while something
+    is wrong); "Check again" (`?recheck=1`) clears them. A check that can't run raises no alert.
+  - The server card shows when the last backup was made.
   - Live counts of domains, mailboxes, aliases, queued mail and quarantine. The quarantine is
     counted on the server; the others are read from `/api/v1`.
   - A server status card and quick actions.
@@ -226,7 +237,9 @@ two supported hooks, both loaded on every SOGo page (`SOGoUIAdditionalJSFiles` i
 `.github/workflows/ci.yml` checks the theme assets, runs `node --check` on the touched JavaScript,
 parses every Twig template with `scripts/check-twig-templates.php`, checks that every language file
 is valid JSON and every RabbitTech string in use exists (`scripts/check-rabbittech-lang.php`), and
-tests that a release sync keeps runtime files and admin-edited maps.
+tests that a release sync keeps runtime files and admin-edited maps. It also runs the backup
+script against a fake mailcow helper (`tests/backup/test-backup.sh`) and tests the ACME log reader
+and SPF range check behind the Overview alerts (`tests/php/overview-checks.php`).
 
 A second job runs the UI smoke tests and uploads their screenshots as the `ui-screenshots` artifact.
 
@@ -237,7 +250,7 @@ server:
 
 - `router.php` renders the real templates and CSS/JS bundles from `data/web` with stub data and a
   stub API. Environment switches select 2FA, a language, a session lifetime or Overview problem
-  states (see the top of the file). Run it on its own with
+  states: certificate, ACME reason, backups, mail DNS (see the top of the file). Run it on its own with
   `php -S 127.0.0.1:8088 tests/ui/router.php` to look at pages by hand.
 - `sogo/prepare.sh` builds a webmail mock from SOGo's own stylesheets and scripts at the version in
   `docker-compose.yml`, plus `data/conf/sogo`, with page markup copied from SOGo's templates.
@@ -303,6 +316,54 @@ server, which calls `scripts/sync-release.sh` to copy it into `/opt/rabbittech-m
   `data/web/inc/` or any `data/web/**/*.php` changed. CSS and JS bundles are named by their content
   and update without a restart.
 - **Old releases are pruned.** Only the newest three are kept in `releases/`.
+
+### Backups
+
+`scripts/backup-mail.sh` backs up everything needed to restore the server: mailboxes, the database,
+DKIM and other keys (crypt), Redis, spam filter and Postfix data, plus `mailcow.conf`. It wraps
+mailcow's `helper-scripts/backup_and_restore.sh`.
+
+- **Schedule:** the deploy adds an hourly entry to the deploy user's crontab (between
+  `# BEGIN rabbittech-backup` and `# END` markers). The script backs up once a day after
+  `RT_BACKUP_HOUR` (default 2) in the mail server's `TZ`, and catches up right away when the last
+  backup is more than 26 hours old. After a failure it tries again after 4 hours.
+- **Where:** `/opt/rabbittech-mailserver/backups/mail/mailcow-<date>/`. The cron log is
+  `backups/backup.log`; the full output of the last run is `backups/backup-last-run.log`.
+- **Checks:** every archive must exist and be non-empty, or the backup counts as failed and its
+  folder is removed. Before starting, there must be room for half again the size of the last
+  backup; older backups are deleted to make room, but the last one is kept.
+- **Retention:** backups older than `RT_BACKUP_KEEP_DAYS` (default 7) are deleted, never the newest
+  two.
+- **Off-site copy:** set `RT_BACKUP_RSYNC_TARGET` (e.g. `backup@nas.example.com:/srv/mail`) and allow
+  the deploy user's SSH key there; the backups folder is mirrored after each backup.
+- **Status:** written to Redis (`RT_BACKUP_STATUS`) for the Overview.
+- **Settings** go in the GitHub secret `MAILCOW_ENV_FILE` (see `deploy/mailcow.conf.example`):
+  `RT_BACKUP=n` turns backups off.
+- **Back up now:** `cd /opt/rabbittech-mailserver/app && RT_BACKUP_NOW=1 bash scripts/backup-mail.sh`
+- **Restore:** `cd /opt/rabbittech-mailserver/app && MAILCOW_BACKUP_LOCATION=/opt/rabbittech-mailserver/backups/mail bash helper-scripts/backup_and_restore.sh restore`
+  asks which backup and which parts to restore.
+
+### Behind another nginx
+
+When another nginx on the server owns ports 80 and 443 and passes `mail.<domain>` on to mailcow
+(`HTTP_BIND=127.0.0.1`, `HTTP_PORT=8088`, `HTTPS_PORT=8448` or similar):
+
+- **Pass the visitor's address on**, or every console and webmail login looks like it comes from
+  Docker's network: the logs can't tell who signed in and Fail2ban never bans anyone for web
+  logins. In each `location` that proxies to mailcow:
+  ```nginx
+  proxy_set_header Host $host;
+  proxy_set_header X-Real-IP $remote_addr;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $scheme;
+  ```
+  mailcow's nginx trusts these headers from private networks, which includes Docker's.
+- **Certificates:** Let's Encrypt follows the usual port 80 to HTTPS redirect, so ACME works as long
+  as the HTTPS server block passes `/.well-known/acme-challenge/` on to mailcow. Don't publish an
+  AAAA record unless mailcow runs with IPv6 (`ENABLE_IPV6=true`): ACME checks IPv6 first and gives
+  up.
+- **Alerts by email:** set `WATCHDOG_NOTIFY_EMAIL` so mailcow's health monitor emails you when a
+  service stops.
 
 ### Manual updates
 

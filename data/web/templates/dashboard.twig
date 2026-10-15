@@ -39,8 +39,8 @@
           <h2 class="rt-alerts-title" id="rt-alerts-title"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i>{{ t.alert_title }}</h2>
           <ul class="rt-alerts-list">
             {% for alert in rt_alerts|default([]) %}
-            {%- if alert.key starts with 'cert_' -%}
-              {%- set rt_value = '<time datetime="' ~ alert.value|date('Y-m-d') ~ '" data-rt-date>' ~ alert.value|date('Y-m-d') ~ '</time>' -%}
+            {%- if alert.date -%}
+              {%- set rt_value = '<time datetime="' ~ alert.date|date('Y-m-d') ~ '" data-rt-date>' ~ alert.date|date('Y-m-d') ~ '</time>' -%}
             {%- elseif alert.key starts with 'container_' -%}
               {%- set rt_value = '<strong>' ~ (t['svc_' ~ alert.value]|default(alert.value))|e ~ '</strong>' -%}
             {%- else -%}
@@ -48,7 +48,10 @@
             {%- endif %}
             <li class="rt-alert rt-alert-{{ alert.level }}">
               <span class="rt-alert-text">{{ t['alert_' ~ alert.key]|format(rt_value)|raw }}</span>
-              <span class="rt-alert-hint">{{ t['alert_' ~ alert.key ~ '_hint'] }}</span>
+              {#- A hint from the check itself (the ACME reason, the backup error) replaces the general one #}
+              <span class="rt-alert-hint">{{ alert.hint|default(t['alert_' ~ alert.key ~ '_hint']) }}
+                {%- for link in alert.links|default([]) %} <a href="{{ link.href }}">{{ link.text }}</a>{% endfor -%}
+              </span>
             </li>
             {% endfor %}
           </ul>
@@ -86,6 +89,13 @@
                     <dl class="rt-meta">
                       <div><dt><i class="bi bi-globe2" aria-hidden="true"></i>{{ lang.debug.timezone }}</dt><dd>{{ timezone }}</dd></div>
                       <div><dt><i class="bi bi-cpu" aria-hidden="true"></i>{{ lang.debug.architecture }}</dt><dd id="host_architecture">-</dd></div>
+                      <div><dt><i class="bi bi-archive" aria-hidden="true"></i>{{ t.last_backup }}</dt><dd>
+                        {%- if rt_backup_last -%}
+                        <time datetime="{{ rt_backup_last|date('c') }}" data-rt-time="{{ rt_backup_last }}" title="{{ rt_backup_last|date('Y-m-d H:i') }}">{{ rt_backup_last|date('Y-m-d H:i') }}</time>
+                        {%- else -%}
+                        {{ t.backup_none }}
+                        {%- endif -%}
+                      </dd></div>
                     </dl>
                   </div>
                   {# No containers means the Docker API didn't answer, not that everything runs #}

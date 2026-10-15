@@ -19,7 +19,7 @@ jobs:
 
       - name: Validate shell scripts
         run: |
-          bash -n scripts/bootstrap-vps.sh scripts/deploy-vps.sh
+          bash -n scripts/bootstrap-vps.sh scripts/deploy-vps.sh scripts/backup-mail.sh
           sh -n scripts/sync-release.sh
 
       - name: Test release sync
@@ -39,6 +39,9 @@ jobs:
           grep -qx generated "$app/data/conf/postfix/sql/runtime.cf"
           grep -qx edited "$app/data/conf/rspamd/custom/ip_wl.map"
           test "$(cat "$state/release-changes")" = README.md
+
+      - name: Test nightly backups
+        run: bash tests/backup/test-backup.sh
 
       - name: Validate Docker Compose file
         run: docker compose config >/dev/null
@@ -92,6 +95,9 @@ jobs:
 
       - name: Check RabbitTech UI strings
         run: php scripts/check-rabbittech-lang.php
+
+      - name: Test the Overview checks
+        run: php tests/php/overview-checks.php
 
   ui:
     name: UI smoke tests
