@@ -506,7 +506,30 @@ $(document).ready(function() {
     getJSON('/api/v1/get/mailq/all').then(function(queue) {
       var count = Array.isArray(queue) ? queue.length : 0;
       setKpi('queue', number.format(count), count ? rt.t('kpi_queue_waiting', 'Waiting for delivery') : rt.t('kpi_queue_empty', 'Nothing waiting'), count > 0);
+      if (count >= 50) queueAlert(count);
     }).catch(unavailable(['queue']));
+
+    // A long mail queue joins the server's alerts above the counts
+    function queueAlert(count) {
+      var section = document.getElementById('rt-alerts');
+      if (!section) return;
+      var item = document.createElement('li');
+      item.className = 'rt-alert rt-alert-warning';
+      var text = document.createElement('span');
+      text.className = 'rt-alert-text';
+      text.textContent = rt.format(rt.t('alert_queue', '%s messages are waiting in the mail queue'), number.format(count));
+      var hint = document.createElement('span');
+      hint.className = 'rt-alert-hint';
+      hint.textContent = rt.t('alert_queue_hint', 'A long queue usually means a delivery problem.') + ' ';
+      var link = document.createElement('a');
+      link.href = '/admin/queue';
+      link.textContent = rt.t('alert_queue_link', 'Open the mail queue');
+      hint.appendChild(link);
+      item.appendChild(text);
+      item.appendChild(hint);
+      section.querySelector('.rt-alerts-list').appendChild(item);
+      section.hidden = false;
+    }
 
     // The page counts the quarantine itself; the API would send every held message
     var held = kpis.getAttribute('data-quarantine-count');

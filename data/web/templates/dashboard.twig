@@ -34,6 +34,24 @@
         {% set rt_containers_total = containers|length %}
         {% set t = lang.rabbittech %}
 
+        {# Problems found on the server (admin/dashboard.php); 014-rabbittech.js adds the mail queue #}
+        <section class="rt-alerts mb-4" id="rt-alerts" aria-labelledby="rt-alerts-title"{% if not rt_alerts %} hidden{% endif %}>
+          <h2 class="rt-alerts-title" id="rt-alerts-title"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i>{{ t.alert_title }}</h2>
+          <ul class="rt-alerts-list">
+            {% for alert in rt_alerts|default([]) %}
+            {%- if alert.key starts with 'cert_' -%}
+              {%- set rt_value = '<time datetime="' ~ alert.value|date('Y-m-d') ~ '" data-rt-date>' ~ alert.value|date('Y-m-d') ~ '</time>' -%}
+            {%- else -%}
+              {%- set rt_value = '<strong>' ~ alert.value|e ~ '</strong>' -%}
+            {%- endif %}
+            <li class="rt-alert rt-alert-{{ alert.level }}">
+              <span class="rt-alert-text">{{ t['alert_' ~ alert.key]|format(rt_value)|raw }}</span>
+              <span class="rt-alert-hint">{{ t['alert_' ~ alert.key ~ '_hint'] }}</span>
+            </li>
+            {% endfor %}
+          </ul>
+        </section>
+
         {# Live counts, loaded by 014-rabbittech.js from the API #}
         <div class="rt-kpi-grid mb-4" id="rt-kpis"{% if quarantine_count is not null %} data-quarantine-count="{{ quarantine_count }}"{% endif %}>
           {% for kpi in [

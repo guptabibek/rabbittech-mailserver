@@ -52,7 +52,11 @@ How it works:
   If upstream adds a tab that `nav.twig` doesn't list, that strip reappears automatically, so the new
   page stays reachable until it gets a sidebar entry.
 - **Overview** (`dashboard.twig`):
-  - Live counts of domains, mailboxes, aliases, queued mail and quarantine, read from `/api/v1`.
+  - A "Needs attention" card, shown only when something is wrong: a stopped or unhealthy
+    container, mail storage at 85% or more, a TLS certificate that expires within 14 days (checked
+    against what nginx actually serves, cached for up to 6 hours), or 50+ messages in the mail queue.
+  - Live counts of domains, mailboxes, aliases, queued mail and quarantine. The quarantine is
+    counted on the server; the others are read from `/api/v1`.
   - A server status card and quick actions.
   - CPU and memory charts.
   - A service grid, where expanding a container shows its I/O charts.

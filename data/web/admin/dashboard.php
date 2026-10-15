@@ -6,6 +6,47 @@ protect_route(['admin']);
 
 require_once $_SERVER['DOCUMENT_ROOT'] . '/inc/header.inc.php';
 $_SESSION['return_to'] = $_SERVER['REQUEST_URI'];
+
+// Expiry (Unix time) of the TLS certificate nginx serves; the mail services use the same one.
+// Cached in Redis, and null when it can't be read, so a failed check never raises an alert.
+function rt_cert_expiry($hostname) {
+  global $redis;
+  try {
+    $cached = $redis->Get('RT_CERT_EXPIRY');
+  } catch (RedisException $e) {
+    $cached = false;
+  }
+  if ($cached !== false) {
+    return $cached === 'unknown' ? null : (int)$cached;
+  }
+  $expires = null;
+  $context = stream_context_create(array('ssl' => array(
+    'capture_peer_cert' => true,
+    'verify_peer' => false,
+    'verify_peer_name' => false,
+    'SNI_enabled' => true,
+    'peer_name' => $hostname,
+  )));
+  $port = (int)(getenv('HTTPS_PORT') ?: 443);
+  $client = @stream_socket_client('ssl://nginx:' . $port, $errno, $errstr, 3, STREAM_CLIENT_CONNECT, $context);
+  if ($client) {
+    $params = stream_context_get_params($client);
+    fclose($client);
+    if (!empty($params['options']['ssl']['peer_certificate'])) {
+      $cert = openssl_x509_parse($params['options']['ssl']['peer_certificate']);
+      if (!empty($cert['validTo_time_t'])) {
+        $expires = (int)$cert['validTo_time_t'];
+      }
+    }
+  }
+  // Check again within the hour once renewal is due, so the alert clears soon after it
+  $ttl = ($expires === null || $expires - time() < 14 * 86400) ? 3600 : 21600;
+  try {
+    $redis->setEx('RT_CERT_EXPIRY', $ttl, $expires === null ? 'unknown' : (string)$expires);
+  } catch (RedisException $e) {
+  }
+  return $expires;
+}
 $clamd_status = (preg_match("/^([yY][eE][sS]|[yY])+$/", $_ENV["SKIP_CLAMD"])) ? false : true;
 $olefy_status = (preg_match("/^([yY][eE][sS]|[yY])+$/", $_ENV["SKIP_OLEFY"])) ? false : true;
 
@@ -66,6 +107,32 @@ try {
 $hostname = getenv('MAILCOW_HOSTNAME');
 $timezone = getenv('TZ');
 
+// Overview: problems that need the admin's attention (014-rabbittech.js adds the mail queue)
+$rt_alerts = array();
+foreach ($containers as $container => $container_info) {
+  $service = preg_replace('/-mailcow$/', '', $container);
+  if (empty($container_info['State']['Running'])) {
+    $rt_alerts[] = array('level' => 'danger', 'key' => 'container_stopped', 'value' => $service);
+  }
+  elseif (($container_info['State']['Health']['Status'] ?? '') === 'unhealthy') {
+    $rt_alerts[] = array('level' => 'warning', 'key' => 'container_unhealthy', 'value' => $service);
+  }
+}
+$rt_disk_used = isset($vmail_df[4]) ? (int)$vmail_df[4] : 0;
+if ($rt_disk_used >= 85) {
+  $rt_alerts[] = array('level' => $rt_disk_used >= 95 ? 'danger' : 'warning', 'key' => 'disk', 'value' => $rt_disk_used . '%');
+}
+$rt_cert_expires = $hostname ? rt_cert_expiry($hostname) : null;
+if ($rt_cert_expires !== null) {
+  $rt_cert_days = ($rt_cert_expires - time()) / 86400;
+  if ($rt_cert_days < 0) {
+    $rt_alerts[] = array('level' => 'danger', 'key' => 'cert_expired', 'value' => $rt_cert_expires);
+  }
+  elseif ($rt_cert_days <= 14) {
+    $rt_alerts[] = array('level' => $rt_cert_days <= 3 ? 'danger' : 'warning', 'key' => 'cert_expiring', 'value' => $rt_cert_expires);
+  }
+}
+
 $template = 'dashboard.twig';
 $template_data = [
   'log_lines' => getenv('LOG_LINES'),
@@ -78,6 +145,7 @@ $template_data = [
   'olefy_status' => $olefy_status,
   'containers' => $containers,
   'quarantine_count' => $quarantine_count,
+  'rt_alerts' => $rt_alerts,
   'ip_check' => customize('get', 'ip_check'),
   'lang_admin' => json_encode($lang['admin']),
   'lang_debug' => json_encode($lang['debug']),
