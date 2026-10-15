@@ -1297,9 +1297,11 @@ html.rt-gmail .rt-brand {
 }
 
 /* Search box */
+/* SOGo orders the top bar groups 1 and 3; the search box goes between them */
 html.rt-gmail-search .toolbar-main > form.rt-search {
   position: relative;
   display: flex;
+  order: 2;
   flex: 1 1 auto;
   align-items: center;
   min-width: 0;
@@ -1327,28 +1329,42 @@ html.rt-gmail-search form.rt-search md-input-container .md-input {
   font-size: 16px;
 }
 html.rt-gmail-search form.rt-search md-input-container .md-input::placeholder { color: var(--rt-muted); opacity: 1; }
-html.rt-gmail-search form.rt-search [ng-messages] {
-  position: absolute;
-  top: 52px;
-  left: 48px;
+/* Angular Material colours fields inside a toolbar for a dark toolbar (white text, white
+   placeholder, light underline), with more specific selectors than the ones above */
+html.rt-gmail-search md-toolbar.toolbar-main form.rt-search md-input-container[md-no-float] .md-input,
+html.rt-gmail-search md-toolbar.toolbar-main form.rt-search md-input-container .md-input {
+  padding: 0 4px !important;
+  border: 0 !important;
+  color: var(--rt-text) !important;
+  caret-color: var(--rt-primary);
+}
+html.rt-gmail-search md-toolbar.toolbar-main form.rt-search md-input-container[md-no-float] .md-input::placeholder,
+html.rt-gmail-search md-toolbar.toolbar-main form.rt-search md-input-container[md-no-float].md-input-focused .md-input::placeholder {
+  color: var(--rt-muted) !important;
+  opacity: 1;
+}
+/* "Enter at least N characters", under the box; the container is there even without a message */
+html.rt-gmail-search form.rt-search [ng-messages] { position: absolute; z-index: 2; top: 52px; left: 48px; }
+html.rt-gmail-search form.rt-search [ng-messages] > [ng-message] {
   padding: 4px 10px;
   border-radius: 6px;
   background-color: var(--rt-tooltip);
   color: var(--rt-tooltip-text);
   font-size: 12px;
 }
-html.rt-gmail-search form.rt-search [ng-messages]:empty { display: none; }
-html.rt-gmail-search form.rt-search md-input-container[flex] { flex: 0 0 auto; max-width: 180px; margin: 0 4px; }
-html.rt-gmail-search form.rt-search md-select { margin: 0; }
-html.rt-gmail-search form.rt-search md-select .md-select-value {
+html.rt-gmail-search form.rt-search md-input-container[flex] { flex: 0 0 auto; width: 168px; max-width: 168px; margin: 0 4px; }
+html.rt-gmail-search form.rt-search md-select { width: 100%; margin: 0; }
+html.rt-gmail-search md-toolbar.toolbar-main form.rt-search md-select .md-select-value {
+  min-width: 0;
   min-height: 32px;
   padding: 0 4px 0 8px;
-  border: 0;
+  border: 0 !important;
   border-radius: 8px;
-  color: var(--rt-muted);
+  color: var(--rt-muted) !important;
   font-size: 13px;
 }
-html.rt-gmail-search form.rt-search md-select:not([disabled]):focus .md-select-value { color: var(--rt-text); border: 0; padding-bottom: 0; }
+html.rt-gmail-search md-toolbar.toolbar-main form.rt-search md-select .md-select-value .md-select-icon { color: var(--rt-muted); }
+html.rt-gmail-search md-toolbar.toolbar-main form.rt-search md-select:not([disabled]):focus .md-select-value { color: var(--rt-text) !important; padding-bottom: 0; }
 html.rt-gmail-search form.rt-search .md-button,
 html.rt-gmail-search form.rt-search a.sg-icon-button {
   flex: none;
@@ -1368,7 +1384,7 @@ html.rt-gmail-search form.rt-search a.sg-icon-button:hover { background-color: v
 @media (max-width: 759px) {
   html.rt-gmail-search md-toolbar.toolbar-main:not(.md-menu-toolbar) { flex-wrap: wrap; }
   html.rt-gmail-search .toolbar-main > .sg-toolbar-group-last { margin-left: auto; }
-  html.rt-gmail-search .toolbar-main > form.rt-search { order: 3; flex: 1 0 calc(100% - 24px); max-width: none; margin: 0 12px 8px; }
+  html.rt-gmail-search .toolbar-main > form.rt-search { order: 4; flex: 1 0 calc(100% - 24px); max-width: none; margin: 0 12px 8px; }
 }
 
 /* ------------------------------------------------------------ message list */
