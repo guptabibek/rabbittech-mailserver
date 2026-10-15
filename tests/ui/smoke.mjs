@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mailBackend, PAGE } from './sogo/backend.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const output = join(here, 'output');
@@ -42,7 +43,7 @@ const tfa = serve(8089, { HARNESS_TFA: '1' });
 const problems = serve(8090, { HARNESS_STOPPED: 'olefy', HARNESS_UNHEALTHY: 'rspamd', HARNESS_DF: '96', HARNESS_CERT_DAYS: '6', HARNESS_QUEUE: '64' });
 const session = serve(8091, { HARNESS_SESSION_LIFETIME: '300' });
 const setup = serve(8092, { HARNESS_CERT_PLACEHOLDER: '1', HARNESS_ACME: 'aaaa', HARNESS_BACKUP: 'failed', HARNESS_DNS: '1' });
-const webmail = existsSync(sogoRoot) ? serveStatic(8095, sogoRoot) : null;
+const webmail = existsSync(join(sogoRoot, 'live', 'view.html')) ? serveStatic(8095, sogoRoot) : null;
 await Promise.all([main, tfa, problems, session, setup].map(u => ready(u + '/admin')));
 if (webmail) await ready(webmail + '/mail.html');
 
@@ -271,6 +272,198 @@ if (webmail) {
       await page.screenshot({ path: join(output, `webmail-${name}-${theme}.png`) });
       await page.close();
     }
+  }
+
+  // SOGo's real Mail app: the page sogo/live.py renders from SOGo's own templates, its own
+  // scripts, and sogo/backend.mjs answering its requests like SOGo does. Checks the Gmail-style
+  // layout custom-sogo.js applies to it, what its buttons do on the server, and the fail-safe.
+  console.log('Webmail: Mail app');
+  const openMail = async ({ theme = 'light', width = 1366, height = 900, custom = true, pageFilter } = {}) => {
+    const ctx = await browser.newContext({ viewport: { width, height } });
+    const page = await ctx.newPage();
+    const errors = [], warnings = [];
+    page.on('pageerror', e => errors.push('pageerror: ' + e.message));
+    page.on('console', m => {
+      if (/RabbitTech mail layout/.test(m.text())) warnings.push(m.text());
+      else if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push('console: ' + m.text());
+    });
+    page.on('response', r => { if (r.status() >= 400 && !fonts.test(r.url())) errors.push(r.status() + ' ' + r.url()); });
+    await page.addInitScript(t => { try { localStorage.setItem('mailcow_theme', t); } catch (e) {} }, theme);
+    const backend = await mailBackend(ctx, { custom, pageFilter });
+    await page.goto(webmail + PAGE, { waitUntil: 'load' });
+    await page.waitForSelector('md-list-item.sg-message-list-item .sg-tile-subject', { timeout: 20000 });
+    await page.waitForTimeout(500);
+    return { ctx, page, backend, errors, warnings };
+  };
+  const classes = page => page.evaluate(() => document.documentElement.className.split(/\s+/));
+  const changes = ['layout', 'brand', 'compose', 'search', 'rows', 'fab', 'back'].map(c => 'rt-gmail-' + c);
+  const rows = page => page.locator('md-list-item.sg-message-list-item');
+  // The message a list row shows (its directive's controller; Angular's scope() is off in SOGo)
+  const messageOf = row => row.evaluate(el => {
+    const m = angular.element(el).controller('sgMessageListItem').message;
+    return { uid: m.uid, subject: m.subject, isflagged: m.isflagged, isread: m.isread };
+  });
+  const until = async (test, ms = 5000) => {
+    for (const end = Date.now() + ms; Date.now() < end; await new Promise(r => setTimeout(r, 100))) if (await test()) return true;
+    return false;
+  };
+
+  {
+    // Stock SOGo first: if this fails, the fake server is wrong, not our layout
+    const { ctx, page, errors } = await openMail({ custom: false });
+    check('mail app: stock SOGo runs against the fake server without errors', errors.length === 0 && await rows(page).count() > 5, errors.join(' | '));
+    await ctx.close();
+  }
+
+  {
+    const { ctx, page, backend, errors, warnings } = await openMail();
+    const cls = await classes(page);
+    check('mail app: every layout change applied, no warnings', changes.every(c => cls.includes(c)) && warnings.length === 0, cls.join(' ') + ' ' + warnings.join(' | '));
+    await page.screenshot({ path: join(output, 'webmail-app-light.png') });
+
+    // Search box in the top bar, readable, filters and resets the list
+    const box = page.locator('md-toolbar.toolbar-main form.rt-search input[type="search"]');
+    const look = await box.evaluate(el => {
+      const label = el.parentNode.querySelector('label');
+      return { color: getComputedStyle(el).color, label: label && getComputedStyle(label).fontSize };
+    });
+    check('mail app: search box is in the top bar with dark text and a 15px placeholder', look.color === 'rgb(16, 18, 27)' && look.label === '15px', JSON.stringify(look));
+    const all = await rows(page).count();
+    await box.fill('invoice');
+    await until(() => backend.calls('view').some(c => JSON.stringify(c.body || '').includes('invoice')));
+    await page.waitForTimeout(600);
+    const found = await rows(page).allInnerTexts();
+    check('mail app: typing in the search box filters the folder', found.length > 0 && found.length < all && found.every(t => /invoice/i.test(t)), found.length + ' of ' + all);
+    await box.fill('');
+    const restored = await until(async () => (await rows(page).count()) === all);
+    check('mail app: emptying the search box shows the whole folder again', restored, String(await rows(page).count()));
+
+    // Rows: one line, 56px apart (SOGo's scrolling relies on it)
+    const geo = await rows(page).first().evaluate(el => {
+      const r = e => el.querySelector(e).getBoundingClientRect();
+      const sender = r('.sg-md-subhead > div'), subject = r('.sg-tile-subject');
+      return { height: el.getBoundingClientRect().height, sameLine: Math.abs((sender.top + sender.bottom) - (subject.top + subject.bottom)) < 6 };
+    });
+    check('mail app: rows are one line and 56px tall', geo.height === 56 && geo.sameLine, JSON.stringify(geo));
+    const textIcons = await page.evaluate(() => [...document.querySelectorAll('md-icon')]
+      .filter(i => i.offsetParent && i.getBoundingClientRect().width > 40).map(i => i.textContent.trim()));
+    check('mail app: every visible icon is drawn as an icon, not as its name', textIcons.length === 0, textIcons.join(', '));
+
+    // Star, read/unread, archive and delete from a row, as the server sees them
+    const row = rows(page).nth(3);
+    const msg = await messageOf(row);
+    await row.locator('.rt-star').click();
+    check('mail app: the star flags the message on the server', await until(() => backend.calls(msg.isflagged ? 'markMessageUnflagged' : 'markMessageFlagged').some(c => c.uid === msg.uid)));
+    await row.hover();
+    check('mail app: Archive, Delete and Read show on the row under the pointer', await row.locator('.rt-row-actions').isVisible());
+    await row.locator('.rt-act').nth(2).click();
+    check('mail app: the read button marks the message read or unread', await until(() => backend.calls(msg.isread ? 'markMessageUnread' : 'markMessageRead').some(c => c.uid === msg.uid)));
+    const subjectIn = (folder, subject) => backend.folder(folder).messages.some(m => m.subject === subject);
+    const toArchive = await messageOf(rows(page).nth(1));
+    await rows(page).nth(1).hover();
+    await rows(page).nth(1).locator('.rt-act').nth(0).click();
+    const archived = await until(() => subjectIn('Archive', toArchive.subject) && !subjectIn('INBOX', toArchive.subject));
+    const moved = backend.calls('moveMessages').pop();
+    check('mail app: Archive moves the message to the Archive folder', archived && moved && moved.body.folder === '/0/folderArchive', JSON.stringify(moved && moved.body));
+    await page.waitForTimeout(400);
+    check('mail app: the archived message leaves the list', !(await rows(page).allInnerTexts()).some(t => t.includes(toArchive.subject)));
+    const toTrash = await messageOf(rows(page).nth(1));
+    await rows(page).nth(1).hover();
+    await rows(page).nth(1).locator('.rt-act').nth(1).click();
+    check('mail app: Delete moves the message to Trash', await until(() => subjectIn('Trash', toTrash.subject) && !subjectIn('INBOX', toTrash.subject)));
+
+    // An open message takes the list's place; back returns to it
+    await rows(page).nth(0).click();
+    await page.waitForSelector('#detailView:not(.sg-close) .msg-body');
+    const reading = () => page.evaluate(() => ({
+      list: getComputedStyle(document.querySelector('.view-list')).visibility,
+      back: !!document.querySelector('.rt-back') && document.querySelector('.rt-back').offsetParent !== null,
+    }));
+    const read = await until(async () => { const r = await reading(); return r.list === 'hidden' && r.back; }, 3000);
+    check('mail app: an open message replaces the list and has a back arrow', read, JSON.stringify(await reading()));
+    await page.click('.rt-back');
+    check('mail app: back shows the list again', await until(() => page.evaluate(() =>
+      !!document.querySelector('#detailView.sg-close') && getComputedStyle(document.querySelector('.view-list')).visibility === 'visible')));
+
+    // Compose: a window at the bottom right, the mail behind it still usable
+    await page.click('.rt-compose');
+    await page.waitForSelector('md-dialog.sg-mail-editor', { state: 'visible' });
+    await page.waitForTimeout(800);
+    const win = await page.evaluate(() => {
+      const d = document.querySelector('md-dialog.sg-mail-editor').getBoundingClientRect();
+      const backdrop = [...document.querySelectorAll('md-backdrop')].some(b => b.offsetParent !== null);
+      return { float: !!document.querySelector('.md-dialog-container.rt-float'), backdrop, right: Math.round(innerWidth - d.right), bottom: Math.round(innerHeight - d.bottom), width: Math.round(d.width) };
+    });
+    check('mail app: Compose opens a window at the bottom right with no backdrop', win.float && !win.backdrop && win.right <= 30 && win.bottom <= 2 && win.width < 700, JSON.stringify(win));
+    check('mail app: compose asked the server for a new draft', backend.calls('compose').length > 0);
+    await page.screenshot({ path: join(output, 'webmail-app-compose.png') });
+    // Left part of the row: the compose window covers the right
+    await rows(page).nth(2).click({ position: { x: 300, y: 28 } });
+    check('mail app: a message opens while the compose window stays open', await until(() => page.evaluate(() =>
+      !!document.querySelector('#detailView:not(.sg-close) .msg-body') && !!document.querySelector('md-dialog.sg-mail-editor'))));
+    check('mail app light: no errors', errors.length === 0, errors.join(' | '));
+
+    // Classic layout and back
+    await Promise.all([page.waitForEvent('load'), page.click('.rt-layout-switch')]);
+    await page.waitForSelector('md-list-item.sg-message-list-item .sg-tile-subject');
+    const classic = await page.evaluate(() => ({
+      gmail: document.documentElement.classList.contains('rt-gmail'),
+      search: !!document.querySelector('.view-list form[sg-search]'),
+      button: !!document.querySelector('.rt-layout-switch'),
+    }));
+    check('mail app: the switch gives the classic layout, with a way back', !classic.gmail && classic.search && classic.button, JSON.stringify(classic));
+    await Promise.all([page.waitForEvent('load'), page.click('.rt-layout-switch')]);
+    await page.waitForSelector('md-list-item.sg-message-list-item .sg-tile-subject');
+    check('mail app: switching back restores the new layout', (await classes(page)).includes('rt-gmail-search'));
+    await ctx.close();
+  }
+
+  {
+    const { ctx, page, errors } = await openMail({ theme: 'dark' });
+    await page.screenshot({ path: join(output, 'webmail-app-dark.png') });
+    const bg = await page.evaluate(() => getComputedStyle(document.querySelector('.view-list')).backgroundColor);
+    check('mail app dark: dark list, no errors', bg === 'rgb(18, 21, 28)' && errors.length === 0, bg + ' ' + errors.join(' | '));
+    await ctx.close();
+  }
+
+  {
+    const { ctx, page, errors } = await openMail({ width: 390, height: 844 });
+    const phone = await page.evaluate(() => {
+      const form = document.querySelector('form.rt-search').getBoundingClientRect();
+      const apps = document.querySelector('.toolbar-main .sg-toolbar-group-last').getBoundingClientRect();
+      return { sideways: document.documentElement.scrollWidth > innerWidth, searchBelow: form.top >= apps.bottom - 1 };
+    });
+    check('mail app 390px: no sideways scrolling, search on its own row', !phone.sideways && phone.searchBelow, JSON.stringify(phone));
+    await page.screenshot({ path: join(output, 'webmail-app-phone.png') });
+    await rows(page).nth(0).click();
+    await page.waitForSelector('#detailView:not(.sg-close) .msg-body');
+    // The message slides in from the right on phones; wait for it to settle
+    const onScreen = async () => { const b = await page.locator('.rt-back').boundingBox(); return b && b.x >= 0 && b.x + b.width <= 390; };
+    check('mail app 390px: the back arrow is on screen', await until(onScreen, 3000), JSON.stringify(await page.locator('.rt-back').boundingBox()));
+    await page.click('.rt-back');
+    await page.waitForSelector('#detailView.sg-close', { state: 'attached' });
+    await page.click('.sg-fab-bottom-center');
+    await page.waitForSelector('md-dialog.sg-mail-editor', { state: 'visible' });
+    check('mail app 390px: compose is full screen, not a window', !(await page.locator('.md-dialog-container.rt-float').count()));
+    check('mail app 390px: no errors', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
+  {
+    // Fail-safe: templates that no longer match leave those parts as SOGo has them
+    const pageFilter = html => html.replace('type="search" name="folderSearch"', 'type="text" name="folderSearch"').replace('ng-click="viewer.close()"', 'ng-click="viewer.close( )"');
+    const { ctx, page, errors, warnings } = await openMail({ pageFilter });
+    const cls = await classes(page);
+    check('mail app fail-safe: unmatched changes are skipped with a warning, the rest apply',
+      !cls.includes('rt-gmail-search') && !cls.includes('rt-gmail-back') && cls.includes('rt-gmail-rows') &&
+      warnings.some(w => /"search" skipped/.test(w)) && warnings.some(w => /"back" skipped/.test(w)), cls.join(' ') + ' ' + warnings.join(' | '));
+    check('mail app fail-safe: search stays in the list toolbar', await page.locator('.view-list form[sg-search]').count() === 1);
+    await rows(page).nth(0).click();
+    await page.waitForSelector('#detailView:not(.sg-close) .msg-body');
+    check('mail app fail-safe: without the back arrow the list stays beside the open message',
+      await page.evaluate(() => getComputedStyle(document.querySelector('.view-list')).visibility === 'visible'));
+    check('mail app fail-safe: no errors', errors.length === 0, errors.join(' | '));
+    await ctx.close();
   }
 } else {
   console.log('Webmail mock skipped: run tests/ui/sogo/prepare.sh first');
