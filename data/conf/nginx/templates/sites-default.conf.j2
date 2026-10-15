@@ -263,6 +263,14 @@ location ~* /sogo$ {
     return 301 $client_req_scheme://$http_host/SOGo;
 }
 
+# RabbitTech: the webmail theme (data/conf/sogo/custom-theme.js and custom-sogo.js) keeps the same
+# URL across deploys, so browsers must revalidate it instead of caching an old copy for hours.
+# "expires -1" sends Cache-Control: no-cache; add_header here would drop the security headers above.
+location ~ ^/(?:SOGo|SOGo\.woa|\.woa)/WebServerResources/js/(theme|custom-sogo)\.js$ {
+    alias /usr/local/lib/GNUstep/SOGo/WebServerResources/js/$1.js;
+    expires -1;
+}
+
 location /SOGo.woa/WebServerResources/ {
     alias /usr/local/lib/GNUstep/SOGo/WebServerResources/;
 }

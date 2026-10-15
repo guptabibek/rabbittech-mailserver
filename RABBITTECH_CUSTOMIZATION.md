@@ -131,15 +131,45 @@ The content of every page follows the same patterns, so the console reads as one
 
 - `data/web/img/rabbittech_mailcow.svg` (light background) and `rabbittech_mailcow_dark.svg`:
   lockups with outlined text, so they render the same without the web font.
+- `data/web/img/rabbittech_webmail.svg` and `rabbittech_webmail_dark.svg`: the same lockups with
+  "Webmail" as the subtitle, used in SOGo.
 - `data/web/img/rabbittech_mark.svg`: the mark on its own.
 - `data/web/favicon.png`: generated from the mark.
 
 ### SOGo webmail
 
-- `data/conf/sogo/custom-theme.js`: violet primary and accent palettes with a cool grey background.
-  It is wrapped in `try/catch`, so a problem falls back to SOGo's default theme instead of breaking
-  webmail.
-- `data/conf/sogo/custom-sogo.js`: loads the Inter font from `/fonts`.
+Webmail keeps SOGo 5.12 for mail, calendar, contacts and ActiveSync. It is restyled through SOGo's
+two supported hooks, both loaded on every SOGo page (`SOGoUIAdditionalJSFiles` in
+`data/conf/sogo/sogo.conf`):
+
+- **`data/conf/sogo/custom-theme.js`** (mounted as `js/theme.js`): the colour palettes.
+  - Light uses the console's violet and greys. Dark uses a dark background palette, and only when
+    the stylesheet below is present.
+  - In production SOGo also links `css/theme-default.css`, a pre-built copy of its stock teal and
+    green theme. It loads after the colours generated from `theme.js` and wins, which is why
+    webmail used to look stock. Once the palette is configured, that link is removed.
+  - Any error leaves SOGo's own theme in place.
+- **`data/conf/sogo/custom-sogo.js`**: the RabbitTech stylesheet, embedded and added before
+  Angular starts, so pages never flash the stock look and no extra file or mount is needed.
+  - It covers the top bar, the folder sidebar, message and contact lists, the reading pane,
+    compose (including CKEditor 5), dialogs, menus, Preferences controls, calendar and contacts.
+  - The top bar becomes an app switcher that highlights the current app, and the big date is hidden.
+    The sidebar starts with the RabbitTech webmail logo (`data/web/img/rabbittech_webmail*.svg`).
+  - List rows keep the heights SOGo's virtual scrolling relies on (56px messages and contacts,
+    40px folders); separators are drawn with shadows so they add no height.
+  - HTML mail keeps the sender's styling: rules that reach into a message use `:where()`, so the
+    sender's CSS always wins. In dark mode, HTML mail and the compose area stay on a white sheet,
+    because replies and newsletters carry their own dark text colours.
+  - Webmail follows the console's light/dark choice (`localStorage.mailcow_theme`, same origin);
+    switch it in the console and reload webmail.
+  - The upstream `CKEDITOR.addCss(...)` line is guarded: SOGo 5 ships CKEditor 5, which has no
+    `CKEDITOR` global, so that line threw an error on every page.
+- **Caching:** these two files keep the same URL across releases, so nginx sends them with
+  `Cache-Control: no-cache` (`data/conf/nginx/templates/sites-default.conf.j2`). A deploy restarts
+  `sogo-mailcow` (which copies them into the web volume) and `nginx-mailcow`.
+- **If an upgrade breaks webmail styling**, restore the stock look with
+  `git checkout fd58a71 -- data/conf/sogo/custom-sogo.js data/conf/sogo/custom-theme.js` and
+  `docker compose restart sogo-mailcow`.
 - `custom-fulllogo.svg/png`, `custom-shortlogo.svg` and `custom-favicon.ico` carry the RabbitTech logo.
 
 ### CI

@@ -74,6 +74,9 @@ jobs:
           test -f data/web/templates/rabbittech/summary-mailbox.twig
           test -f data/web/templates/rabbittech/summary-domain.twig
           test -f data/web/fonts/inter-latin-wght-normal.woff2
+          test -f data/web/img/rabbittech_webmail.svg
+          test -f data/web/img/rabbittech_webmail_dark.svg
+          grep -q "rabbittech-sogo" data/conf/sogo/custom-sogo.js
 
       - name: Check UI JavaScript syntax
         run: |
