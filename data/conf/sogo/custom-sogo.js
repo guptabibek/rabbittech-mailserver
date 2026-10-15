@@ -26,6 +26,15 @@
   src: url("/fonts/inter-latin-wght-normal.woff2") format("woff2");
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2212, U+FEFF, U+FFFD;
 }
+/* Material Icons Outlined with two extra names (scripts/build-webmail-icons.py); lighter than
+   SOGo's filled icons and drawn like the console's */
+@font-face {
+  font-family: "RabbitTech Icons";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url("/fonts/rabbittech-icons-outlined.woff2") format("woff2");
+}
 @font-face {
   font-family: "Inter";
   font-style: normal;
@@ -138,6 +147,12 @@ html, body, button, input, select, textarea, .md-chips, .md-button, md-input-con
   font-family: var(--rt-font);
 }
 body { -webkit-font-smoothing: antialiased; }
+html .material-icons { font-family: "RabbitTech Icons", "Material Icons"; }
+/* Filled where filling means something: a flagged star; avatars keep SOGo's person */
+html md-icon.sg-icon-star,
+html sg-avatar-image md-icon { font-family: "Material Icons"; }
+/* The big faded icon SOGo puts behind search toolbars */
+md-icon.sg-icon-toolbar-bg { display: none; }
 a { color: var(--rt-primary-text); }
 * { scrollbar-width: thin; scrollbar-color: var(--rt-border-strong) transparent; }
 :focus-visible { outline: 2px solid var(--rt-primary); outline-offset: 2px; }
@@ -940,6 +955,12 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
       // The button that hides the folder list is Gmail's menu button
       toggle.textContent = 'menu';
       first.appendChild(html('<a class="rt-brand" ng-href="{{::activeUser.path.mail}}" aria-label="' + esc(say('Mail')) + '"></a>'));
+      // Clearer icons for the console link (a wrench) and signing out (a power symbol)
+      Array.prototype.forEach.call(box.querySelectorAll('md-toolbar.toolbar-main .sg-toolbar-group-last md-icon'), function (icon) {
+        var name = icon.textContent.trim();
+        if (name === 'build') icon.textContent = 'manage_accounts';
+        else if (name === 'settings_power') icon.textContent = 'logout';
+      });
       return true;
     };
 
@@ -1235,24 +1256,38 @@ html.rt-gmail md-sidenav > md-toolbar.md-tall > sg-avatar-image,
 html.rt-gmail md-sidenav > md-toolbar.md-tall > div[layout="row"] > div { display: none; }
 html.rt-gmail md-sidenav > md-toolbar.md-tall > div[layout="row"] { justify-content: flex-end; padding-left: 0; }
 
-.rt-compose-bar { padding: 4px 0 12px 8px; }
+.rt-compose-bar { padding: 4px 0 16px 12px; }
 .rt-compose {
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  height: 56px;
-  min-width: 140px;
+  height: 52px;
+  min-width: 136px;
   padding: 0 24px 0 18px;
   border: 0;
   border-radius: 16px;
-  background-color: var(--rt-primary-soft-2);
-  color: var(--rt-primary-text);
-  font: 600 14px/1 var(--rt-font);
+  background-color: var(--rt-primary);
+  color: #fff;
+  font: 600 14.5px/1 var(--rt-font);
+  letter-spacing: -.005em;
   cursor: pointer;
-  transition: box-shadow .15s;
+  box-shadow: 0 1px 2px rgba(76, 29, 149, .22), 0 4px 12px -4px rgba(124, 58, 237, .5);
+  transition: background-color .15s, box-shadow .15s;
 }
-.rt-compose:hover { box-shadow: var(--rt-g-lift); }
-html .rt-compose md-icon { color: inherit; margin: 0; }
+.rt-compose:hover {
+  background-color: var(--rt-primary-hover);
+  box-shadow: 0 2px 4px rgba(76, 29, 149, .25), 0 8px 20px -6px rgba(124, 58, 237, .6);
+}
+.rt-compose:active { box-shadow: 0 1px 2px rgba(76, 29, 149, .25); }
+html .rt-compose md-icon {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  margin: 0;
+  color: #fff;
+  font-size: 20px;
+}
 
 /* Account row and quota, quieter */
 html.rt-gmail md-sidenav .sg-account-section > md-list > md-list-item { padding-left: 12px; }
@@ -1265,6 +1300,24 @@ html.rt-gmail md-sidenav.md-sidenav-left md-list-item.sg-mailbox-list-item.md-cl
 html.rt-gmail md-sidenav md-list-item.sg-mailbox-list-item.md-background.md-hue-1.md-bg {
   background-color: var(--rt-primary-soft-2) !important;
 }
+html.rt-gmail md-sidenav .sg-account-section > md-list > md-list-item { font-size: 12px; font-weight: 500; letter-spacing: 0; }
+html.rt-gmail md-sidenav .sg-quota { padding: 0 16px 14px; }
+html.rt-gmail md-sidenav .sg-quota .sg-md-caption { font-size: 11px; }
+html.rt-gmail md-sidenav .sg-item-name { gap: 0; font-size: 14px; font-weight: 450; color: var(--rt-text-2); }
+html.rt-gmail md-sidenav .sg-item-name md-icon {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  margin: 0 16px 0 2px;
+  font-size: 20px;
+  color: var(--rt-muted);
+}
+html.rt-gmail md-sidenav .sg-item-name .sg-font-medium { font-weight: 650; color: var(--rt-text); }
+html.rt-gmail md-sidenav md-list-item.md-bg .sg-item-name,
+html.rt-gmail md-sidenav md-list-item.md-bg .sg-item-name > span:not(.sg-counter-badge) { font-weight: 650; }
+html.rt-gmail md-sidenav md-list-item.md-bg .sg-item-name md-icon { color: var(--rt-primary-text); }
+html.rt-gmail md-sidenav md-list-item md-icon.md-menu { font-size: 20px; }
 html.rt-gmail md-sidenav md-list-item.sg-mailbox-list-item .sg-counter-badge,
 html.rt-gmail md-sidenav md-list-item.sg-mailbox-list-item.md-bg .sg-counter-badge {
   min-width: 0;
@@ -1284,6 +1337,9 @@ html.rt-gmail md-toolbar.toolbar-main.md-default-theme:not(.md-menu-toolbar) {
 html.rt-gmail .toolbar-main > .md-toolbar-tools { flex: 0 0 auto; width: auto; }
 html.rt-gmail .toolbar-main > .sg-toolbar-group-1 { padding: 0 4px 0 8px; }
 html.rt-gmail .toolbar-main > .sg-toolbar-group-last { padding: 0 8px 0 4px; }
+html.rt-gmail .toolbar-main .md-toolbar-tools .md-button.md-icon-button { border-radius: 50%; }
+html.rt-gmail .toolbar-main .md-toolbar-tools .md-button.md-icon-button md-icon { font-size: 22px; }
+html.rt-gmail .toolbar-main .md-button.md-icon-button[disabled] { background-color: var(--rt-primary-soft-2); }
 html.rt-gmail .rt-brand {
   display: none;
   flex: none;
@@ -1329,12 +1385,32 @@ html.rt-gmail-search form.rt-search md-input-container .md-input {
   font-size: 16px;
 }
 html.rt-gmail-search form.rt-search md-input-container .md-input::placeholder { color: var(--rt-muted); opacity: 1; }
+/* Angular Material shows the placeholder as a label over the field, in the toolbar's 20px type */
+html.rt-gmail-search md-toolbar.toolbar-main form.rt-search md-input-container > label {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: auto;
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 0 4px;
+  transform: none;
+  color: var(--rt-muted) !important;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1;
+  pointer-events: none;
+}
+html.rt-gmail-search md-toolbar.toolbar-main form.rt-search md-input-container.md-input-has-value > label { visibility: hidden; }
 /* Angular Material colours fields inside a toolbar for a dark toolbar (white text, white
    placeholder, light underline), with more specific selectors than the ones above */
 html.rt-gmail-search md-toolbar.toolbar-main form.rt-search md-input-container[md-no-float] .md-input,
 html.rt-gmail-search md-toolbar.toolbar-main form.rt-search md-input-container .md-input {
   padding: 0 4px !important;
   border: 0 !important;
+  font-size: 15px;
   color: var(--rt-text) !important;
   caret-color: var(--rt-primary);
 }
@@ -1403,12 +1479,37 @@ html.rt-gmail .view-list {
 html.rt-gmail .view-list > md-toolbar:not(.md-menu-toolbar) { min-height: 48px; }
 html.rt-gmail .view-list > md-toolbar > .md-toolbar-tools,
 html.rt-gmail .view-list > md-toolbar > form.md-toolbar-tools { height: 48px; max-height: 48px; padding: 0 8px 0 12px; }
-html.rt-gmail .view-list .sg-folder-name { margin: 0 4px; font-size: 15px; }
-html.rt-gmail .view-list md-content > md-subheader,
-html.rt-gmail .view-list md-subheader.md-default-theme { font-size: 11.5px; }
+html.rt-gmail .view-list .sg-folder-name { margin: 0 8px 0 4px; font-size: 16px; font-weight: 650; letter-spacing: -.01em; }
+html.rt-gmail .view-list > md-toolbar .md-button md-icon,
+html.rt-gmail .view-list > md-toolbar a.sg-icon-button md-icon { font-size: 20px; }
+/* Advanced search results: a plain bar instead of SOGo's coloured one */
+html.rt-gmail .view-list > md-toolbar.advanced-search-clickable-toolbar:not(.md-menu-toolbar) {
+  background-color: var(--rt-surface);
+  color: var(--rt-text);
+  box-shadow: inset 0 -1px 0 var(--rt-border);
+}
+html.rt-gmail .view-list > md-toolbar.advanced-search-clickable-toolbar md-input-container { font-size: 15px; font-weight: 600; }
+/* "30 messages · Order received": one compact line */
+html.rt-gmail #messagesList > .md-subheader .md-subheader-inner { padding: 6px 16px; }
+html.rt-gmail #messagesList > .md-subheader { font-size: 12px; font-weight: 500; }
+html.rt-gmail #messagesList > .md-subheader md-icon { font-size: 16px; }
 
-html.rt-gmail md-list-item.sg-message-list-item { background-color: var(--rt-g-row); }
+/* SOGo's scrolling places rows 56px apart, so a row must stay 56px even on one line */
+html.rt-gmail md-list-item.sg-message-list-item { height: 56px; min-height: 56px; background-color: var(--rt-g-row); }
+html.rt-gmail md-list-item.sg-message-list-item > .md-no-style.md-button { height: 100%; padding-right: 16px; }
+/* Angular Material's grey hover and focus wash on list buttons; rows lift instead */
+html.rt-gmail md-list-item.sg-message-list-item .md-no-style.md-button:not([disabled]):hover,
+html.rt-gmail md-list-item.sg-message-list-item .md-no-style.md-button:not([disabled]).md-focused,
+html.rt-gmail md-list-item.sg-message-list-item .md-no-style.md-button:not([disabled]):focus { background-color: transparent; }
+html.rt-gmail md-list-item.sg-message-list-item .sg-md-subhead { font-weight: 450; color: var(--rt-text-2); }
+html.rt-gmail md-list-item.sg-message-list-item.unread .sg-md-subhead,
+html.rt-gmail md-list-item.sg-message-list-item.unread .sg-md-body { font-weight: 650; color: var(--rt-text); }
+html.rt-gmail md-list-item.sg-message-list-item .sg-tile-date { font-weight: 500; color: var(--rt-muted); }
+html.rt-gmail md-list-item.sg-message-list-item.unread .sg-tile-date { font-weight: 650; color: var(--rt-text); }
 html.rt-gmail md-list-item.sg-message-list-item.unread { background-color: var(--rt-g-row-unread); }
+/* The star shows a flagged message; no tinted row */
+html.rt-gmail md-list-item.sg-message-list-item.sg-star-bg:not(.md-bg) { background-color: var(--rt-g-row); }
+html.rt-gmail md-list-item.sg-message-list-item.sg-star-bg.unread:not(.md-bg) { background-color: var(--rt-g-row-unread); }
 html.rt-gmail md-list-item.sg-message-list-item.unread::before { display: none; }
 html.rt-gmail md-list-item.sg-message-list-item:not(.md-bg):hover { z-index: 2; background-color: var(--rt-g-row); box-shadow: var(--rt-g-lift); }
 html.rt-gmail md-list-item.sg-message-list-item.unread:not(.md-bg):hover { background-color: var(--rt-g-row-unread); }
@@ -1530,6 +1631,14 @@ html.rt-gmail-back .view-detail md-card,
 html.rt-gmail-back .view-detail md-card.md-default-theme { border: 0; border-radius: 0; box-shadow: none; }
 @media (max-width: 599px) {
   html.rt-gmail-back #detailView.view-detail { border-radius: 0; }
+  /* Eleven actions don't fit a phone: back and Archive stay at the left, the rest scrolls */
+  html.rt-gmail-back .view-detail md-card > md-card-actions {
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  html.rt-gmail-back .view-detail md-card > md-card-actions > * { flex-shrink: 0; }
+  html.rt-gmail-back .view-detail md-card > md-card-actions > .md-flex { flex: 1 0 0; min-width: 8px; }
 }
 
 /* Compose button on narrow windows; the Compose pill replaces it when the folder list shows */
@@ -1537,6 +1646,15 @@ html.rt-gmail .sg-fab-bottom-center,
 html.rt-gmail .sg-fab-bottom-center.sg-center-close,
 html.rt-gmail .sg-fab-bottom-center.sg-sidenav-close { top: auto; right: calc(var(--rt-g-gap) + 16px); bottom: calc(var(--rt-g-gap) + 16px); left: auto; }
 html.rt-gmail-compose body:has(md-sidenav.md-locked-open:not(.sg-close)) .sg-fab-bottom-center { display: none; }
+
+/* Advanced search dialog: Search is the main action, Cancel isn't a warning */
+html.rt-gmail md-dialog-actions .md-button[ng-click="dialogCtrl.search()"] {
+  padding: 0 18px;
+  background-color: var(--rt-primary);
+  color: #fff;
+}
+html.rt-gmail md-dialog-actions .md-button[ng-click="dialogCtrl.search()"]:hover { background-color: var(--rt-primary-hover); }
+html.rt-gmail md-dialog-actions .md-button.md-warn[ng-click*="closeDialog"] { color: var(--rt-text-2); }
 
 /* ---------------------------------------------- compose window at the bottom right */
 .md-dialog-container.rt-float {
