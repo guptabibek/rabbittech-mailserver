@@ -224,6 +224,37 @@ two supported hooks, both loaded on every SOGo page (`SOGoUIAdditionalJSFiles` i
     switch it in the console and reload webmail.
   - The upstream `CKEDITOR.addCss(...)` line is guarded: SOGo 5 ships CKEditor 5, which has no
     `CKEDITOR` global, so that line threw an error on every page.
+- **Mail laid out like Gmail** (also `custom-sogo.js`; the Mail screen only):
+  - Top bar: the folder search is a search box in the middle that is always there (the `s` key
+    still focuses it, and emptying it shows the whole folder again). The menu button hides the
+    folder list; the logo then moves into the top bar.
+  - Folder list: a Compose button at the top, folders as pills with bold unread counts.
+  - Message list, in a card: from 960px wide one line per message (checkbox, star, sender,
+    subject, icons, date). Read messages are tinted, unread ones white and bold. Under the pointer,
+    Archive, Delete and Mark as read/unread take the date's place, and the star flags a message.
+    Archive moves it to the `Archive` folder mailcow creates in every mailbox (not offered inside
+    Archive); Delete is not offered in Trash, where SOGo deletes for good.
+  - The list fills the width and an open message takes its place, with a back arrow and Archive.
+  - Compose opens as a window at the bottom right (960px and wider) and the mail behind it stays
+    usable; SOGo's expand button makes it large. Phones keep SOGo's full-screen editor, with one
+    compose button instead of SOGo's two-button menu.
+  - `SOGoRefreshViewCheck = "every_minute"` in `sogo.conf`, so new mail shows up without
+    reloading (users can change it in Preferences).
+  - **How it works:** SOGo's Mail templates are `<script type="text/ng-template">` blocks in the
+    page. Before Angular starts, `custom-sogo.js` parses them, changes them and writes them back,
+    and registers the few Angular functions the new buttons call; those use SOGo's own services
+    (`toggleFlag`, `toggleRead`, `$deleteMessages`, `$moveMessages`, `newMessage`).
+  - **Fail-safe:** each change first checks that the markup it needs is there. If a SOGo upgrade
+    changed it, that change is skipped with a console warning ("RabbitTech mail layout: …"), and
+    the styles that depend on it don't apply either (`html.rt-gmail-<change>`), so that part stays
+    as SOGo has it instead of breaking.
+  - **Classic layout:** a top bar button (columns icon) switches to SOGo's three-pane layout with
+    the RabbitTech look, and back. The choice is kept per browser (`localStorage.rt_webmail_layout`).
+  - **Limits:** SOGo sends no preview text, so rows show the subject without Gmail's snippet.
+    There are no inbox tabs, snooze or Gmail-style conversations. Rows stay 56px high, because
+    SOGo's scrolling code relies on that height.
+  - **After a SOGo upgrade**, run the UI tests (they run SOGo's real Mail app, see below) and look
+    for "RabbitTech mail layout" warnings in the browser console on `/webmail`.
 - **Caching:** these two files keep the same URL across releases, so nginx sends them with
   `Cache-Control: no-cache` (`data/conf/nginx/templates/sites-default.conf.j2`). A deploy restarts
   `sogo-mailcow` (which copies them into the web volume) and `nginx-mailcow`.
