@@ -120,7 +120,7 @@ The content of every page follows the same patterns, so the console reads as one
   (`--rt-primary-fill`, `--rt-danger-fill`), and form controls use `--rt-control-border`.
 - Every focusable element shows a 2px outline when reached by keyboard. A "Skip to content" link
   jumps past the sidebar, and the closed mobile drawer is `inert`.
-- Headings follow the page outline (h1 page title, h2 cards, h3 items), logout and "Restart SOGo"
+- Headings follow the page outline (h1 page title, h2 cards, h3 items), logout and "Restart webmail"
   are real buttons, and pinch-zoom is allowed.
 - On touch screens, icon buttons, pagination and navigation links have larger hit areas. Motion is
   reduced when the OS asks for it, and pages print without the shell.
@@ -139,6 +139,42 @@ look: a text wordmark (no remote images, so nothing is blocked), a single violet
 table-based, inline-styled markup that works across mail apps and on phones. They are read on
 every send, so no restart is needed. A template saved in the admin UI takes
 precedence over these files; reset it there to use them.
+
+### Branding
+
+People see RabbitTech names, not mailcow, SOGo or Rspamd. The technical names stay where only
+admins act on them (container names, `/SOGo` URLs, Rspamd settings).
+
+- **Console wording**: `data/web/lang/rabbittech.en-gb.json` replaces the mailcow strings that name
+  mailcow, SOGo or Rspamd ("Restart webmail", "Spam filter result", "Back to sign-in"…). It has
+  the same sections and keys as `lang.en-gb.json` and is applied in `inc/prerequisites.inc.php`
+  wherever the page shows the English text, so a language that hasn't translated a string gets the
+  RabbitTech wording too; real translations are kept. For another language, add
+  `rabbittech.<locale>.json` with the translated replacements. `scripts/check-rabbittech-lang.php`
+  checks that every key exists. UI texts and email templates saved in the admin UI take precedence.
+- **Overview**: services are listed by what they do ("Spam filter", "Mailboxes (IMAP & POP3)"),
+  with the container name underneath. mailcow's GUID and support-license card is left out.
+  The log source "Mailcow UI" is "Console", and the System menu calls the Rspamd UI
+  "Spam filter engine".
+- **Mailboxes**: the authentication source "mailcow" shows as "Built-in" (the stored value is
+  unchanged), and the SOGo column and row action are "Webmail".
+- **Webmail address**: `/webmail` (`data/web/webmail.php`) signs a mailbox user into webmail and
+  sends everyone else to the sign-in page. The Apps menu, the user page and the account setup files
+  for mail apps link there. Webmail itself still runs under `/SOGo/so/…`: that path is built into
+  SOGo and into the DAV and ActiveSync addresses mail apps already use.
+- **Webmail**: the browser tab says "RabbitTech Webmail" (`SOGoPageTitle` in `sogo.conf`), and
+  `custom-sogo.js` renames the "mailcow Preferences" button tooltip to "RabbitTech Mail
+  Preferences" before Angular starts (the button comes from a patch baked into the SOGo image).
+- **Mail apps**: autodiscover reports "RabbitTech Mail" (`$autodiscover_config` in
+  `inc/vars.inc.php`), and the Apple configuration profile names it as the organization.
+- **Mail headers**: Postfix introduces itself as RabbitTech (`mail_name` in
+  `data/conf/postfix/main.cf`), in the SMTP greeting and in `Received` headers.
+  `anonymize_headers.pcre` matches that name, so keep both in step.
+- **Starting-up page**: `data/web/_status.502.html` is what nginx shows while the console or
+  webmail is restarting. It retries every 20 seconds and keeps the troubleshooting commands in a
+  collapsed "For administrators" section (no retries while it is open).
+- **Kept on purpose**: SOGo's `User-Agent` header on outgoing mail, container and service names in
+  `docker compose`, and mailcow's names inside admin-only Rspamd and Keycloak settings.
 
 ### Assets
 
@@ -208,7 +244,8 @@ server:
 - `smoke.mjs` starts both and checks every main page in light, dark and phone width (no errors, the
   shell starts, no sideways scrolling). It also checks the behaviour that broke before: select-all,
   the bulk toolbars, the 2FA status, the Overview alerts, the session warning across tabs, and the
-  webmail palette, top bar and selected message.
+  webmail palette, top bar and selected message. Pages for mailbox users and domain admins must not
+  name mailcow, SOGo or Rspamd, closed dialogs included.
 
 Run locally:
 

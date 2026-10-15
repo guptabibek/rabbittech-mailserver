@@ -180,10 +180,10 @@
     <div class="rt-nav-heading">{{ ui_texts.apps_name|raw }}</div>
     <ul class="rt-nav-list">
       {% for app in mailcow_apps_processed %}
-        {% if not skip_sogo or not is_uri('SOGo', app.user_link) %}
+        {% if not skip_sogo or not is_uri('SOGo|webmail', app.user_link) %}
         <li>
           <a class="rt-nav-link" href="{{ app.user_link }}" data-rt-external="1" title="{{ app.description|default(app.name) }}">
-            <i class="bi bi-{% if is_uri('SOGo', app.user_link) %}envelope-open{% else %}box-arrow-up-right{% endif %}" aria-hidden="true"></i>
+            <i class="bi bi-{% if is_uri('SOGo|webmail', app.user_link) %}envelope-open{% else %}box-arrow-up-right{% endif %}" aria-hidden="true"></i>
             <span class="rt-nav-label">{{ app.name }}</span>
           </a>
         </li>

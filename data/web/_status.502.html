@@ -1,25 +1,144 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
-    <title>Preparing</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="utf-8">
+    <title>Starting up · RabbitTech Mail</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- nginx shows this page while the console or webmail can't be reached (usually during a
+         restart or update). It reloads the address the visitor asked for every 20 seconds. -->
+    <noscript><meta http-equiv="refresh" content="20"></noscript>
+    <meta name="robots" content="noindex">
+    <style>
+      @font-face {
+        font-family: "Inter";
+        font-style: normal;
+        font-weight: 100 900;
+        font-display: swap;
+        src: url("/fonts/inter-latin-wght-normal.woff2") format("woff2");
+      }
+      :root {
+        color-scheme: light dark;
+        --bg: #f5f6fa;
+        --surface: #ffffff;
+        --border: #e6e8ef;
+        --text: #10121b;
+        --muted: #5f667a;
+        --primary: #6d28d9;
+        --primary-fill: #7c3aed;
+        --code-bg: #f1f3f8;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0b0d12;
+          --surface: #12151c;
+          --border: #232937;
+          --text: #eceef4;
+          --muted: #9aa1b5;
+          --primary: #b9a2ff;
+          --primary-fill: #7c3aed;
+          --code-bg: #1c212c;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 16px;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.6 "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      }
+      main {
+        width: 100%;
+        max-width: 520px;
+        padding: 32px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        box-shadow: 0 1px 2px rgba(16, 18, 40, .04), 0 4px 12px rgba(16, 18, 40, .06);
+      }
+      .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; font-weight: 600; }
+      .brand svg { flex: none; }
+      h1 { margin: 0 0 8px; font-size: 22px; line-height: 1.3; letter-spacing: -.01em; }
+      p { margin: 0 0 16px; color: var(--muted); }
+      .status { display: flex; align-items: center; gap: 10px; color: var(--text); }
+      .spinner {
+        flex: none;
+        width: 16px;
+        height: 16px;
+        border: 2px solid var(--border);
+        border-top-color: var(--primary-fill);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+      .button {
+        display: inline-block;
+        padding: 8px 16px;
+        border-radius: 8px;
+        background: var(--primary-fill);
+        color: #ffffff;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .button:focus-visible, summary:focus-visible { outline: 3px solid rgba(124, 58, 237, .4); outline-offset: 2px; }
+      details { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 14px; }
+      summary { cursor: pointer; color: var(--primary); font-weight: 600; }
+      details p { margin: 12px 0 8px; }
+      pre {
+        margin: 0;
+        padding: 10px 12px;
+        overflow-x: auto;
+        background: var(--code-bg);
+        border-radius: 8px;
+        color: var(--text);
+        font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      code { font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      @media (max-width: 480px) { main { padding: 24px 20px; } }
+    </style>
   </head>
-  <body style='background-color:#fff;color:#333;width: 60%;margin: 0 auto;text-align:left;font-family: Verdana, "Lucida Sans Unicode", sans-serif'>
-    <h1 style="color:#333;font-size:48px">What is happening?</h1>
-    <p style="color:green;font-weight:bold;">Please do not stop the stack while we are initializing the database or do other preparations.</p>
-    <p style="font-size:small"><b>What is happening?</b> - Nginx cannot connect to an upstream server or other services are not ready yet.<br>
-    This is fine if mailcow was just
-    installed or updated and can take a few minutes to complete.<br>
-    Please check the logs or contact support if the error persists.</p>
-    <h2>Quick debugging</h2>
-    <p>Check Nginx and PHP logs:</p>
-    <pre>docker compose logs --tail=200 php-fpm-mailcow nginx-mailcow</pre>
-    <p>Make sure your SQL credentials in mailcow.conf (a link to .env) do fit your initialized SQL volume. If you see an access denied, you might have the wrong mailcow.conf:</p>
-    <pre>source mailcow.conf ; docker compose exec mysql-mailcow mysql -u${DBUSER} -p${DBPASS} ${DBNAME}</pre>
-    <p>In case of a previous failed installation, create a backup of your existing data, followed by removing all volumes and starting over (<b>NEVER</b> do this with a production system, it will remove <b>ALL</b> data):</p>
-    <pre>BACKUP_LOCATION=/tmp/ ./helper-scripts/backup_and_restore.sh backup all</pre>
-    <pre>docker compose down --volumes ; docker compose up -d</pre>
-    <p>Make sure your timezone is correct. Use "America/New_York" for example, do not use spaces. Check <a href="https://en.wikipedia.org/wiki/List_of_tz_database_time_zones">here</a> for a list.</p>
-    <br>Click to learn more about <a style="color:red;text-decoration:none;" href="https://docs.mailcow.email/#get-support" target="_blank">getting support.</a>
+  <body>
+    <main>
+      <div class="brand">
+        <svg width="40" height="40" viewBox="0 0 104 104" aria-hidden="true">
+          <defs><linearGradient id="rtMark" x1="0" y1="0" x2="104" y2="104" gradientUnits="userSpaceOnUse"><stop stop-color="#9F7AFA"/><stop offset="1" stop-color="#6D28D9"/></linearGradient></defs>
+          <rect width="104" height="104" rx="26" fill="url(#rtMark)"/>
+          <path d="M31 37c-4.6-14.3-1.6-25.4 5.1-25.4 8.3 0 13.9 13.1 15 26.5 2.5-.5 5.3-.5 8 0 .7-14.3 6-27.9 14.5-27.9 7.4 0 10.1 12.7 4.6 28.6 9.4 6.4 15.4 17.2 15.4 29.4 0 18.6-15.9 29.2-40.5 29.2S12.8 86.8 12.8 68.2c0-13.1 7.1-24.8 18.2-31.2Z" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="45.1" cy="59.3" r="5.6" fill="#6EE7B7"/>
+          <circle cx="65.8" cy="59.3" r="5.6" fill="#6EE7B7"/>
+          <path d="M47.4 74.6c3.4 3.9 11.2 3.9 14.7 0" fill="none" stroke="#6EE7B7" stroke-width="5" stroke-linecap="round"/>
+        </svg>
+        <span>RabbitTech Mail</span>
+      </div>
+      <h1>We'll be right back</h1>
+      <p>The mail service is starting up. This usually takes a minute or two after an update or restart.</p>
+      <p class="status"><span class="spinner" aria-hidden="true"></span>This page tries again every 20 seconds.</p>
+      <a class="button" href="">Try again now</a>
+
+      <details>
+        <summary>For administrators</summary>
+        <p>nginx can't reach the console (PHP) or webmail yet. On the server, check the web logs:</p>
+        <pre>cd /opt/rabbittech-mailserver/app
+docker compose ps
+docker compose logs --tail=200 php-fpm-mailcow nginx-mailcow</pre>
+        <p>If the logs show "access denied" for the database, the passwords in <code>.env</code> don't match the database volume. Test them with:</p>
+        <pre>source .env; docker compose exec mysql-mailcow mysql -u${DBUSER} -p${DBPASS} ${DBNAME}</pre>
+        <p><code>TZ</code> in <code>.env</code> must be a time zone name such as <code>Asia/Kathmandu</code>, without spaces.</p>
+      </details>
+    </main>
+    <script>
+      // Reload every 20 seconds, but not while the administrator section is open
+      (function retry() {
+        setTimeout(function () {
+          if (document.querySelector('details').open) retry();
+          else location.reload();
+        }, 20000);
+      })();
+    </script>
   </body>
 </html>

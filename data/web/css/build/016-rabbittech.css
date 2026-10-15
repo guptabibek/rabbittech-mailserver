@@ -3559,6 +3559,15 @@ a.rt-status { text-decoration: none !important; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The technical name admins use in commands, next to the friendly one */
+.rt-container-name .rt-container-id {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--rt-muted);
+  font-family: var(--rt-mono);
+  font-size: .74rem;
+  font-weight: 500;
+}
 .rt-container-meta {
   display: flex;
   flex-direction: column;

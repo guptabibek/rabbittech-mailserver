@@ -159,8 +159,30 @@ console.log('Behaviour');
   const { page } = await open(problems + '/admin/dashboard');
   const alerts = await page.locator('.rt-alert .rt-alert-text').allTextContents();
   check('Overview lists stopped and unhealthy containers, disk, certificate and queue', alerts.length === 5
-    && /olefy/.test(alerts[0]) && /rspamd/.test(alerts[1]) && /96%/.test(alerts[2]) && /certificate/.test(alerts[3]) && /64/.test(alerts[4]), alerts.join(' | '));
+    && /Office macro scanner/.test(alerts[0]) && /Spam filter/.test(alerts[1]) && /96%/.test(alerts[2]) && /certificate/.test(alerts[3]) && /64/.test(alerts[4]), alerts.join(' | '));
   await page.screenshot({ path: join(output, 'overview-alerts.png') });
+  await page.close();
+}
+// Mailbox users and domain admins never see the mailcow, SOGo or Rspamd names, not even in dialogs
+// that are still closed. Container names ("sogo-mailcow") stay: admins type them in docker compose.
+for (const path of ['/', '/user', '/quarantine', '/domainadmin/mailbox', '/domainadmin/user', '/edit/mailbox/bibek@rabbittech.com.np']) {
+  const { page } = await open(main + path);
+  const names = await page.evaluate(() => {
+    const re = /mailcow|sogo|rspamd|postcow/i;
+    const named = text => re.test(text.replace(/[\w-]+-mailcow\b/g, ''));
+    const found = [];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let node; (node = walker.nextNode());) {
+      if (!['SCRIPT', 'STYLE', 'TEXTAREA'].includes(node.parentElement.tagName) && named(node.textContent)) found.push(node.textContent.trim());
+    }
+    for (const el of document.querySelectorAll('[title], [aria-label], [placeholder], [data-bs-original-title]')) {
+      for (const attr of ['title', 'aria-label', 'placeholder', 'data-bs-original-title']) {
+        if (named(el.getAttribute(attr) || '')) found.push(el.getAttribute(attr));
+      }
+    }
+    return found;
+  });
+  check(`${path}: no mailcow, SOGo or Rspamd names`, names.length === 0, names.slice(0, 3).join(' | '));
   await page.close();
 }
 {
@@ -205,6 +227,7 @@ if (webmail) {
           dark: document.documentElement.getAttribute('data-theme') === 'dark',
           bar: bar ? getComputedStyle(bar).backgroundColor : null,
           viewport: document.querySelector('meta[name="viewport"]').content,
+          consoleButton: (document.querySelector('[ng-href="/user"]') || {}).getAttribute ? document.querySelector('[ng-href="/user"]').getAttribute('aria-label') : null,
         };
       });
       const label = `webmail ${name} ${theme}`;
@@ -212,6 +235,7 @@ if (webmail) {
       check(`${label}: RabbitTech stylesheet and palette in use`, state.style && !state.stockTheme && state.dark === (theme === 'dark'), JSON.stringify(state));
       check(`${label}: top bar colour`, state.bar === (theme === 'dark' ? 'rgb(18, 21, 28)' : 'rgb(255, 255, 255)'), state.bar);
       check(`${label}: pinch-zoom allowed`, !/maximum-scale/.test(state.viewport), state.viewport);
+      check(`${label}: console button says RabbitTech Mail, not mailcow`, state.consoleButton === 'RabbitTech Mail Preferences', state.consoleButton);
       if (name === 'mail' && theme === 'light') {
         const color = await page.evaluate(() => getComputedStyle(document.querySelector('md-list-item.sg-message-list-item.md-bg')).color);
         check('webmail: selected message text is dark on the light highlight', color === 'rgb(16, 18, 27)', color);

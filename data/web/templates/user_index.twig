@@ -91,7 +91,7 @@
         <div class="my-2 apps">
           {% for app in mailcow_apps %}
             {% if not app.hide %}
-              {% if not skip_sogo or not is_uri('SOGo', app.link) %}
+              {% if not skip_sogo or not is_uri('SOGo|webmail', app.link) %}
               <div class="m-2">
                 <a href="{{ app.link }}" role="button" {% if app.description %}title="{{ app.description }}"{% endif %} class="btn btn-primary btn-block">{{ app.name }}</a>
               </div>

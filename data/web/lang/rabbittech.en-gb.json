@@ -1,0 +1,64 @@
+{
+    "acl": {
+        "pw_reset": "Allow to reset the user password",
+        "sogo_access": "Allow management of webmail access",
+        "sogo_profile_reset": "Reset webmail profile"
+    },
+    "add": {
+        "add_domain_restart": "Add domain and restart webmail",
+        "alias_address_info": "<small>Full email address/es or @example.com, to catch all messages for a domain (comma-separated). <b>Domains on this server only</b>.</small>",
+        "gal_info": "The GAL contains all objects of a domain and cannot be edited by any user. Free/busy information in webmail is missing, if disabled! <b>Restart webmail to apply changes.</b>",
+        "post_domain_add": "Webmail (the \"sogo-mailcow\" container) needs to be restarted after adding a new domain!<br><br>Additionally the domains DNS configuration should be reviewed. Once the DNS configuration is approved, restart \"acme-mailcow\" to automatically generate certificates for your new domain (autoconfig.&lt;domain&gt;, autodiscover.&lt;domain&gt;).<br>This step is optional and will be retried every 24 hours."
+    },
+    "admin": {
+        "apps_name": "\"Apps\" menu name",
+        "force_sso_text": "If an external OIDC provider is configured, this option hides the built-in login forms and only shows the Single Sign-On button",
+        "force_sso": "Disable the built-in login and show only Single Sign-On",
+        "forwarding_hosts_hint": "Incoming messages are unconditionally accepted from any hosts listed here. These hosts are then not checked against DNSBLs or subjected to greylisting. Spam received from them is never rejected, but optionally it can be filed into the Junk folder. The most common use for this is to specify mail servers on which you have set up a rule that forwards incoming emails to this mail server.",
+        "iam_auth_flow_info": "In addition to the Authorization Code Flow (Standard Flow in Keycloak), which is used for Single-Sign On login, the mail server also supports Authentication Flow with direct Credentials. The Mailpassword Flow attempts to validate the user's credentials by using the Keycloak Admin REST API. It retrieves the hashed password from the <code>mailcow_password</code> attribute, which is mapped in Keycloak.",
+        "iam_extra_permission": "For the following settings to work, the mail server's client in Keycloak needs a <code>Service account</code> and the permission to <code>view-users</code>.",
+        "main_name": "Console name",
+        "r_info": "Greyed out/disabled elements on the list of active restrictions are not known as valid restrictions to the mail server and cannot be moved. Unknown restrictions will be set in order of appearance anyway. <br>You can add new elements in <code>inc/vars.local.inc.php</code> to be able to toggle them.",
+        "reset_password_vars": "<code>{{link}}</code> The generated password reset link<br><code>{{username}}</code> The mailbox name of the user who requested the password reset<br><code>{{username2}}</code> The recovery mailbox name<br><code>{{date}}</code> The date the password reset request was made<br><code>{{token_lifetime}}</code> The token lifetime in minutes<br><code>{{hostname}}</code> The mail server hostname",
+        "title_name": "Website title"
+    },
+    "debug": {
+        "log_info": "<p><b>In-memory logs</b> are collected in Redis lists and trimmed to LOG_LINES (%d) every minute to reduce hammering.\r\n  <br>In-memory logs are not meant to be persistent. All applications that log in-memory, also log to the Docker daemon and therefore to the default logging driver.\r\n  <br>The in-memory log type should be used for debugging minor issues with containers.</p>\r\n  <p><b>External logs</b> are collected via API of the given application.</p>\r\n  <p><b>Static logs</b> are mostly activity logs, that are not logged to the Dockerd but still need to be persistent (except for API logs).</p>"
+    },
+    "edit": {
+        "gal_info": "The GAL contains all objects of a domain and cannot be edited by any user. Free/busy information in webmail is missing, if disabled! <b>Restart webmail to apply changes.</b>",
+        "sender_acl_info": "If mailbox user A is allowed to send as mailbox user B, the sender address is not automatically displayed as selectable \"from\" field in webmail.<br>\n  Mailbox user B needs to create a delegation in webmail to allow mailbox user A to select their address as sender. To delegate a mailbox in webmail, use the menu (three dots) to the right of your mailbox name in the upper left while in mail view. This behaviour does not apply to alias addresses.",
+        "sogo_access": "Open webmail after sign-in",
+        "sogo_access_info": "After signing in, the user is taken straight to webmail.",
+        "sogo_visible": "Alias is visible in webmail",
+        "sogo_visible_info": "This option only affects objects that can be displayed in webmail (shared or non-shared alias addresses pointing to at least one local mailbox). If hidden, an alias will not appear as selectable sender in webmail."
+    },
+    "header": {
+        "restart_sogo": "Restart webmail"
+    },
+    "login": {
+        "back_to_mailcow": "Back to sign-in"
+    },
+    "mailbox": {
+        "alias_domain_alias_hint": "Aliases are <b>not</b> applied on domain aliases automatically. An alias address <code>my-alias@domain</code> <b>does not</b> cover the address <code>my-alias@alias-domain</code> (where \"alias-domain\" is an imaginary alias domain for \"domain\").<br>Please use a sieve filter to redirect mail to an external mailbox (see tab \"Filters\" or use the forwarding option in webmail). Use \"Expand alias over alias domains\" to automatically add missing aliases.",
+        "sogo_visible": "Alias is visible in webmail",
+        "sogo_visible_n": "Hide alias in webmail",
+        "sogo_visible_y": "Show alias in webmail"
+    },
+    "quarantine": {
+        "qid": "Queue ID",
+        "rspamd_result": "Spam filter result"
+    },
+    "success": {
+        "sogo_profile_reset": "Webmail profile for user %s was reset"
+    },
+    "user": {
+        "app_hint": "App passwords are alternative passwords for your IMAP, SMTP, CalDAV, CardDAV and EAS login. The username remains unchanged. Webmail is not available through app passwords.",
+        "direct_protocol_access": "This mailbox user has <b>direct, external access</b> to the following protocols and applications. This setting is controlled by your administrator. App passwords can be created to grant access to individual protocols and applications.<br>The \"Webmail\" button signs you in to webmail and is always available.",
+        "sogo_profile_reset": "Reset webmail profile",
+        "sogo_profile_reset_help": "This will destroy a user's webmail profile and <b>delete all contact and calendar data irretrievable</b>."
+    },
+    "warning": {
+        "domain_added_sogo_failed": "Added domain but failed to restart webmail, please check your server logs."
+    }
+}

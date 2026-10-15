@@ -835,6 +835,19 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
     // SOGo's page sets maximum-scale=1, which blocks pinch-zoom on Android phones
     var viewport = document.querySelector('meta[name="viewport"]');
     if (viewport) viewport.setAttribute('content', 'width=device-width, initial-scale=1');
+
+    // mailcow's patch to SOGo adds a button to the console labelled "mailcow Preferences" (the
+    // second word is SOGo's own translation). Angular reads the label when it starts, which is
+    // after this script, so rename it in the page templates and in the page itself.
+    var brand = function (html) {
+      return html.replace(/(<md-tooltip>\s*)mailcow /g, '$1RabbitTech Mail ');
+    };
+    Array.prototype.forEach.call(document.querySelectorAll('script[type="text/ng-template"]'), function (template) {
+      if (template.text.indexOf('mailcow ') !== -1) template.text = brand(template.text);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('md-tooltip'), function (tooltip) {
+      if (/^\s*mailcow /.test(tooltip.textContent)) tooltip.textContent = tooltip.textContent.replace('mailcow ', 'RabbitTech Mail ');
+    });
   } catch (e) {
     if (window.console) console.warn('RabbitTech SOGo stylesheet not applied', e);
   }

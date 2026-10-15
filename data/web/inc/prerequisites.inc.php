@@ -267,12 +267,17 @@ if (isset($_GET['lang']) && array_key_exists($_GET['lang'], $AVAILABLE_LANGUAGES
  * load language
  */
 $lang = json_decode(file_get_contents($_SERVER['DOCUMENT_ROOT'] . '/lang/lang.en-gb.json'), true);
+$lang_en = $lang;
 
 $langFile = $_SERVER['DOCUMENT_ROOT'] . '/lang/lang.'.$_SESSION['mailcow_locale'].'.json';
 if(file_exists($langFile)) {
   $lang = array_merge_real($lang, json_decode(file_get_contents($langFile), true));
 }
 
+// RabbitTech: replace the mailcow, SOGo and Rspamd names in text people see
+require_once $_SERVER['DOCUMENT_ROOT'] . '/inc/functions.rabbittech.inc.php';
+$lang = rabbittech_wording($lang, $lang_en, $_SESSION['mailcow_locale'], $_SERVER['DOCUMENT_ROOT'] . '/lang');
+unset($lang_en);
 
 require_once $_SERVER['DOCUMENT_ROOT'] . '/inc/functions.acl.inc.php';
 require_once $_SERVER['DOCUMENT_ROOT'] . '/inc/functions.address_rewriting.inc.php';

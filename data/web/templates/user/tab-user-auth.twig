@@ -23,10 +23,8 @@
       <div class="rt-summary-actions">
         {% if dual_login and allow_admin_email_login == 'n' or mailboxdata.attributes.force_pw_update == '1' %}
         <button disabled class="btn btn-secondary btn-lg">{{ lang.user.open_webmail_sso }} <i class="bi bi-arrow-right" aria-hidden="true"></i></button>
-        {% elseif dual_login %}
-        <a href="/sogo-auth.php?login={{ mailcow_cc_username|url_encode }}" class="btn btn-primary btn-lg"><i class="bi bi-envelope-open" aria-hidden="true"></i> {{ lang.user.open_webmail_sso }} <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
         {% else %}
-        <a href="/SOGo/so" class="btn btn-primary btn-lg"><i class="bi bi-envelope-open" aria-hidden="true"></i> {{ lang.user.open_webmail_sso }} <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+        <a href="/webmail" class="btn btn-primary btn-lg"><i class="bi bi-envelope-open" aria-hidden="true"></i> {{ lang.user.open_webmail_sso }} <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
         {% endif %}
       </div>
       {% endif %}

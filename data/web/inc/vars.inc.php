@@ -33,8 +33,9 @@ if ($https_port === FALSE) {
 //$https_port = 1234;
 // Other settings =>
 $autodiscover_config = array(
-  'displayName' => 'A mailcow mail server',
-  'displayShortName' => 'mail server',
+  // RabbitTech: the name mail apps show while setting up an account
+  'displayName' => 'RabbitTech Mail',
+  'displayShortName' => 'RabbitTech',
   // General autodiscover service type: "activesync" or "imap"
   // emClient uses autodiscover, but does not support ActiveSync. mailcow excludes emClient from ActiveSync.
   // With SOGo disabled, the type will always fallback to imap. CalDAV and CardDAV will be excluded, too.
@@ -130,8 +131,9 @@ $SHOW_DKIM_PRIV_KEYS = false;
 $MAILCOW_APPS = array(
   array(
     'name' => 'Webmail',
-    'link' => '/SOGo/so',
-    'user_link' => '/SOGo/so',
+    // RabbitTech: /webmail (webmail.php) signs the user in and opens webmail
+    'link' => '/webmail',
+    'user_link' => '/webmail',
     'hide' => true
   )
 );
