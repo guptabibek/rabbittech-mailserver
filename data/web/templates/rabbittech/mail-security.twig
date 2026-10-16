@@ -1,0 +1,64 @@
+{# The checks on a domain's Mail security tab, rendered by inc/ajax/rt_mail_security.php from
+   rabbittech_domain_checks(): each check's state, why it matters, what is wrong, and the DNS
+   records to publish. Texts take the domain, the reports address, the mail hostname and, for
+   details, what was found, as %1$s to %4$s. #}
+{% set t = lang.rabbittech %}
+{% set rt_icons = { ok: 'check-circle-fill', missing: 'x-circle-fill', wrong: 'exclamation-circle-fill', off: 'dash-circle', unknown: 'question-circle' } %}
+{% set rt_pills = { ok: 'running', missing: 'stopped', wrong: 'warning', off: 'muted', unknown: 'muted' } %}
+<ul class="rt-security-list">
+  {% for key, check in checks %}
+  <li class="rt-security-item rt-security-{{ check.state }}" data-rt-check="{{ key }}">
+    <i class="bi bi-{{ rt_icons[check.state] }} rt-security-icon" aria-hidden="true"></i>
+    <div class="rt-security-body">
+      <div class="rt-security-line">
+        <h5 class="rt-security-name">{{ t['ms_' ~ key] }}</h5>
+        <span class="rt-status rt-status-{{ rt_pills[check.state] }}">{{ t['ms_state_' ~ check.state] }}</span>
+      </div>
+      <p class="rt-security-why">{{ t['ms_' ~ key ~ '_why']|format(domain, reports, hostname) }}</p>
+      {% if check.state == 'off' and t['ms_' ~ key ~ '_off'] is defined %}
+      <p class="rt-security-detail">{{ t['ms_' ~ key ~ '_off'] }}</p>
+      {% elseif key == 'mta_sts_mx' and check.detail %}
+      <p class="rt-security-detail">{{ t.ms_detail_uncovered|format(domain, reports, hostname, check.detail) }}</p>
+      {% elseif check.detail %}
+      <p class="rt-security-detail">{{ t['ms_detail_' ~ check.detail]|format(domain, reports, hostname, check.found) }}</p>
+      {% elseif check.state == 'unknown' %}
+      <p class="rt-security-detail">{{ t.ms_detail_lookup }}</p>
+      {% endif %}
+      {% if check.state in ['missing', 'wrong'] and check.found and key not in ['mta_sts_policy', 'mta_sts_mx'] %}
+      <p class="rt-security-found">{{ t.ms_found }} <code>{{ check.found }}</code></p>
+      {% endif %}
+      {% if check.state in ['missing', 'wrong', 'unknown'] and check.records %}
+      <div class="rt-records">
+        <p class="rt-records-title">{{ check.records|length > 1 ? t.ms_publish_several : t.ms_publish }}</p>
+        {% for record in check.records %}
+        <dl class="rt-record">
+          <div class="rt-record-field rt-record-name">
+            <dt>{{ t.ms_name }}</dt>
+            <dd><code>{{ record.name }}</code><button type="button" class="rt-copy" data-rt-copy="{{ record.name }}" title="{{ t.ms_copy }}" aria-label="{{ t.ms_copy }}: {{ t.ms_name }}"><i class="bi bi-clipboard" aria-hidden="true"></i></button></dd>
+          </div>
+          <div class="rt-record-field rt-record-type">
+            <dt>{{ t.ms_type }}</dt>
+            <dd><code>{{ record.type }}</code></dd>
+          </div>
+          <div class="rt-record-field rt-record-value">
+            <dt>{{ t.ms_value }}</dt>
+            <dd><code>{{ record.value }}</code><button type="button" class="rt-copy" data-rt-copy="{{ record.value }}" title="{{ t.ms_copy }}" aria-label="{{ t.ms_copy }}: {{ t.ms_value }}"><i class="bi bi-clipboard" aria-hidden="true"></i></button></dd>
+          </div>
+        </dl>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% if key == 'mta_sts' %}
+      <button type="button" class="btn btn-sm btn-primary rt-security-action" data-rt-open-tab="dmtasts">{{ t.ms_mta_sts_setup }}</button>
+      {% elseif key == 'mta_sts_mx' and check.state == 'wrong' %}
+      <button type="button" class="btn btn-sm btn-secondary rt-security-action" data-rt-open-tab="dmtasts">{{ t.ms_edit_policy }}</button>
+      {% elseif key == 'dkim' and check.state == 'off' and is_admin %}
+      <a class="btn btn-sm btn-secondary rt-security-action" href="/admin/system#/config-dkim">{{ t.alert_link_dkim }}</a>
+      {% endif %}
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% if not reports %}
+<p class="rt-security-note"><i class="bi bi-info-circle" aria-hidden="true"></i> {{ t.ms_reports_off }}</p>
+{% endif %}

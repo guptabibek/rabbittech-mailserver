@@ -6,6 +6,7 @@
 <div id="domain-content" class="responsive-tabs">
     <ul class="nav nav-tabs" role="tablist">
       <li role="presentation" class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#dedit">{{ lang.edit.domain }}</button></li>
+      <li role="presentation" class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#dmailsecurity">{{ lang.rabbittech.ms_title }}</button></li>
       <li role="presentation" class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#dratelimit">{{ lang.edit.ratelimit }}</button></li>
       <li role="presentation" class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#dspamfilter">{{ lang.edit.spam_filter }}</button></li>
       <li role="presentation" class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#dqwbcc">{{ lang.edit.quota_warning_bcc }}</button></li>
@@ -162,6 +163,7 @@
             </div>
         </div>
       </div>
+      {% include 'rabbittech/mail-security-tab.twig' %}
       <div id="dratelimit" class="tab-pane fade" role="tabpanel" aria-labelledby="domain-ratelimit">
         <div class="card mb-4">
             <div class="card-header d-flex d-md-none fs-5">
@@ -308,7 +310,7 @@
                     <div class="col-sm-10">
                       <select data-style="btn btn-light" class="form-control" name="mode" title="" required>
                         <option value="enforce"{% if mta_sts.mode == 'enforce' %} selected{% endif %}>enforce</option>
-                        <option value="testing"{% if mta_sts.mode == 'testing' %} selected{% endif %}>testing</option>
+                        <option value="testing"{% if mta_sts.mode == 'testing' or mta_sts == false %} selected{% endif %}>testing</option>
                         <option value="none"{% if mta_sts.mode == 'none' %} selected{% endif %}>none</option>
                       </select>
                     </div>
@@ -319,7 +321,7 @@
                       {{ lang.edit.mta_sts_max_age }}
                     </label>
                     <div class="col-sm-10">
-                      <input type="number" class="form-control" name="max_age" value="{{ mta_sts.max_age }}">
+                      <input type="number" class="form-control" name="max_age" value="{{ mta_sts == false ? 86400 : mta_sts.max_age }}">
                     </div>
                   </div>
                   <div class="row mb-2">
@@ -328,14 +330,14 @@
                       {{ lang.edit.mta_sts_mx }}
                     </label>
                     <div class="col-sm-10">
-                      <textarea autocorrect="off" autocapitalize="none" class="form-control" rows="5" name="mx">{{ mta_sts.mx }}</textarea>
+                      <textarea autocorrect="off" autocapitalize="none" class="form-control" rows="5" name="mx">{{ mta_sts == false ? mailcow_hostname : mta_sts.mx }}</textarea>
                       <small class="text-muted">{{ lang.edit.mta_sts_mx_notice|raw }}</small>
                     </div>
                   </div>
                   <div class="row mb-4">
                     <div class="offset-sm-2 col-sm-10">
                       <div class="form-check">
-                        <label><i style="font-size: 16px; cursor: pointer;" class="bi bi-patch-question-fill m-2 ms-0" data-bs-toggle="tooltip" data-bs-html="true" data-bs-placement="bottom" title="{{ lang.edit.mta_sts_active_info|raw }}"></i><input type="checkbox" class="form-check-input" value="1" name="active"{% if mta_sts.active == '1' %} checked{% endif %}> {{ lang.edit.active }}</label>
+                        <label><i style="font-size: 16px; cursor: pointer;" class="bi bi-patch-question-fill m-2 ms-0" data-bs-toggle="tooltip" data-bs-html="true" data-bs-placement="bottom" title="{{ lang.edit.mta_sts_active_info|raw }}"></i><input type="checkbox" class="form-check-input" value="1" name="active"{% if mta_sts.active == '1' or mta_sts == false %} checked{% endif %}> {{ lang.edit.active }}</label>
                       </div>
                     </div>
                   </div>

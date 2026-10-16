@@ -42,9 +42,9 @@ const main = serve(8088);
 const tfa = serve(8089, { HARNESS_TFA: '1' });
 const problems = serve(8090, { HARNESS_STOPPED: 'olefy', HARNESS_UNHEALTHY: 'rspamd', HARNESS_DF: '96', HARNESS_CERT_DAYS: '6', HARNESS_QUEUE: '64' });
 const session = serve(8091, { HARNESS_SESSION_LIFETIME: '300' });
-const setup = serve(8092, { HARNESS_CERT_PLACEHOLDER: '1', HARNESS_ACME: 'aaaa', HARNESS_BACKUP: 'failed', HARNESS_DNS: '1', HARNESS_RESTORE: 'failed' });
-const restoreOld = serve(8093, { HARNESS_RESTORE: 'old' });
-const backupOff = serve(8094, { HARNESS_BACKUP: 'off', HARNESS_RESTORE: 'failed' });
+const setup = serve(8092, { HARNESS_CERT_PLACEHOLDER: '1', HARNESS_ACME: 'aaaa', HARNESS_BACKUP: 'failed', HARNESS_DNS: '1', HARNESS_RESTORE: 'failed', HARNESS_REPORTS: 'problems' });
+const restoreOld = serve(8093, { HARNESS_RESTORE: 'old', HARNESS_REPORTS: 'waiting' });
+const backupOff = serve(8094, { HARNESS_BACKUP: 'off', HARNESS_RESTORE: 'failed', HARNESS_REPORTS: 'off' });
 const webmail = existsSync(join(sogoRoot, 'live', 'view.html')) ? serveStatic(8095, sogoRoot) : null;
 await Promise.all([main, tfa, problems, session, setup, restoreOld, backupOff].map(u => ready(u + '/admin')));
 if (webmail) await ready(webmail + '/mail.html');
@@ -205,7 +205,7 @@ console.log('Behaviour');
   check('the server card marks the restore test failed', await page.locator('.rt-meta .rt-restore-failed .bi-x-circle-fill').count() === 1);
   check('missing reverse DNS names the IP and hostname', /PTR record of 94\.136\.186\.45 to mail\.rabbittech\.com\.np/.test(find(/Reverse DNS/).hint));
   check('domains with the same problem share one alert', find(/No DMARC record/).text === 'No DMARC record: a.example, b.example, c.example and 2 more');
-  check('every alert has a title and hint, with nothing left unformatted', alerts.length === 10
+  check('every alert has a title and hint, with nothing left unformatted', alerts.length === 19
     && alerts.every(a => a.text && a.hint && !/%[sd]/.test(a.text + a.hint)), JSON.stringify(alerts.map(a => a.text)));
   const levels = alerts.map(a => a.level).join(',');
   check('danger alerts come before warnings', /^(danger,)*(warning,?)*$/.test(levels), levels);
@@ -216,6 +216,122 @@ console.log('Behaviour');
   check('"Open the ACME log" opens the ACME log', await page.locator('#tab-acme-logs').evaluate(e => e.classList.contains('active')));
   await page.close();
 }
+// ------------------------------------------------------------------ mail security
+console.log('Mail security');
+{
+  // The setup server: DNS gaps around MTA-STS, TLS and DMARC reporting, and bad news in the reports
+  const { page } = await open(setup + '/admin/dashboard');
+  const alerts = await page.locator('.rt-alert').evaluateAll(items => items.map(item => ({
+    level: item.className.replace(/.*rt-alert-/, ''),
+    text: item.querySelector('.rt-alert-text').textContent.trim(),
+    hint: item.querySelector('.rt-alert-hint').textContent.replace(/\s+/g, ' ').trim(),
+    links: [...item.querySelectorAll('.rt-alert-hint a')].map(a => a.getAttribute('href')),
+  })));
+  const find = re => alerts.find(a => re.test(a.text)) || { text: '', hint: '', links: [] };
+  const mx = find(/MX host is missing from the MTA-STS policy/);
+  check('an MX host missing from an enforced MTA-STS policy is a danger', mx.level === 'danger' && /Add mail\.rabbittech\.com\.np, and any other MX host/.test(mx.hint), JSON.stringify(mx));
+  check('one domain: the alert links to its Mail security tab', mx.links[0] === '/edit/domain/rabbittech.com.np#mail-security', mx.links.join(' '));
+  const tls = find(/No TLS reports for/);
+  check('several domains: the alert links to the domain list', tls.links[0] === '/admin/mailbox#/domains' && /rua=mailto:reports@rabbittech\.com\.np/.test(tls.hint), JSON.stringify(tls));
+  check('DMARC reports to another domain need its consent, named in the hint', /<domain>\._report\._dmarc\.rabbittech\.com\.np with the value v=DMARC1/.test(find(/can't reach the reports mailbox/).hint));
+  check('the MTA-STS policy alert says where senders fetch it', /mta-sts\.<domain> to mail\.rabbittech\.com\.np with a CNAME/.test(find(/MTA-STS policy can't be fetched/).hint));
+  check('a failed report run says why', /Reason: There is no mailbox reports@rabbittech\.com\.np\. Create it in the console/.test(find(/Mail reports can't be read from reports@rabbittech\.com\.np/).hint));
+  check('this server\'s own mail failing DMARC is counted', /reported 9 messages from this server \(94\.136\.186\.45\)/.test(find(/Mail from this server failed DMARC: rabbittech\.com\.np/).hint));
+  check('failed TLS connections, with the most common failure', /reported 6 failed TLS connections in the last 7 days, most often “certificate-expired”/.test(find(/couldn't deliver securely to: rabbittech\.com\.np/).hint));
+  await page.close();
+}
+{
+  // A month of good reports: no alerts, the card shows each domain and who sends as it
+  const { page, errors } = await open(main + '/admin/dashboard');
+  const domains = await page.locator('#rt-reports-domains tbody tr').evaluateAll(rows => rows.map(r => r.innerText.replace(/\s+/g, ' ').trim()));
+  check('Mail reports: messages and DMARC pass rate per domain', domains.length === 2 && /^rabbittech\.com\.np 1,556 98\.9% 1,428 of 1,428 connections$/.test(domains[0])
+    && /^staging\.rabbittech\.com\.np 28 100% No TLS reports$/.test(domains[1]), domains.join(' | '));
+  const senders = await page.locator('#rt-reports-senders tbody tr').evaluateAll(rows => rows.map(r => r.innerText.replace(/\s+/g, ' ').trim()));
+  check('Mail reports: senders, busiest first, this server marked', senders.length === 3 && /^mail\.rabbittech\.com\.np This server 94\.136\.186\.45 rabbittech\.com\.np, staging\.rabbittech\.com\.np [\d,]+ 100%$/.test(senders[0])
+    && /^mail-sor-f69\.google\.com 209\.85\.220\.69 rabbittech\.com\.np 84 100%$/.test(senders[1]) && /^203\.0\.113\.66 rabbittech\.com\.np 16 0% 16 failed$/.test(senders[2]), senders.join(' | '));
+  const foot = (await page.locator('.rt-reports-foot').textContent()).replace(/\s+/g, ' ').trim();
+  check('Mail reports: how many reports, from whom', foot === 'From 98 reports by Enterprise Outlook, Google Inc., google.com', foot);
+  const meta = (await page.locator('.rt-reports-meta').textContent()).replace(/\s+/g, ' ').trim();
+  check('Mail reports: when they were last read', /^Last 30 days · read 5 minutes ago$/.test(meta), meta);
+  check('no page errors with the reports card', errors.length === 0, errors.join(' | '));
+  await page.locator('#rt-reports').screenshot({ path: join(output, 'overview-mail-reports.png') });
+  await page.close();
+}
+for (const [server, title, hint] of [[backupOff, "Mail reports aren't collected", /set RT_REPORTS_MAILBOX in mailcow\.conf/], [restoreOld, 'No reports yet', /once a day to reports@rabbittech\.com\.np/]]) {
+  const { page } = await open(server + '/admin/dashboard');
+  const text = (await page.locator('#rt-reports .card-body').textContent()).replace(/\s+/g, ' ').trim();
+  check(`Mail reports card: "${title}"`, text.startsWith(title) && hint.test(text) && await page.locator('#rt-reports table').count() === 0, text);
+  await page.close();
+}
+{
+  // The domain's Mail security tab loads only when it opens
+  const { page } = await open(main + '/edit/domain/rabbittech.com.np');
+  const requests = [];
+  page.on('request', r => { if (r.url().includes('rt_mail_security.php')) requests.push(r.url()); });
+  await page.waitForTimeout(300);
+  check('the Mail security checks are not run until the tab opens', requests.length === 0);
+  await page.locator('[data-bs-target="#dmailsecurity"]').click();
+  await page.locator('.rt-security-list').waitFor();
+  const rows = await page.locator('.rt-security-item').evaluateAll(items => items.map(i => i.getAttribute('data-rt-check') + ':' + i.className.replace(/.*rt-security-/, '')));
+  check('a domain set up well: every check OK, MTA-STS not set up', rows.join(' ') === 'mx:ok spf:ok dkim:ok dmarc:ok dmarc_reports:ok mta_sts:off tls_reports:ok'
+    && requests.length === 1 && requests[0].endsWith('?domain=rabbittech.com.np'), rows.join(' '));
+  const texts = await page.locator('.rt-security-list').innerText();
+  check('every check has a title, a state and an explanation', !/ms_|%\d?\$?s/.test(texts) && await page.locator('.rt-security-why:empty, .rt-security-name:empty').count() === 0, texts.slice(0, 200));
+  await page.locator('.rt-security').screenshot({ path: join(output, 'domain-mail-security.png') });
+  await page.getByRole('button', { name: 'Set up MTA-STS' }).click();
+  await page.waitForTimeout(400);
+  const form = await page.evaluate(() => {
+    const f = document.querySelector('form[data-id="dommtasts"]');
+    return { open: document.getElementById('dmtasts').classList.contains('active'), mode: f.mode.value, mx: f.mx.value, maxAge: f.max_age.value, active: f.querySelector('input[type=checkbox][name=active]').checked };
+  });
+  check('"Set up MTA-STS" opens the MTA-STS tab with a safe start: testing, this server, active', form.open && form.mode === 'testing' && form.mx === 'mail.rabbittech.com.np'
+    && form.maxAge === '86400' && form.active, JSON.stringify(form));
+  await page.locator('[data-bs-target="#dmailsecurity"]').click();
+  await page.getByRole('button', { name: 'Check again' }).click();
+  await page.waitForTimeout(600);
+  check('"Check again" runs the checks again', requests.length === 2);
+  await page.close();
+}
+{
+  // A domain with problems: what is wrong, and the records to publish
+  const { page, errors } = await open(setup + '/edit/domain/rabbittech.com.np#mail-security');
+  await page.locator('.rt-security-list').waitFor();
+  // textContent: the record labels are upper-case only on screen
+  const item = async key => (await page.locator(`[data-rt-check="${key}"]`).textContent()).replace(/\s+/g, ' ').trim();
+  check('the Overview\'s link opens the Mail security tab', await page.locator('#dmailsecurity').evaluate(e => e.classList.contains('active')));
+  check('SPF: the record to publish keeps what is there and adds this server', /Needs a fix/.test(await item('spf'))
+    && /Published now: v=spf1 include:_spf\.google\.com ~all/.test(await item('spf')) && /Value v=spf1 include:_spf\.google\.com a:mail\.rabbittech\.com\.np ~all/.test(await item('spf')), await item('spf'));
+  check('DMARC reports: the record with the reports address added', /Value v=DMARC1; p=none; rua=mailto:reports@rabbittech\.com\.np/.test(await item('dmarc_reports')));
+  check('MTA-STS record: says the id is old, shows the current one', /earlier version of the policy/.test(await item('mta_sts_txt')) && /_mta-sts\.rabbittech\.com\.np Type TXT Value v=STSv1; id=20261016120000/.test(await item('mta_sts_txt')), await item('mta_sts_txt'));
+  check('MTA-STS policy: a certificate problem, and the CNAME to publish', /isn't valid for that name/.test(await item('mta_sts_policy')) && /mta-sts\.rabbittech\.com\.np Type CNAME Value mail\.rabbittech\.com\.np/.test(await item('mta_sts_policy')), await item('mta_sts_policy'));
+  check('MTA-STS MX: names the host the policy misses, with a way to fix it', /Not listed: backup-mx\.example\.net\./.test(await item('mta_sts_mx')) && /Edit the policy/.test(await item('mta_sts_mx')), await item('mta_sts_mx'));
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.locator('[data-rt-check="tls_reports"] .rt-record-value .rt-copy').click();
+  await page.waitForTimeout(200);
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  check('the copy button copies the record', copied === 'v=TLSRPTv1; rua=mailto:reports@rabbittech.com.np'
+    && await page.locator('[data-rt-check="tls_reports"] .rt-record-value .rt-copy.is-copied .bi-check2').count() === 1, copied);
+  check('no page errors on the Mail security tab', errors.length === 0, errors.join(' | '));
+  await page.locator('.rt-security').screenshot({ path: join(output, 'domain-mail-security-problems.png') });
+  await page.close();
+}
+for (const [theme, width] of [['dark', 1366], ['light', 390]]) {
+  const { page, errors } = await open(setup + '/edit/domain/rabbittech.com.np#mail-security', { theme, width });
+  await page.locator('.rt-security-list').waitFor();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  check(`Mail security tab ${theme} ${width}px: opens from the link, no errors, no sideways scrolling`, errors.length === 0 && overflow <= 1, errors.join(' | ') + ' ' + overflow);
+  await page.locator('.rt-security').screenshot({ path: join(output, `domain-mail-security-${theme}-${width}.png`) });
+  await page.close();
+}
+{
+  const { page } = await open(backupOff + '/edit/domain/rabbittech.com.np#mail-security');
+  await page.locator('.rt-security-list').waitFor();
+  const tls = (await page.locator('[data-rt-check="tls_reports"]').innerText()).replace(/\s+/g, ' ');
+  check('without a reports mailbox: TLS reports "Not set up" and a note on how to collect them', /Not set up/.test(tls) && /RT_REPORTS_MAILBOX isn't set/.test(tls)
+    && /Set RT_REPORTS_MAILBOX in mailcow\.conf/.test(await page.locator('.rt-security-note').textContent()), tls);
+  await page.close();
+}
+
 // Mailbox users and domain admins never see the mailcow, SOGo or Rspamd names, not even in dialogs
 // that are still closed. Container names ("sogo-mailcow") stay: admins type them in docker compose.
 for (const path of ['/', '/user', '/quarantine', '/domainadmin/mailbox', '/domainadmin/user', '/edit/mailbox/bibek@rabbittech.com.np']) {

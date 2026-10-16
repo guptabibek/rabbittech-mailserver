@@ -64,11 +64,23 @@ How it works:
       3 days while backups do run (see [Restore test](#restore-test));
     - mail DNS, for every active domain: MX pointing here, SPF including this server's IP (`ip4:`
       ranges included), the DKIM key published, a DMARC record, and reverse DNS of the server's IP.
-      Domains with the same problem share one alert.
+      With an MTA-STS policy: its TXT record with the current id, the policy reachable over HTTPS
+      at `mta-sts.<domain>` with a valid certificate, and every MX host listed in it (a danger in
+      enforce mode, where senders refuse the others), plus a TLS reporting record. When reports
+      are collected (see [Mail reports](#mail-reports)): DMARC and TLS reports sent to the reports
+      mailbox, and other domains' consent records for it. Domains with the same problem share one
+      alert, which links to the domain's Mail security tab when only one domain has it;
+    - mail reports: reading them failed (with the reason) or stopped, this server's own mail
+      failed DMARC at a provider in the last 7 days, or servers couldn't deliver over TLS (with the
+      most common failure).
   - The certificate and DNS results are cached in Redis (6 hours when fine, 1 hour while something
     is wrong); "Check again" (`?recheck=1`) clears them. A check that can't run raises no alert.
   - The server card shows when the last backup was made, and when the last restore test ran,
     with ✓ or ✗ ("Off" when restore tests are turned off).
+  - A Mail reports card: the last 30 days of DMARC and TLS reports. Per domain the messages
+    providers saw and how many passed DMARC, and secure deliveries out of all; then who sends mail
+    as your domains (reverse DNS name, this server marked, failures counted). Until reports are
+    collected it says how to start.
   - Live counts of domains, mailboxes, aliases, queued mail and quarantine. The quarantine is
     counted on the server; the others are read from `/api/v1`.
   - A server status card and quick actions.
@@ -113,6 +125,8 @@ The content of every page follows the same patterns, so the console reads as one
 - **Administrators** lists administrators and domain administrators first. Your own 2FA/FIDO2 is
   in its own card, and the API keys are a collapsible card. The 2FA/FIDO2 rows are shared with the
   user overview and the domain-admin account page (`templates/rabbittech/security-settings.twig`).
+- **Mail security** is a tab on each domain's edit page (`templates/rabbittech/mail-security*.twig`),
+  see [Mail security](#mail-security).
 - **DKIM** shows one bordered row per domain. This also fixes an upstream bug: domains without a
   key were hidden although the "Key missing" filter was on.
 
@@ -333,8 +347,10 @@ is valid JSON and every RabbitTech string in use exists (`scripts/check-rabbitte
 tests that a release sync keeps runtime files and admin-edited maps. It also runs the backup
 script against a fake mailcow helper, including when it runs the restore test
 (`tests/backup/test-backup.sh`), the health check and a full deploy and rollback with fake Docker
-(`tests/deploy/test-deploy.sh`), and the ACME log reader and SPF range check behind the Overview
-alerts (`tests/php/overview-checks.php`).
+(`tests/deploy/test-deploy.sh`), the ACME log reader and SPF range check behind the Overview
+alerts (`tests/php/overview-checks.php`), the mail security checks against a fake DNS and the
+reading of real-world DMARC and TLS reports (`tests/php/mail-security.php`), and the report reader
+with fake Docker (`tests/reports/test-mail-reports.sh`).
 
 A second job runs the UI smoke tests and uploads their screenshots as the `ui-screenshots` artifact.
 
@@ -353,7 +369,9 @@ server:
 
 - `router.php` renders the real templates and CSS/JS bundles from `data/web` with stub data and a
   stub API. Environment switches select 2FA, a language, a session lifetime or Overview problem
-  states: certificate, ACME reason, backups, mail DNS (see the top of the file). Run it on its own with
+  states: certificate, ACME reason, backups, mail DNS, mail reports (see the top of the file). The
+  reports and a domain's Mail security checks are built with the real helpers, on fake reports and
+  a fake DNS zone. Run it on its own with
   `php -S 127.0.0.1:8088 tests/ui/router.php` to look at pages by hand.
 - `sogo/prepare.sh` builds a webmail mock from SOGo's own stylesheets and scripts at the version in
   `docker-compose.yml`, plus `data/conf/sogo`, with page markup copied from SOGo's templates.
@@ -373,6 +391,10 @@ server:
   the bulk toolbars, the 2FA status, the Overview alerts, the session warning across tabs, and the
   webmail palette, top bar and selected message. Pages for mailbox users and domain admins must not
   name mailcow, SOGo or Rspamd, closed dialogs included.
+- Mail security: the Overview's MTA-STS, TLS and DMARC reporting alerts and their links, the Mail
+  reports card in every state, and a domain's Mail security tab: it loads only when opened, shows
+  what is wrong with the records to publish, copies them, opens the MTA-STS tab with a safe
+  start, and works in dark mode and at phone width.
 - In the live Mail app it checks the Gmail-style layout end to end:
   - Stock SOGo runs against the fake server without errors.
   - Every layout change applies.
@@ -523,6 +545,70 @@ afterwards. The live server is only read, never changed.
 - **Run it now**, on the last good backup or a folder you name:
   `cd /opt/rabbittech-mailserver/app && bash scripts/restore-test.sh [../backups/mail/mailcow-<date>]`
 
+### Mail security
+
+Each domain's edit page has a **Mail security** tab with what other mail servers check before
+they trust mail from the domain and deliver mail to it securely. It loads when it opens
+(`inc/ajax/rt_mail_security.php`, for admins and the domain's admins) and "Check again" runs it
+again. The Overview's DNS alerts link here.
+
+| Check | OK when |
+|---|---|
+| MX record | the domain's MX points to this server |
+| SPF | the SPF record allows this server (one record only) |
+| DKIM | the published key is the one mail is signed with |
+| DMARC | there is exactly one DMARC record |
+| DMARC reports | its `rua=` includes the reports mailbox (when reports are collected) |
+| Consent for DMARC reports | for a reports mailbox at another domain: `<domain>._report._dmarc.<reports domain>` says `v=DMARC1` |
+| MTA-STS record | `_mta-sts.<domain>` has the id of the current policy (with or without spaces) |
+| MTA-STS policy | `https://mta-sts.<domain>/.well-known/mta-sts.txt` answers with this policy and a valid certificate, no redirects |
+| MX hosts in the policy | every MX host matches one of the policy's `mx` lines |
+| TLS reports | `_smtp._tls.<domain>` has a `v=TLSRPTv1` record (sending to the reports mailbox when reports are collected) |
+
+- A check that needs a fix says what is wrong and shows the DNS records to publish, with copy
+  buttons. A record that is there but incomplete is shown with the missing part added (for
+  example the reports address added to `rua=`, or this server added to SPF before its `all`).
+- A lookup that fails shows "Couldn't check", never a problem. The policy check fetches the
+  policy the way senders do, from this server; if it can't connect at all it can't tell.
+- **Guided MTA-STS setup:** with no policy, "Set up MTA-STS" opens the MTA-STS tab with a safe
+  start: mode `testing`, this server as the MX host, a one-day max age, active. After saving,
+  publish the `_mta-sts` TXT and `mta-sts.<domain>` CNAME records the tab shows. With
+  `AUTODISCOVER_SAN=y` (the default) the certificate gets `mta-sts.<domain>` at the next daily
+  certificate check once the name resolves here. When the TLS reports show no failures for a few
+  weeks, switch the mode to `enforce`.
+- The checks themselves are `rabbittech_domain_checks()` in `inc/functions.rabbittech.inc.php`,
+  given the DNS, HTTPS and console lookups from `inc/functions.rabbittech-mail.inc.php`; the
+  Overview uses the same checks for every domain.
+
+### Mail reports
+
+Mail providers such as Gmail, Outlook and Yahoo send daily reports to the address in a domain's
+DMARC (`rua=`) and TLS reporting records: who sent mail as the domain and whether it passed SPF
+and DKIM, and whether their servers could deliver to yours over TLS. `scripts/mail-reports.sh`
+reads them, and the Overview shows a 30-day summary and warns about failures.
+
+- **Set up:**
+  1. Create a mailbox for the reports in the console, e.g. `reports@rabbittech.com.np`.
+  2. Set `RT_REPORTS_MAILBOX=reports@rabbittech.com.np` in the GitHub secret `MAILCOW_ENV_FILE`
+     and deploy.
+  3. Publish the DMARC and TLS reporting records each domain's Mail security tab shows. A domain
+     other than the mailbox's also needs the consent record the tab shows.
+  The first reports arrive within a day or two.
+- **Schedule:** the deploy adds an entry to the deploy user's crontab that runs it every 15
+  minutes. Its log is `shared/mail-reports.log` (a line per run that read something, and errors).
+- **What it does:** each new message in the mailbox's inbox is read once
+  (`doveadm fetch` in the Dovecot container) and gets the keyword `rtreport`. Reports (zip, gzip or
+  plain XML and JSON attachments) are parsed in the PHP container
+  (`inc/lib/rabbittech-mail-reports.php`, not reachable over HTTP) and marked as read; other
+  messages stay unread for you. Nothing is deleted from the mailbox. A run reads at most 500
+  messages, so a full mailbox is caught up over a few runs.
+- **Kept:** 31 days of reports in Redis (`RT_MAIL_REPORTS`), the same report sent twice once, the
+  busiest 500 senders per report, and the reverse DNS names of the senders.
+- **Status:** a run that fails (no such mailbox, Dovecot errors) is shown on the Overview with the
+  reason; so is no run for a day.
+- **Run it now:** `cd /opt/rabbittech-mailserver/app && bash scripts/mail-reports.sh`
+- With `RT_REPORTS_MAILBOX` empty, nothing is read and the Overview says reports aren't collected.
+
 ### Behind another nginx
 
 When another nginx on the server owns ports 80 and 443 and passes `mail.<domain>` on to mailcow
@@ -539,7 +625,11 @@ When another nginx on the server owns ports 80 and 443 and passes `mail.<domain>
   ```
   mailcow's nginx trusts these headers from private networks, which includes Docker's.
 - **Certificates:** Let's Encrypt follows the usual port 80 to HTTPS redirect, so ACME works as long
-  as the HTTPS server block passes `/.well-known/acme-challenge/` on to mailcow. Don't publish an
+  as the HTTPS server block passes `/.well-known/acme-challenge/` on to mailcow.
+- **MTA-STS:** senders fetch a domain's policy from `https://mta-sts.<domain>/.well-known/mta-sts.txt`.
+  The front nginx must pass `mta-sts.<domain>` on to mailcow too, keeping `Host` (mailcow answers
+  by the name asked for), with a certificate that includes the name, and without redirecting the
+  policy URL. The domain's Mail security tab checks all of this from the outside. Don't publish an
   AAAA record unless mailcow runs with IPv6 (`ENABLE_IPV6=true`): ACME checks IPv6 first and gives
   up.
 - **Alerts by email:** set `WATCHDOG_NOTIFY_EMAIL` so mailcow's health monitor emails you when a

@@ -205,6 +205,109 @@
           </div>
         </div>
 
+        {# DMARC and TLS reports read by scripts/mail-reports.sh (admin/dashboard.php), last 30 days #}
+        {% set rt_rs = rt_reports.status|default(null) %}
+        {% set rt_sum = rt_reports.summary|default(null) %}
+        <section class="card mb-4 rt-reports" id="rt-reports" aria-labelledby="rt-reports-title">
+          <div class="card-header d-flex rt-section-head">
+            <h2 class="rt-card-title" id="rt-reports-title"><i class="bi bi-envelope-check me-2" aria-hidden="true"></i>{{ t.reports_title }}</h2>
+            {% if rt_rs.enabled|default(false) %}
+            <span class="rt-reports-meta">{{ t.reports_period }}
+              {%- if rt_rs.last_success|default(0) %} &middot; {{ t.reports_read|format('<time datetime="' ~ rt_rs.last_success|date('c') ~ '" data-rt-time="' ~ rt_rs.last_success ~ '" title="' ~ rt_rs.last_success|date('Y-m-d H:i') ~ '">' ~ rt_rs.last_success|date('Y-m-d H:i') ~ '</time>')|raw }}{% endif -%}
+            </span>
+            {% endif %}
+          </div>
+          <div class="card-body">
+            {% if not rt_rs.enabled|default(false) or not rt_sum or not rt_sum.domains %}
+            <div class="rt-reports-empty">
+              <span class="rt-reports-empty-icon" aria-hidden="true"><i class="bi bi-envelope-paper"></i></span>
+              <div>
+                {% if rt_rs.enabled|default(false) %}
+                <p class="rt-reports-empty-title">{{ t.reports_waiting }}</p>
+                <p>{{ t.reports_waiting_hint|format(rt_rs.mailbox) }}</p>
+                {% else %}
+                <p class="rt-reports-empty-title">{{ t.reports_off }}</p>
+                <p>{{ t.reports_off_hint }}</p>
+                {% endif %}
+              </div>
+            </div>
+            {% else %}
+            <div class="table-responsive">
+              <table class="table rt-reports-table" id="rt-reports-domains">
+                <thead>
+                  <tr>
+                    <th scope="col">{{ t.reports_domain }}</th>
+                    <th scope="col" class="text-end">{{ t.reports_messages }}</th>
+                    <th scope="col">{{ t.reports_passed }}</th>
+                    <th scope="col">{{ t.reports_tls }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for rt_name, rt_d in rt_sum.domains %}
+                  <tr>
+                    <th scope="row">{{ rt_name }}</th>
+                    <td class="text-end"><span data-rt-number>{{ rt_d.messages }}</span></td>
+                    <td>
+                      {% if rt_d.messages > 0 %}
+                      {% set rt_pct = rt_d.passed / rt_d.messages * 100 %}
+                      <span class="rt-pass rt-pass-{{ rt_pct >= 98 ? 'ok' : (rt_pct >= 90 ? 'warning' : 'danger') }}">
+                        <span class="rt-pass-pct">{{ rt_pct|round(1, 'floor') }}%</span>
+                        <span class="rt-pass-track" aria-hidden="true"><span class="rt-pass-bar" style="width: {{ rt_pct }}%"></span></span>
+                      </span>
+                      {% else %}<span class="rt-cell-muted">&ndash;</span>{% endif %}
+                    </td>
+                    <td>
+                      {% if rt_d.tls_ok + rt_d.tls_failed > 0 %}
+                      {{ t.reports_tls_value|format('<span data-rt-number>' ~ rt_d.tls_ok ~ '</span>', '<span data-rt-number>' ~ (rt_d.tls_ok + rt_d.tls_failed) ~ '</span>')|raw }}
+                      {% if rt_d.tls_failed %}<span class="rt-status rt-status-stopped" title="{{ rt_d.tls_failures|keys|join(', ') }}">{{ t.reports_failed_count|format(rt_d.tls_failed) }}</span>{% endif %}
+                      {% else %}<span class="rt-cell-muted">{{ t.reports_tls_none }}</span>{% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% if rt_sum.senders %}
+            <h3 class="rt-reports-subtitle">{{ t.reports_senders }}</h3>
+            <div class="table-responsive">
+              <table class="table rt-reports-table" id="rt-reports-senders">
+                <thead>
+                  <tr>
+                    <th scope="col">{{ t.reports_sender }}</th>
+                    <th scope="col">{{ t.reports_domain }}</th>
+                    <th scope="col" class="text-end">{{ t.reports_messages }}</th>
+                    <th scope="col">{{ t.reports_passed }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for rt_s in rt_sum.senders %}
+                  <tr>
+                    <th scope="row">
+                      <span class="rt-cell-text">
+                        <span class="rt-cell-primary">{{ rt_s.host ?: rt_s.ip }}{% if rt_s.server %} <span class="rt-chip rt-chip-server">{{ t.reports_this_server }}</span>{% endif %}</span>
+                        {% if rt_s.host %}<small>{{ rt_s.ip }}</small>{% endif %}
+                      </span>
+                    </th>
+                    <td>{{ rt_s.domains|join(', ') }}</td>
+                    <td class="text-end"><span data-rt-number>{{ rt_s.messages }}</span></td>
+                    <td>
+                      {{ (rt_s.messages > 0 ? rt_s.passed / rt_s.messages * 100 : 0)|round(1, 'floor') }}%
+                      {% if rt_s.passed < rt_s.messages %}<span class="rt-status rt-status-stopped">{{ t.reports_failed_count|format(rt_s.messages - rt_s.passed) }}</span>{% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% endif %}
+            <p class="rt-reports-foot">
+              {{ t.reports_from|format(rt_sum.reports, rt_sum.reporters|join(', ')) }}
+              {%- if rt_sum.more_senders %} &middot; {{ t.reports_more_senders|format(rt_sum.more_senders) }}{% endif %}
+            </p>
+            {% endif %}
+          </div>
+        </section>
+
         <div class="row g-4 mb-4">
           <div class="col-lg-6">
             <div class="card rt-chart-card h-100">

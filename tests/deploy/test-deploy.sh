@@ -159,6 +159,7 @@ release one ok
 deploy one && rc=0 || rc=$?
 check "a healthy release is recorded as the one to return to" '[ "$rc" = 0 ] && [ "$(cat "$APP_ROOT/shared/current-release")" = "$APP_ROOT/releases/one" ] && [ -f "$APP_ROOT/shared/last-good-mailcow.conf" ]'
 check "the backup cron entry is installed" 'grep -q "scripts/backup-mail.sh" "$T/crontab"'
+check "the mail reports cron entry is installed" 'grep -q "^\*/15 .*scripts/mail-reports.sh >> .*/shared/mail-reports.log" "$T/crontab"'
 release twotwo fail
 echo "only in release two" > "$APP_ROOT/releases/twotwo/ONLY-IN-TWO"
 deploy twotwo && rc=0 || rc=$?

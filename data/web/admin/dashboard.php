@@ -5,6 +5,7 @@ require_once $_SERVER['DOCUMENT_ROOT'] . '/inc/triggers.admin.inc.php';
 protect_route(['admin']);
 
 require_once $_SERVER['DOCUMENT_ROOT'] . '/inc/header.inc.php';
+require_once $_SERVER['DOCUMENT_ROOT'] . '/inc/functions.rabbittech-mail.inc.php';
 $_SESSION['return_to'] = $_SERVER['REQUEST_URI'];
 
 // Overview checks. Each result is cached in Redis, and a check that can't run (Redis, nginx or DNS
@@ -113,22 +114,21 @@ function rt_restore_status() {
   return $status === false ? null : json_decode($status, true);
 }
 
-// DNS of the mail domains, as other mail servers see it. Returns the domains failing each check
-// and the server's reverse DNS problem, if any.
-function rt_mail_dns_problems($hostname) {
+// DNS of the mail domains, as other mail servers see it (rabbittech_domain_checks). Returns the
+// domains failing each check and the server's reverse DNS problem, if any. $reports is the
+// address DMARC and TLS reports are read from ('' when they aren't).
+function rt_mail_dns_problems($hostname, $reports) {
   global $pdo;
   $cached = rt_cache_get('RT_DNS_HEALTH');
   if ($cached !== false) {
     return $cached;
   }
-  require_once $_SERVER['DOCUMENT_ROOT'] . '/inc/spf.inc.php';
   $host = strtolower($hostname);
-  $a = @dns_get_record($hostname, DNS_A);
-  if (empty($a[0]['ip'])) {
+  $ip = rt_server_ip($hostname);
+  if ($ip === null) {
     return null;
   }
-  $ip = $a[0]['ip'];
-  $problems = array('ip' => $ip, 'ptr' => null, 'mx' => array(), 'spf' => array(), 'dkim_key' => array(), 'dkim' => array(), 'dmarc' => array());
+  $problems = array('ip' => $ip, 'ptr' => null, 'mta_sts_enforced' => false);
 
   $ptr = @gethostbyaddr($ip);
   if ($ptr === false || $ptr === $ip) {
@@ -138,85 +138,30 @@ function rt_mail_dns_problems($hostname) {
     $problems['ptr'] = array('other', $ptr);
   }
 
-  // TXT records of a name; null when the lookup itself failed, so it isn't reported as missing
-  $txt = function ($name) {
-    $records = @dns_get_record($name, DNS_TXT);
-    if ($records === false) {
-      return null;
-    }
-    $texts = array();
-    foreach ($records as $record) {
-      $texts[] = isset($record['entries']) ? implode('', $record['entries']) : ($record['txt'] ?? '');
-    }
-    return $texts;
-  };
-
   try {
     $domains = $pdo->query("SELECT `domain` FROM `domain` WHERE `active` = '1' AND `backupmx` = '0' ORDER BY `domain` LIMIT 50")->fetchAll(PDO::FETCH_COLUMN);
   } catch (PDOException $e) {
     return null;
   }
   foreach ($domains as $domain) {
-    $mx = @dns_get_record($domain, DNS_MX);
-    if ($mx !== false) {
-      $targets = array_map(function ($record) { return strtolower(rtrim($record['target'], '.')); }, $mx);
-      if (!in_array($host, $targets, true)) {
-        $problems['mx'][] = $domain;
+    $checks = rt_domain_security($domain, $host, $ip, $reports);
+    foreach ($checks as $check => $result) {
+      if ($check === 'dkim' && $result['state'] === 'off') {
+        $problems['dkim_key'][] = $domain;
       }
-    }
-
-    $texts = $txt($domain);
-    if ($texts !== null) {
-      $spf = null;
-      foreach ($texts as $text) {
-        if (stripos($text, 'v=spf1') === 0) {
-          $spf = $text;
-        }
+      // A failed lookup is not a problem; MTA-STS and TLS reporting not being set up is a
+      // choice, except that TLS reports matter once an MTA-STS policy can stop mail
+      if (!in_array($result['state'], array('missing', 'wrong'), true) || ($check === 'tls_reports' && isset($checks['mta_sts']))) {
+        continue;
       }
-      // get_spf_allowed_hosts() follows include, a, mx and redirect but drops CIDR sizes,
-      // so ip4: ranges are checked here as well
-      preg_match_all('/\bip4:([0-9.\/]+)/i', (string)$spf, $ranges);
-      if ($spf === null || (!in_array($ip, (array)@get_spf_allowed_hosts($domain), true) && !rabbittech_ip_in_cidrs($ip, $ranges[1]))) {
-        $problems['spf'][] = $domain;
-      }
-    }
-
-    $dkim = dkim('details', $domain);
-    if (empty($dkim['dkim_txt'])) {
-      $problems['dkim_key'][] = $domain;
-    }
-    else {
-      $published = $txt($dkim['dkim_selector'] . '._domainkey.' . $domain);
-      if ($published !== null) {
-        // dkim_txt is split into quoted 255-character strings when SPLIT_DKIM_255 is set
-        preg_match('/\bp=([^;]+)/', str_replace(array('"', ' '), '', $dkim['dkim_txt']), $want);
-        $found = false;
-        foreach ($published as $text) {
-          if (preg_match('/\bp=([^;]+)/', str_replace(array('"', ' '), '', $text), $have) && isset($want[1]) && $have[1] === $want[1]) {
-            $found = true;
-          }
-        }
-        if (!$found) {
-          $problems['dkim'][] = $domain;
-        }
-      }
-    }
-
-    $dmarc = $txt('_dmarc.' . $domain);
-    if ($dmarc !== null) {
-      $found = false;
-      foreach ($dmarc as $text) {
-        if (stripos($text, 'v=DMARC1') === 0) {
-          $found = true;
-        }
-      }
-      if (!$found) {
-        $problems['dmarc'][] = $domain;
+      $problems[$check][] = $domain;
+      if ($check === 'mta_sts_mx' && $result['enforce']) {
+        $problems['mta_sts_enforced'] = true;
       }
     }
   }
 
-  $fine = $problems['ptr'] === null && !$problems['mx'] && !$problems['spf'] && !$problems['dkim_key'] && !$problems['dkim'] && !$problems['dmarc'];
+  $fine = $problems['ptr'] === null && count($problems) === 3;
   rt_cache_set('RT_DNS_HEALTH', $fine ? 21600 : 3600, $problems);
   return $problems;
 }
@@ -362,10 +307,20 @@ if ($rt_restore !== null) {
   }
 }
 
+// What scripts/mail-reports.sh keeps: the DMARC and TLS reports, and whether it reads them
+$rt_mail_reports = rt_mail_reports();
+$rt_reports_status = $rt_mail_reports['status'] ?? null;
+$rt_reports_address = rt_reports_address($rt_mail_reports);
+
 // DNS of the mail domains: what decides whether mail arrives and isn't marked as spam
-$rt_dns = $hostname ? rt_mail_dns_problems($hostname) : null;
+$rt_dns = $hostname ? rt_mail_dns_problems($hostname, $rt_reports_address) : null;
+// One domain: straight to its Mail security tab; several: the domain list
+$rt_security_link = function ($domains) use ($rt_text) {
+  return count($domains) === 1
+    ? array('href' => '/edit/domain/' . rawurlencode($domains[0]) . '#mail-security', 'text' => $rt_text['alert_link_security'])
+    : array('href' => '/admin/mailbox#/domains', 'text' => $rt_text['alert_link_domains']);
+};
 if ($rt_dns !== null) {
-  $rt_domains_link = array('href' => '/admin/mailbox#/domains', 'text' => $rt_text['alert_link_domains']);
   $rt_dkim_link = array('href' => '/admin/system#/config-dkim', 'text' => $rt_text['alert_link_dkim']);
   if ($rt_dns['ptr'] !== null) {
     if ($rt_dns['ptr'][0] === 'missing') {
@@ -377,22 +332,67 @@ if ($rt_dns !== null) {
         'hint' => sprintf($rt_text['alert_dns_ptr_other_hint'], $hostname, $rt_dns['ip']), 'links' => array($rt_recheck));
     }
   }
+  // check => [value for the hint, link, level]. An MX host missing from an enforced MTA-STS
+  // policy stops mail, so that one is a danger.
   $rt_dns_checks = array(
-    'mx' => array($hostname, $rt_domains_link),
-    'spf' => array($rt_dns['ip'], $rt_domains_link),
+    'mx' => array($hostname, $rt_security_link),
+    'spf' => array($rt_dns['ip'], $rt_security_link),
     'dkim_key' => array('', $rt_dkim_link),
     'dkim' => array('', $rt_dkim_link),
-    'dmarc' => array('', $rt_domains_link),
+    'dmarc' => array('', $rt_security_link),
+    'dmarc_reports' => array($rt_reports_address, $rt_security_link),
+    'dmarc_auth' => array(substr(strrchr($rt_reports_address, '@') ?: '@', 1), $rt_security_link),
+    'mta_sts_txt' => array('', $rt_security_link),
+    'mta_sts_policy' => array($hostname, $rt_security_link),
+    'mta_sts_mx' => array($hostname, $rt_security_link, empty($rt_dns['mta_sts_enforced']) ? 'warning' : 'danger'),
+    'tls_reports' => array($rt_reports_address, $rt_security_link),
   );
   foreach ($rt_dns_checks as $rt_check => $rt_how) {
     if (!empty($rt_dns[$rt_check])) {
-      $rt_alerts[] = array('level' => 'warning', 'key' => 'dns_' . $rt_check,
+      $rt_alerts[] = array('level' => $rt_how[2] ?? 'warning', 'key' => 'dns_' . $rt_check,
         'value' => rabbittech_list($rt_dns[$rt_check], $rt_text['list_more']),
         'hint' => sprintf($rt_text['alert_dns_' . $rt_check . '_hint'], $rt_how[0]),
-        'links' => array($rt_how[1], $rt_recheck));
+        'links' => array($rt_how[1] instanceof Closure ? $rt_how[1]($rt_dns[$rt_check]) : $rt_how[1], $rt_recheck));
     }
   }
 }
+
+// Mail reports: whether they are read, and what the last week's reports say
+$rt_server_ip = $rt_dns['ip'] ?? '';
+$rt_mail_domains = $rt_mail_reports ? rt_mail_domains() : null;
+if (!empty($rt_reports_status['enabled'])) {
+  if (empty($rt_reports_status['ok'])) {
+    $rt_alerts[] = array('level' => 'warning', 'key' => 'reports_failed', 'value' => $rt_reports_address,
+      'hint' => sprintf($rt_text['alert_reports_failed_hint'], $rt_reports_status['error'] ?? ''));
+  }
+  elseif (time() - (int)$rt_reports_status['time'] > 86400) {
+    $rt_alerts[] = array('level' => 'warning', 'key' => 'reports_old', 'date' => (int)$rt_reports_status['time']);
+  }
+  $rt_week = rabbittech_reports_summary($rt_mail_reports, time(), $rt_server_ip, 7, 8, $rt_mail_domains);
+  if ($rt_week['self_failed']) {
+    $rt_alerts[] = array('level' => 'warning', 'key' => 'reports_dmarc', 'value' => rabbittech_list(array_keys($rt_week['self_failed']), $rt_text['list_more']),
+      'hint' => sprintf($rt_text['alert_reports_dmarc_hint'], array_sum($rt_week['self_failed']), $rt_server_ip),
+      'links' => array($rt_security_link(array_keys($rt_week['self_failed']))));
+  }
+  $rt_tls_failed = array_filter($rt_week['domains'], function ($totals) { return $totals['tls_failed'] > 0; });
+  if ($rt_tls_failed) {
+    $rt_tls_types = array();
+    foreach ($rt_tls_failed as $rt_totals) {
+      foreach ($rt_totals['tls_failures'] as $rt_type => $rt_count) {
+        $rt_tls_types[$rt_type] = ($rt_tls_types[$rt_type] ?? 0) + $rt_count;
+      }
+    }
+    arsort($rt_tls_types);
+    $rt_alerts[] = array('level' => 'warning', 'key' => 'reports_tls', 'value' => rabbittech_list(array_keys($rt_tls_failed), $rt_text['list_more']),
+      'hint' => sprintf($rt_text['alert_reports_tls_hint'], array_sum(array_column($rt_tls_failed, 'tls_failed')), $rt_tls_types ? key($rt_tls_types) : '?'),
+      'links' => array($rt_security_link(array_keys($rt_tls_failed))));
+  }
+}
+// The Mail reports card: the last 30 days
+$rt_reports = array(
+  'status' => $rt_reports_status,
+  'summary' => $rt_mail_reports ? rabbittech_reports_summary($rt_mail_reports, time(), $rt_server_ip, 30, 8, $rt_mail_domains) : null,
+);
 
 // Most severe first; the order within a level stays as above
 usort($rt_alerts, function ($a, $b) {
@@ -415,6 +415,7 @@ $template_data = [
   'rt_backup_last' => $rt_backup_last,
   'rt_restore' => $rt_restore,
   'rt_restore_days' => $rt_restore_days,
+  'rt_reports' => $rt_reports,
   'ip_check' => customize('get', 'ip_check'),
   'lang_admin' => json_encode($lang['admin']),
   'lang_debug' => json_encode($lang['debug']),
