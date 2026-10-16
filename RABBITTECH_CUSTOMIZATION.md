@@ -195,6 +195,7 @@ admins act on them (container names, `/SOGo` URLs, Rspamd settings).
   "Webmail" as the subtitle, used in SOGo.
 - `data/web/img/rabbittech_mark.svg`: the mark on its own.
 - `data/web/fonts/rabbittech-icons-outlined.woff2`: the webmail icon font (licence next to it).
+- `data/web/img/app/`: the installable webmail's icons; `data/web/webmail.webmanifest` lists them.
 - `data/web/favicon.png`: generated from the mark.
 
 ### SOGo webmail
@@ -269,6 +270,31 @@ two supported hooks, both loaded on every SOGo page (`SOGoUIAdditionalJSFiles` i
   `docker compose restart sogo-mailcow`.
 - `custom-fulllogo.svg/png`, `custom-shortlogo.svg` and `custom-favicon.ico` carry the RabbitTech logo.
 
+### Installable webmail
+
+Webmail can be installed as an app: it gets its own icon on the phone's home screen or in the
+computer's app list, and opens in its own window without tabs and an address bar. It is the same
+webmail with the same sign-in.
+
+- **Install:**
+  - Android (Chrome): open `/webmail`, then menu → **Install app**.
+  - iPhone/iPad (Safari): **Share → Add to Home Screen**.
+  - Windows, macOS, Linux (Chrome or Edge): the install icon at the right of the address bar.
+- **What opens:** `/webmail`. A signed-in user goes straight into webmail; anyone else signs in
+  first and then lands in webmail (`index.php` already does that for mailbox users).
+- **How:**
+  - `data/web/webmail.webmanifest` describes the app: name "RabbitTech Webmail", short name
+    "Webmail", start `/webmail`, scope the whole site (so signing in again stays in the window),
+    and standalone display.
+  - `custom-sogo.js` links it from every webmail page, adds the iPhone icon, and sets a window
+    title bar colour that follows the light or dark theme.
+- **Icons:** `data/web/img/app/` is built from the RabbitTech mark by `scripts/build-app-icons.mjs`.
+  It holds the standard icons (192 and 512), a maskable one for Android's round and squircle
+  shapes, and the iPhone icon. `/img/` is cached for a long time, so give changed icons new file
+  names.
+- **No service worker.** Chromium offers installation without one (the UI tests check its own
+  verdict), so nothing sits in front of the console or SOGo's requests.
+
 ### CI
 
 `.github/workflows/ci.yml` checks the theme assets, runs `node --check` on the touched JavaScript,
@@ -314,6 +340,8 @@ server:
   - The classic layout switch works both ways.
   - Dark mode works; at phone width the search box wraps, back is reachable, and compose is full
     screen.
+  - Installable: the page links the manifest; its icons load at their stated sizes; the title bar
+    colour follows the theme; and Chromium itself reads the manifest without errors.
   - Fail-safe: with templates broken on purpose, those changes are skipped with a warning and
     that part keeps SOGo's own layout.
 

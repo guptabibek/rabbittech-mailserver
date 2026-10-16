@@ -56,6 +56,8 @@ cp "$icons/MaterialIcons-Regular.woff2" "$web/fonts/"
 # Same origin as the console: Inter and the logos come from data/web
 ln -s "$repo/data/web/fonts" "$root/fonts"
 ln -s "$repo/data/web/img" "$root/img"
+# The installable webmail's manifest, linked from every webmail page
+ln -s "$repo/data/web/webmail.webmanifest" "$root/webmail.webmanifest"
 
 python3 "$here/build.py" "$root"
 

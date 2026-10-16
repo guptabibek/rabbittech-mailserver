@@ -1,0 +1,17 @@
+{
+  "id": "/webmail",
+  "name": "RabbitTech Webmail",
+  "short_name": "Webmail",
+  "description": "Mail, calendar and contacts",
+  "lang": "en",
+  "start_url": "/webmail",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f6fa",
+  "theme_color": "#f5f6fa",
+  "icons": [
+    { "src": "/img/app/webmail-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/img/app/webmail-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/img/app/webmail-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
