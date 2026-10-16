@@ -96,6 +96,19 @@
                         {{ t.backup_none }}
                         {%- endif -%}
                       </dd></div>
+                      <div><dt><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>{{ t.last_restore_test }}</dt><dd>
+                        {%- if not rt_restore_days -%}
+                        {{ t.restore_off }}
+                        {%- elseif rt_restore -%}
+                        <span class="rt-restore rt-restore-{{ rt_restore.ok ? 'ok' : 'failed' }}">
+                          {#- role="img" so screen readers say Passed or Failed before the time #}
+                          <i class="bi bi-{{ rt_restore.ok ? 'check-circle-fill' : 'x-circle-fill' }}" role="img" aria-label="{{ rt_restore.ok ? t.restore_passed : t.restore_failed }}" title="{{ rt_restore.ok ? t.restore_passed : t.restore_failed }}"></i>
+                          <time datetime="{{ rt_restore.time|date('c') }}" data-rt-time="{{ rt_restore.time }}" title="{{ rt_restore.time|date('Y-m-d H:i') }}">{{ rt_restore.time|date('Y-m-d H:i') }}</time>
+                        </span>
+                        {%- else -%}
+                        {{ t.backup_none }}
+                        {%- endif -%}
+                      </dd></div>
                     </dl>
                   </div>
                   {# No containers means the Docker API didn't answer, not that everything runs #}

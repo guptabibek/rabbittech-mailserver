@@ -40,19 +40,30 @@ for name in vmail crypt redis rspamd postfix mariadb; do
 done
 echo "tar: listing every file"
 HELPER
+  # restore-test.sh: notes the folder and writes its state file; FAKE_RESTORE_OK=0 fails it
+  cat > "$T/restore.sh" <<'RESTORE'
+#!/usr/bin/env bash
+echo "$1" >> "$FAKE_RESTORES"
+echo "restore test output"
+printf '%s %s %s\n' "$RT_BACKUP_CLOCK" "${FAKE_RESTORE_OK:-1}" "${1##*/}" > "$RT_BACKUP_STATE_DIR/.last-restore-test"
+[ "${FAKE_RESTORE_OK:-1}" = 1 ]
+RESTORE
   printf '#!/bin/sh\necho "1000 /v"\n' > "$T/bin/docker"
   printf '#!/bin/sh\nexit "${FAKE_RSYNC_EXIT:-0}"\n' > "$T/bin/rsync"
-  chmod +x "$T/helper.sh" "$T/bin/docker" "$T/bin/rsync"
+  chmod +x "$T/helper.sh" "$T/restore.sh" "$T/bin/docker" "$T/bin/rsync"
   : > "$T/runs"
+  : > "$T/restores"
 }
 
 run() {
   local clock=$1; shift
   env PATH="$T/bin:$PATH" APP_ROOT="$T" APP_DIR="$T/app" RT_BACKUP_HELPER="$T/helper.sh" \
     RT_BACKUP_CLOCK="$clock" RT_BACKUP_REDIS_CMD="cat > '$T/status.json'" FAKE_RUNS="$T/runs" \
+    RT_RESTORE_SCRIPT="$T/restore.sh" FAKE_RESTORES="$T/restores" RT_BACKUP_STATE_DIR="$T/backups" \
     "$@" bash "$SCRIPT" > "$T/out" 2>&1
 }
 runs() { wc -l < "$T/runs" | tr -d ' '; }
+restores() { wc -l < "$T/restores" | tr -d ' '; }
 status() { php -r 'echo json_encode(json_decode(file_get_contents($argv[1]), true)[$argv[2]] ?? null);' "$T/status.json" "$1"; }
 
 echo "Backups"
@@ -117,6 +128,48 @@ check "RT_BACKUP=n: no backup, the Overview is told once" '[ "$(runs)" = 0 ] && 
 rm -f "$T/status.json"
 run "$(at '2026-10-15 04:00')"
 check "... and not again every hour" '[ ! -e "$T/status.json" ]'
+rm -rf "$T"
+
+echo "Restore tests"
+
+setup ""
+run "$(at '2026-10-15 02:17')"
+check "the first backup is restore-tested right away" '[ "$(restores)" = 1 ] && [ "$(cat "$T/restores")" = "$T/backups/mail/mailcow-2026-10-14-20-32-00" ]'
+check "its output goes to restore-test-last-run.log" 'grep -q "restore test output" "$T/backups/restore-test-last-run.log" && grep -q "Restore test passed" "$T/out"'
+check "the Overview learns the interval" '[ "$(status restore_days)" = 7 ]'
+for day in 16 17 18 19 20 21; do run "$(at "2026-10-$day 02:17")"; done
+check "not again for the next six nights" '[ "$(runs)" = 7 ] && [ "$(restores)" = 1 ]'
+run "$(at '2026-10-22 02:17')"
+check "a week later, again" '[ "$(restores)" = 2 ]'
+run "$(at '2026-10-29 02:10')"
+check "a backup a few minutes earlier in the day still counts as a week" '[ "$(restores)" = 3 ]'
+rm -rf "$T"
+
+setup ""
+run "$(at '2026-10-15 02:17')" FAKE_RESTORE_OK=0 && rc=0 || rc=$?
+check "a failed restore test leaves the backup good" '[ "$rc" = 0 ] && [ "$(status ok)" = true ] && grep -q "Restore test failed (see" "$T/out"'
+run "$(at '2026-10-16 02:17')"
+check "after a failure, the next backup is tested again" '[ "$(restores)" = 2 ]'
+run "$(at '2026-10-17 02:17')"
+check "... and once it passes, it waits a week again" '[ "$(restores)" = 2 ]'
+rm -rf "$T"
+
+setup ""
+run "$(at '2026-10-15 03:00')" FAKE_SKIP=vmail || true
+check "a failed backup is not restore-tested" '[ "$(restores)" = 0 ]'
+rm -rf "$T"
+
+setup "RT_RESTORE_TEST_DAYS=3"
+run "$(at '2026-10-15 02:17')"
+run "$(at '2026-10-17 02:17')"
+check "RT_RESTORE_TEST_DAYS sets the interval" '[ "$(restores)" = 1 ] && [ "$(status restore_days)" = 3 ]'
+run "$(at '2026-10-18 02:17')"
+check "... three days later, again" '[ "$(restores)" = 2 ]'
+rm -rf "$T"
+
+setup "RT_RESTORE_TEST=n"
+run "$(at '2026-10-15 02:17')"
+check "RT_RESTORE_TEST=n: no restore test, the Overview is told" '[ "$(runs)" = 1 ] && [ "$(restores)" = 0 ] && [ "$(status restore_days)" = 0 ]'
 rm -rf "$T"
 
 echo

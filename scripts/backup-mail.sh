@@ -13,10 +13,14 @@
 #   RT_BACKUP_HOUR=2          hour of the day (0-23, TZ from mailcow.conf) after which it runs
 #   RT_BACKUP_KEEP_DAYS=7     older backups are deleted; the newest two are always kept
 #   RT_BACKUP_RSYNC_TARGET=   optional copy to another server over SSH, e.g. backup@nas:/srv/mail
+#   RT_RESTORE_TEST=y         n turns the restore test off
+#   RT_RESTORE_TEST_DAYS=7    days between restore tests (scripts/restore-test.sh), which run
+#                             right after a backup; after a failed test, again after the next one
 #
 # Back up right now: RT_BACKUP_NOW=1 bash scripts/backup-mail.sh
 # tests/backup/test-backup.sh swaps in a fake helper, clock, Redis and free space through
-# RT_BACKUP_HELPER, RT_BACKUP_CLOCK, RT_BACKUP_REDIS_CMD and RT_BACKUP_FREE_BYTES.
+# RT_BACKUP_HELPER, RT_BACKUP_CLOCK, RT_BACKUP_REDIS_CMD, RT_BACKUP_FREE_BYTES and
+# RT_RESTORE_SCRIPT.
 set -Eeuo pipefail
 
 APP_ROOT="${APP_ROOT:-/opt/rabbittech-mailserver}"
@@ -67,9 +71,9 @@ read_last() {
 
 status_json() {
   local ok=$1 error=${2:-} offsite=${3:-off}
-  printf '{"enabled":true,"time":%s,"ok":%s,"error":%s,"last_success":%s,"last_size":%s,"last_name":%s,"offsite":%s,"keep_days":%s,"hour":%s}' \
+  printf '{"enabled":true,"time":%s,"ok":%s,"error":%s,"last_success":%s,"last_size":%s,"last_name":%s,"offsite":%s,"keep_days":%s,"hour":%s,"restore_days":%s}' \
     "$NOW" "$ok" "$(json_string "$error")" "$LAST_TIME" "$LAST_SIZE" "$(json_string "$LAST_NAME")" \
-    "$(json_string "$offsite")" "$KEEP_DAYS" "$HOUR"
+    "$(json_string "$offsite")" "$KEEP_DAYS" "$HOUR" "$RESTORE_DAYS"
 }
 
 fail() {
@@ -108,6 +112,11 @@ TARGET=$(conf RT_BACKUP_RSYNC_TARGET)
 ZONE=$(conf TZ UTC)
 [[ "$HOUR" =~ ^[0-9]+$ ]] && [ "$HOUR" -le 23 ] || HOUR=2
 [[ "$KEEP_DAYS" =~ ^[0-9]+$ ]] && [ "$KEEP_DAYS" -ge 1 ] || KEEP_DAYS=7
+# 0 tells the Overview that restore tests are off
+RESTORE_DAYS=$(conf RT_RESTORE_TEST_DAYS 7)
+[[ "$RESTORE_DAYS" =~ ^[0-9]+$ ]] && [ "$RESTORE_DAYS" -ge 1 ] || RESTORE_DAYS=7
+RESTORE=$(conf RT_RESTORE_TEST y)
+[[ "${RESTORE,,}" =~ ^(y|yes)$ ]] || RESTORE_DAYS=0
 
 exec 9> "$STATE_DIR/.backup.lock"
 if ! flock -n 9; then
@@ -211,3 +220,22 @@ if [ -n "$TARGET" ]; then
 fi
 
 report "$(status_json true "" "$offsite")"
+
+# Restore test of the new backup when one is due. It reports on its own, so a failed test
+# leaves this backup good. Half a day of slack keeps a weekly test on the same night.
+trap - ERR
+if [ "$RESTORE_DAYS" -gt 0 ]; then
+  tested=0 passed=0
+  if [ -f "$STATE_DIR/.last-restore-test" ]; then
+    read -r tested passed _ < "$STATE_DIR/.last-restore-test" || true
+  fi
+  [[ "$tested" =~ ^[0-9]+$ ]] || tested=0
+  if [ "$passed" != 1 ] || [ $((NOW - tested)) -ge $((RESTORE_DAYS * DAY - DAY / 2)) ]; then
+    log "Restore test of $LAST_NAME"
+    if bash "${RT_RESTORE_SCRIPT:-$(dirname "${BASH_SOURCE[0]}")/restore-test.sh}" "$created" > "$STATE_DIR/restore-test-last-run.log" 2>&1; then
+      log "Restore test passed"
+    else
+      log "Restore test failed (see $STATE_DIR/restore-test-last-run.log)"
+    fi
+  fi
+fi

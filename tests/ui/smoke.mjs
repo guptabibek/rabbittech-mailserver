@@ -42,9 +42,11 @@ const main = serve(8088);
 const tfa = serve(8089, { HARNESS_TFA: '1' });
 const problems = serve(8090, { HARNESS_STOPPED: 'olefy', HARNESS_UNHEALTHY: 'rspamd', HARNESS_DF: '96', HARNESS_CERT_DAYS: '6', HARNESS_QUEUE: '64' });
 const session = serve(8091, { HARNESS_SESSION_LIFETIME: '300' });
-const setup = serve(8092, { HARNESS_CERT_PLACEHOLDER: '1', HARNESS_ACME: 'aaaa', HARNESS_BACKUP: 'failed', HARNESS_DNS: '1' });
+const setup = serve(8092, { HARNESS_CERT_PLACEHOLDER: '1', HARNESS_ACME: 'aaaa', HARNESS_BACKUP: 'failed', HARNESS_DNS: '1', HARNESS_RESTORE: 'failed' });
+const restoreOld = serve(8093, { HARNESS_RESTORE: 'old' });
+const backupOff = serve(8094, { HARNESS_BACKUP: 'off', HARNESS_RESTORE: 'failed' });
 const webmail = existsSync(join(sogoRoot, 'live', 'view.html')) ? serveStatic(8095, sogoRoot) : null;
-await Promise.all([main, tfa, problems, session, setup].map(u => ready(u + '/admin')));
+await Promise.all([main, tfa, problems, session, setup, restoreOld, backupOff].map(u => ready(u + '/admin')));
 if (webmail) await ready(webmail + '/mail.html');
 
 // ------------------------------------------------------------------ helpers
@@ -155,8 +157,26 @@ console.log('Behaviour');
   await page.goto(main + '/admin/dashboard', { waitUntil: 'networkidle' });
   check('Overview counts the quarantine without loading every item', !calls.some(u => u.includes('quarantine/all')));
   check('Overview shows no alerts when all is well', await page.locator('#rt-alerts').evaluate(e => e.hidden));
-  const backup = (await page.locator('.rt-meta [data-rt-time]').textContent()).trim();
+  const backup = (await page.locator('.rt-meta [data-rt-time]').first().textContent()).trim();
   check('Overview shows when the last backup was made', /ago/.test(backup), backup);
+  const restore = (await page.locator('.rt-meta div', { hasText: 'Last restore test' }).locator('dd').innerText()).trim();
+  check('Overview shows the last restore test passed, and when', await page.locator('.rt-meta .rt-restore-ok .bi-check-circle-fill').count() === 1
+    && /^2 days ago$/.test(restore), restore);
+  await page.close();
+}
+{
+  const { page } = await open(restoreOld + '/admin/dashboard');
+  const alerts = await page.locator('.rt-alert').evaluateAll(items => items.map(item => item.className + ' ' + item.textContent.replace(/\s+/g, ' ').trim()));
+  check('a restore test over the interval + 3 days old is a warning', alerts.length === 1 && /rt-alert-warning/.test(alerts[0])
+    && /The last restore test is from \d+ \w+ \d{4} /.test(alerts[0]) && /scripts\/restore-test\.sh/.test(alerts[0]), alerts.join(' | '));
+  await page.close();
+}
+{
+  const { page } = await open(backupOff + '/admin/dashboard');
+  const alerts = await page.locator('.rt-alert .rt-alert-text').allTextContents();
+  const restore = (await page.locator('.rt-meta div', { hasText: 'Last restore test' }).locator('dd').innerText()).trim();
+  check('with backups off, the restore test says Off and its old failure is not shown', restore === 'Off'
+    && alerts.length === 1 && /Automatic backups are turned off/.test(alerts[0]), restore + ' | ' + alerts.join(' | '));
   await page.close();
 }
 {
@@ -179,9 +199,13 @@ console.log('Behaviour');
   const cert = find(/No certificate has been issued for mail\.rabbittech\.com\.np/);
   check('no certificate yet: says so, with the reason from the ACME log', /IPv6 \(AAAA\) record/.test(cert.hint) && cert.level === 'danger', JSON.stringify(cert));
   check('a failed backup shows its reason', /Missing or empty archives: mariadb/.test(find(/last backup failed/).hint));
+  const restore = find(/last restore test failed/);
+  check('a failed restore test is a danger alert naming the failed check', restore.level === 'danger'
+    && /What failed: dkim: No DKIM key in the backup for example\.org\. The full report is in backups\/restore-test-last-run\.log/.test(restore.hint), JSON.stringify(restore));
+  check('the server card marks the restore test failed', await page.locator('.rt-meta .rt-restore-failed .bi-x-circle-fill').count() === 1);
   check('missing reverse DNS names the IP and hostname', /PTR record of 94\.136\.186\.45 to mail\.rabbittech\.com\.np/.test(find(/Reverse DNS/).hint));
   check('domains with the same problem share one alert', find(/No DMARC record/).text === 'No DMARC record: a.example, b.example, c.example and 2 more');
-  check('every alert has a title and hint, with nothing left unformatted', alerts.length === 9
+  check('every alert has a title and hint, with nothing left unformatted', alerts.length === 10
     && alerts.every(a => a.text && a.hint && !/%[sd]/.test(a.text + a.hint)), JSON.stringify(alerts.map(a => a.text)));
   const levels = alerts.map(a => a.level).join(',');
   check('danger alerts come before warnings', /^(danger,)*(warning,?)*$/.test(levels), levels);

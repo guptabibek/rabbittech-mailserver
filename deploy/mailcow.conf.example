@@ -83,3 +83,7 @@ RT_BACKUP_HOUR=2
 RT_BACKUP_KEEP_DAYS=7
 # Optional copy to another server over SSH, e.g. backup@nas.example.com:/srv/rabbittech-mail
 RT_BACKUP_RSYNC_TARGET=
+# Weekly restore test of the night's backup in throwaway containers (scripts/restore-test.sh)
+RT_RESTORE_TEST=y
+# Days between restore tests
+RT_RESTORE_TEST_DAYS=7

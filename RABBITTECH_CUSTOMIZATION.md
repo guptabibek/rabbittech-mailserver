@@ -60,12 +60,15 @@ How it works:
       that log;
     - backups: none yet, turned off, failed (with the reason), older than 36 hours, or the
       off-site copy failed (see [Backups](#backups));
+    - the restore test: failed (naming the check that failed), or not run for the interval plus
+      3 days while backups do run (see [Restore test](#restore-test));
     - mail DNS, for every active domain: MX pointing here, SPF including this server's IP (`ip4:`
       ranges included), the DKIM key published, a DMARC record, and reverse DNS of the server's IP.
       Domains with the same problem share one alert.
   - The certificate and DNS results are cached in Redis (6 hours when fine, 1 hour while something
     is wrong); "Check again" (`?recheck=1`) clears them. A check that can't run raises no alert.
-  - The server card shows when the last backup was made.
+  - The server card shows when the last backup was made, and when the last restore test ran,
+    with ✓ or ✗ ("Off" when restore tests are turned off).
   - Live counts of domains, mailboxes, aliases, queued mail and quarantine. The quarantine is
     counted on the server; the others are read from `/api/v1`.
   - A server status card and quick actions.
@@ -301,11 +304,20 @@ webmail with the same sign-in.
 parses every Twig template with `scripts/check-twig-templates.php`, checks that every language file
 is valid JSON and every RabbitTech string in use exists (`scripts/check-rabbittech-lang.php`), and
 tests that a release sync keeps runtime files and admin-edited maps. It also runs the backup
-script against a fake mailcow helper (`tests/backup/test-backup.sh`), the health check and a full
-deploy and rollback with fake Docker (`tests/deploy/test-deploy.sh`), and the ACME log reader and
-SPF range check behind the Overview alerts (`tests/php/overview-checks.php`).
+script against a fake mailcow helper, including when it runs the restore test
+(`tests/backup/test-backup.sh`), the health check and a full deploy and rollback with fake Docker
+(`tests/deploy/test-deploy.sh`), and the ACME log reader and SPF range check behind the Overview
+alerts (`tests/php/overview-checks.php`).
 
 A second job runs the UI smoke tests and uploads their screenshots as the `ui-screenshots` artifact.
+
+A third job runs the restore test in real containers with the images the server runs
+(`tests/backup/restore-e2e.sh`). It builds a small backup the way mailcow does (a `mariabackup`
+copy of a database with mailcow's tables, mail saved by Dovecot compressed and encrypted like
+mailcow's, DKIM keys in a Redis dump), checks that the restore test passes, then breaks copies of
+it (a cut-off archive, other encryption keys, a missing DKIM key, no `mailcow.conf`…) and checks
+that each is caught. It runs anywhere with Docker:
+`bash tests/backup/restore-e2e.sh`.
 
 ### UI tests
 
@@ -436,6 +448,36 @@ mailcow's `helper-scripts/backup_and_restore.sh`.
 - **Back up now:** `cd /opt/rabbittech-mailserver/app && RT_BACKUP_NOW=1 bash scripts/backup-mail.sh`
 - **Restore:** `cd /opt/rabbittech-mailserver/app && MAILCOW_BACKUP_LOCATION=/opt/rabbittech-mailserver/backups/mail bash helper-scripts/backup_and_restore.sh restore`
   asks which backup and which parts to restore.
+
+#### Restore test
+
+A backup that can't be restored is otherwise only found out in an emergency. Once a week,
+`scripts/restore-test.sh` restores the night's backup into throwaway containers and checks what
+comes back. The containers have no network and one CPU, and they and their volumes are removed
+afterwards. The live server is only read, never changed.
+
+| Check | Passes when |
+|---|---|
+| config | the backup's `mailcow.conf` has `MAILCOW_HOSTNAME`, `DBNAME`, `DBUSER`, `DBPASS` and `DBROOT` |
+| archives | all six archives are there, and the five small ones decompress without errors |
+| database | MariaDB (the server's image) starts from the database copy, and every domain and mailbox that existed a day before the backup is in it |
+| mail | the mail archive reads to the end; every mailbox with an inbox message from a day before the backup has mail in it; and one message (the smallest in the first thousand) opens with the backup's own keys, the way Dovecot reads it (mailcow compresses stored mail, then encrypts it) |
+| dkim | Redis loads the copy, and every domain with a DKIM key a day before the backup has its selector and private key in it |
+
+- **Schedule:** `backup-mail.sh` runs it right after a good backup, under the backup's lock, when
+  the last test is `RT_RESTORE_TEST_DAYS` (default 7) old. After a failed test it runs again after
+  the next backup. A failed restore test doesn't mark the backup failed; it has its own alert.
+- **Settings:** `RT_RESTORE_TEST=n` turns it off; `RT_RESTORE_TEST_DAYS` sets the interval.
+- **Room:** it unpacks the database copy, so Docker's disk needs the live database's size plus
+  20% and 200 MiB free. Otherwise the test fails with "Not enough disk space" and unpacks nothing.
+  The mail is only listed, not unpacked.
+- **Time:** listing the mail archive reads all of it, so expect a few minutes per 10 GB of mail.
+- **Results:** each check is one line in `backups/restore-test-last-run.log`, e.g.
+  `ok    mail: 52310 messages in 14 mailboxes; a message to bibek@rabbittech.com.np opens with the
+  backup's keys`. The result goes to Redis (`RT_RESTORE_TEST`) for the Overview, and to
+  `backups/.last-restore-test`.
+- **Run it now**, on the last good backup or a folder you name:
+  `cd /opt/rabbittech-mailserver/app && bash scripts/restore-test.sh [../backups/mail/mailcow-<date>]`
 
 ### Behind another nginx
 

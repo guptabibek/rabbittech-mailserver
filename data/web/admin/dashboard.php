@@ -102,6 +102,17 @@ function rt_backup_status() {
   return $status === false ? null : json_decode($status, true);
 }
 
+// What scripts/restore-test.sh found last (null: no restore test yet)
+function rt_restore_status() {
+  global $redis;
+  try {
+    $status = $redis->Get('RT_RESTORE_TEST');
+  } catch (RedisException $e) {
+    return null;
+  }
+  return $status === false ? null : json_decode($status, true);
+}
+
 // DNS of the mail domains, as other mail servers see it. Returns the domains failing each check
 // and the server's reverse DNS problem, if any.
 function rt_mail_dns_problems($hostname) {
@@ -336,6 +347,21 @@ else {
   }
 }
 
+// Restore tests: scripts/backup-mail.sh runs scripts/restore-test.sh after a backup every
+// restore_days days (0: turned off; a status from before restore tests: the default, 7)
+$rt_restore_days = $rt_backup === null ? 7 : (empty($rt_backup['enabled']) ? 0 : (int)($rt_backup['restore_days'] ?? 7));
+$rt_restore = $rt_restore_days > 0 ? rt_restore_status() : null;
+if ($rt_restore !== null) {
+  if (empty($rt_restore['ok'])) {
+    $rt_alerts[] = array('level' => 'danger', 'key' => 'restore_failed', 'date' => (int)$rt_restore['time'],
+      'hint' => sprintf($rt_text['alert_restore_failed_hint'], $rt_restore['error'] ?? ''));
+  }
+  // Only while backups run; otherwise the backup alerts say what is wrong
+  elseif (time() - (int)$rt_restore['time'] > ($rt_restore_days + 3) * 86400 && time() - $rt_backup_last < 36 * 3600) {
+    $rt_alerts[] = array('level' => 'warning', 'key' => 'restore_old', 'date' => (int)$rt_restore['time']);
+  }
+}
+
 // DNS of the mail domains: what decides whether mail arrives and isn't marked as spam
 $rt_dns = $hostname ? rt_mail_dns_problems($hostname) : null;
 if ($rt_dns !== null) {
@@ -387,6 +413,8 @@ $template_data = [
   'quarantine_count' => $quarantine_count,
   'rt_alerts' => $rt_alerts,
   'rt_backup_last' => $rt_backup_last,
+  'rt_restore' => $rt_restore,
+  'rt_restore_days' => $rt_restore_days,
   'ip_check' => customize('get', 'ip_check'),
   'lang_admin' => json_encode($lang['admin']),
   'lang_debug' => json_encode($lang['debug']),
