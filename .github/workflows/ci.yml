@@ -19,7 +19,8 @@ jobs:
 
       - name: Validate shell scripts
         run: |
-          bash -n scripts/bootstrap-vps.sh scripts/deploy-vps.sh scripts/backup-mail.sh scripts/check-health.sh
+          bash -n scripts/bootstrap-vps.sh scripts/deploy-vps.sh scripts/backup-mail.sh scripts/check-health.sh scripts/restore-test.sh
+          bash -n tests/backup/test-backup.sh tests/backup/restore-e2e.sh
           sh -n scripts/sync-release.sh
 
       - name: Test release sync
@@ -135,3 +136,21 @@ jobs:
           name: ui-screenshots
           path: tests/ui/output
           if-no-files-found: ignore
+
+  restore:
+    name: Restore test (Docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # The images the server runs (docker-compose.yml) and mailcow's backup image
+      - name: Pull images
+        run: |
+          for service in mysql-mailcow redis-mailcow dovecot-mailcow; do
+            docker pull "$(awk -v s="$service:" '$1 == s { found = 1; next } found && $1 == "image:" { print $2; exit }' docker-compose.yml)"
+          done
+          docker pull "$(sed -n 's/^DEBIAN_DOCKER_IMAGE="\(.*\)"/\1/p' helper-scripts/backup_and_restore.sh)"
+
+      - name: Restore a backup made like mailcow's, and broken copies of it
+        run: bash tests/backup/restore-e2e.sh

@@ -10,6 +10,7 @@
 //   HARNESS_QUEUE=64             Overview problem states (stopped container, disk, certificate, queue)
 //   HARNESS_CERT_PLACEHOLDER=1, HARNESS_ACME=aaaa, HARNESS_BACKUP=never|off|old|failed,
 //   HARNESS_DNS=1                more Overview states (no certificate yet, backups, mail DNS)
+//   HARNESS_RESTORE=none|old|failed  the last restore test (default: passed two days ago)
 $WEB = getenv('MAILCOW_WEB') ?: realpath(__DIR__ . '/../../data/web');
 $CACHE = getenv('HARNESS_CACHE') ?: sys_get_temp_dir() . '/rt-ui-cache';
 if (!is_dir($CACHE)) mkdir($CACHE, 0777, true);
@@ -222,6 +223,15 @@ if ($template === 'dashboard.twig') {
         default: return $ok;
       }
     }
+    function rt_restore_status() {
+      $ok = ['time' => time() - 2 * 86400, 'ok' => true, 'backup' => 'mailcow-2026-10-14-02-17-00', 'error' => '', 'checks' => []];
+      switch (getenv('HARNESS_RESTORE') ?: 'ok') {
+        case 'none': return null;
+        case 'old': return ['time' => time() - 12 * 86400] + $ok;
+        case 'failed': return ['ok' => false, 'time' => time() - 3 * 3600, 'error' => 'dkim: No DKIM key in the backup for example.org'] + $ok;
+        default: return $ok;
+      }
+    }
     function rt_mail_dns_problems($h) {
       $fine = ['ip' => '94.136.186.45', 'ptr' => null, 'mx' => [], 'spf' => [], 'dkim_key' => [], 'dkim' => [], 'dmarc' => []];
       return getenv('HARNESS_DNS') ? ['ptr' => ['missing', ''], 'mx' => ['example.org'], 'spf' => ['rabbittech.com.np'], 'dkim_key' => ['shop.example'],
@@ -234,6 +244,8 @@ if ($template === 'dashboard.twig') {
   eval(substr($src, $from, $to - $from));
   $data['rt_alerts'] = $rt_alerts;
   $data['rt_backup_last'] = $rt_backup_last;
+  $data['rt_restore'] = $rt_restore;
+  $data['rt_restore_days'] = $rt_restore_days;
 }
 if (strpos($template, 'edit/') === 0) {
   $data['result'] = ['username' => 'bibek@rabbittech.com.np', 'local_part' => 'bibek', 'domain' => 'rabbittech.com.np', 'domain_name' => 'rabbittech.com.np', 'name' => 'Bibek Gupta', 'active' => 1, 'active_int' => 1,

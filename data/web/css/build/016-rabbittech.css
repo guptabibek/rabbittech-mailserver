@@ -3433,6 +3433,8 @@ a.rt-status { text-decoration: none !important; }
 .rt-overview-title .rt-meta dt::after { content: ":"; }
 .rt-overview-title .rt-meta dd { margin: 0; color: var(--rt-text-2); font-weight: 560; }
 .rt-overview-title .rt-meta .bi { margin-right: 4px; color: var(--rt-subtle); }
+.rt-overview-title .rt-meta .rt-restore-ok .bi { color: var(--rt-success); }
+.rt-overview-title .rt-meta .rt-restore-failed .bi { color: var(--rt-danger); }
 
 .rt-stat-grid {
   display: grid;
