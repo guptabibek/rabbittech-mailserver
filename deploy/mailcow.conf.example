@@ -87,3 +87,8 @@ RT_BACKUP_RSYNC_TARGET=
 RT_RESTORE_TEST=y
 # Days between restore tests
 RT_RESTORE_TEST_DAYS=7
+
+# DMARC and TLS reports (scripts/mail-reports.sh, read every 15 minutes). Create this mailbox in
+# the console first; each domain's Mail security tab then shows the DNS records that send reports
+# there. Empty: reports are not collected.
+RT_REPORTS_MAILBOX=

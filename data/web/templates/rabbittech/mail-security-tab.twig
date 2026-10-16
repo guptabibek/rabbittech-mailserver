@@ -1,0 +1,25 @@
+{# A domain's Mail security tab on its edit page. 014-rabbittech.js loads the checks
+   (inc/ajax/rt_mail_security.php, rabbittech/mail-security.twig) when the tab opens, and again
+   on "Check again"; /edit/domain/<domain>#mail-security opens it. #}
+{% set t = lang.rabbittech %}
+<div id="dmailsecurity" class="tab-pane fade" role="tabpanel" aria-labelledby="domain-mail-security">
+  <div class="card mb-4">
+    <div class="card-header d-flex d-md-none fs-5">
+      <button class="btn flex-grow-1 text-start" data-bs-target="#collapse-tab-mailsecurity" data-bs-toggle="collapse" aria-controls="collapse-tab-mailsecurity">
+        {{ t.ms_title }} <span class="badge bg-info table-lines"></span>
+      </button>
+    </div>
+    <div id="collapse-tab-mailsecurity" class="card-body collapse" data-bs-parent="#domain-content">
+      <section class="rt-security" data-rt-mail-security="{{ domain }}" aria-labelledby="rt-security-title">
+        <div class="rt-security-head">
+          <div>
+            <h4 class="rt-security-title" id="rt-security-title">{{ t.ms_title }}</h4>
+            <p class="rt-security-intro">{{ t.ms_intro|format(domain) }}</p>
+          </div>
+          <button type="button" class="btn btn-sm btn-secondary rt-security-recheck" data-rt-security-recheck><i class="bi bi-arrow-repeat" aria-hidden="true"></i> {{ t.ms_recheck }}</button>
+        </div>
+        <div class="rt-security-content" aria-live="polite"></div>
+      </section>
+    </div>
+  </div>
+</div>

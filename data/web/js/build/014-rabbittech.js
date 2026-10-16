@@ -97,31 +97,29 @@ window.rt = window.rt || {};
     return '<div class="rt-chips">' + html + '</div>';
   };
 
-  // Templates print dates (YYYY-MM-DD) and numbers plainly; format them for the page language
-  $(function() {
+  // Templates print dates (YYYY-MM-DD), numbers and times plainly; format them for the page
+  // language. <time data-rt-time="<unix seconds>"> shows a relative time; the exact time stays
+  // in the text for assistive technology and on hover. Also used for content loaded later.
+  rt.localize = function(root) {
     var dateFormat = null;
     try { dateFormat = new Intl.DateTimeFormat(rt.locale(), { dateStyle: 'medium' }); } catch (e) {}
-    $('time[data-rt-date]').each(function() {
+    $(root).find('time[data-rt-date]').each(function() {
       var parts = (this.getAttribute('datetime') || '').split('-').map(Number);
       if (dateFormat && parts.length === 3 && parts[0]) this.textContent = dateFormat.format(new Date(parts[0], parts[1] - 1, parts[2]));
     });
-    $('[data-rt-number]').each(function() {
+    $(root).find('[data-rt-number]').each(function() {
       var value = Number(this.textContent.trim());
       if (isFinite(value)) this.textContent = rt.number(value);
     });
-  });
-
-  // <time data-rt-time="<unix seconds>"> elements rendered by the templates show relative
-  // times; the exact time stays in the text for assistive technology and on hover
-  $(function() {
-    $('[data-rt-time]').each(function() {
+    $(root).find('[data-rt-time]').each(function() {
       var text = rt.timeAgo(this.getAttribute('data-rt-time'));
       if (!text) return;
       var exact = this.getAttribute('title') || this.textContent;
       this.textContent = text;
       this.setAttribute('aria-label', text + ' (' + exact + ')');
     });
-  });
+  };
+  $(function() { rt.localize(document); });
 })(window.rt);
 
 // RabbitTech app shell: sidebar, tab routing, page header and command palette.
@@ -891,4 +889,104 @@ $(document).ready(function() {
     if (!button.find('.bi').length) button.prepend('<i class="bi bi-arrow-clockwise"></i> ');
     button.addClass('rt-icon-only rt-refresh').attr({ title: label, 'aria-label': label });
   });
+});
+
+// ------------------------------------------------------------ mail security
+// A domain's Mail security tab (templates/rabbittech/mail-security-tab.twig) loads its checks
+// when it opens, since they look up DNS and fetch the MTA-STS policy, which takes a moment.
+// /edit/domain/<domain>#mail-security opens it (the Overview's alerts link there).
+$(function() {
+  'use strict';
+  var panel = document.querySelector('[data-rt-mail-security]');
+
+  // A tab on this page: the tab on wide screens, its card on phones
+  function openTab(id) {
+    var trigger = document.querySelector('[data-bs-toggle="tab"][data-bs-target="#' + id + '"]');
+    if (trigger && trigger.offsetParent !== null) {
+      trigger.click();
+      return;
+    }
+    var body = document.querySelector('#' + id + ' .card-body.collapse');
+    if (body) {
+      bootstrap.Collapse.getOrCreateInstance(body, { toggle: false }).show();
+      body.closest('.card').scrollIntoView({ block: 'start' });
+    }
+  }
+  $(document).on('click', '[data-rt-open-tab]', function() {
+    openTab(this.getAttribute('data-rt-open-tab'));
+  });
+
+  $(document).on('click', '[data-rt-copy]', function() {
+    var button = this;
+    var text = button.getAttribute('data-rt-copy');
+    var label = button.getAttribute('aria-label');
+    function done() {
+      button.querySelector('i').className = 'bi bi-check2';
+      button.setAttribute('aria-label', rt.t('ms_copied'));
+      button.classList.add('is-copied');
+      setTimeout(function() {
+        button.querySelector('i').className = 'bi bi-clipboard';
+        button.setAttribute('aria-label', label);
+        button.classList.remove('is-copied');
+      }, 1500);
+    }
+    function fallback() {
+      var area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', '');
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      document.body.appendChild(area);
+      area.select();
+      try { if (document.execCommand('copy')) done(); } catch (e) {}
+      area.remove();
+    }
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, fallback);
+    else fallback();
+  });
+
+  if (!panel) return;
+  var content = panel.querySelector('.rt-security-content');
+  var pane = panel.closest('.tab-pane');
+  var collapse = panel.closest('.collapse');
+  var loading = false;
+  var loaded = false;
+
+  function load() {
+    if (loading) return;
+    loading = true;
+    panel.setAttribute('aria-busy', 'true');
+    content.innerHTML = '<p class="rt-security-loading"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span> ' + rt.t('ms_loading') + '</p>';
+    fetch('/inc/ajax/rt_mail_security.php?domain=' + encodeURIComponent(panel.getAttribute('data-rt-mail-security')), { credentials: 'same-origin', cache: 'no-cache' })
+      .then(function(response) {
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return response.text();
+      })
+      .then(function(html) {
+        content.innerHTML = html;
+        rt.localize(content);
+      })
+      .catch(function() {
+        content.innerHTML = '<p class="rt-security-failed">' + rt.t('ms_failed') + '</p>';
+      })
+      .then(function() {
+        panel.removeAttribute('aria-busy');
+        loading = false;
+        loaded = true;
+      });
+  }
+  // Wide screens show the active tab; phones show every tab as a card that opens (015-responsive.css)
+  function shown() {
+    return window.matchMedia('(min-width: 768px)').matches ? pane.classList.contains('active') : collapse.classList.contains('show');
+  }
+  function loadOnce() {
+    if (!loaded && shown()) load();
+  }
+  $(document).on('shown.bs.tab', '[data-bs-target="#' + pane.id + '"]', loadOnce);
+  $(collapse).on('shown.bs.collapse', function(e) { if (e.target === collapse) loadOnce(); });
+  panel.querySelector('[data-rt-security-recheck]').addEventListener('click', load);
+
+  if (window.location.hash === '#mail-security') openTab(pane.id);
+  // mailcow reopens the tab that was open last time
+  loadOnce();
 });

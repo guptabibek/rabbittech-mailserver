@@ -4082,6 +4082,106 @@ p.rt-summary-meta { margin: 6px 0 0; color: var(--rt-muted); font-size: .86rem; 
   .rt-has-shell .card-body form .row { position: static !important; }
 }
 
+/* ------------------------------------------- mail reports and mail security */
+/* Overview: DMARC and TLS reports (dashboard.twig) */
+.rt-reports-meta { margin-left: auto; color: var(--rt-muted); font-size: .82rem; }
+.rt-reports-empty { display: flex; gap: 14px; align-items: flex-start; max-width: 760px; }
+.rt-reports-empty p { margin: 0 0 4px; color: var(--rt-text-2); }
+.rt-reports-empty .rt-reports-empty-title { color: var(--rt-text); font-weight: 600; }
+.rt-reports-empty-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  color: var(--rt-primary-text);
+  background: var(--rt-primary-soft);
+  border-radius: var(--rt-radius);
+  font-size: 1.15rem;
+}
+.rt-reports-table { margin-bottom: 0; font-size: .9rem; }
+.rt-reports-table th,
+.rt-reports-table td { padding: 10px 12px; vertical-align: middle; border-color: var(--rt-border); }
+.rt-reports-table thead th { color: var(--rt-muted); font-size: .78rem; font-weight: 600; white-space: nowrap; }
+.rt-reports-table tbody th { font-weight: 600; }
+.rt-reports-table .rt-status { margin-left: 6px; }
+.rt-reports-subtitle { margin: 22px 0 6px; font-size: .95rem; font-weight: 600; }
+.rt-reports-foot { margin: 14px 0 0; color: var(--rt-muted); font-size: .82rem; }
+.rt-chip-server { margin-left: 6px; color: var(--rt-primary-text); background: var(--rt-primary-soft); border-color: transparent; font-size: .74rem; }
+.rt-pass { display: inline-flex; align-items: center; gap: 10px; min-width: 150px; }
+.rt-pass-pct { min-width: 46px; font-variant-numeric: tabular-nums; }
+.rt-pass-track { flex: 1 1 auto; height: 6px; overflow: hidden; background: var(--rt-surface-3); border-radius: 999px; }
+.rt-pass-bar { display: block; height: 100%; background: var(--rt-success); border-radius: 999px; }
+.rt-pass-warning .rt-pass-bar { background: var(--rt-warning); }
+.rt-pass-danger .rt-pass-bar { background: var(--rt-danger); }
+
+/* A domain's Mail security tab (rabbittech/mail-security-tab.twig, mail-security.twig) */
+.rt-security-head { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; }
+.rt-security-title { margin: 0 0 4px; font-size: 1.05rem; font-weight: 600; }
+.rt-security-intro { margin: 0; color: var(--rt-muted); }
+.rt-security-recheck { flex: 0 0 auto; }
+.rt-security-loading,
+.rt-security-failed { margin: 16px 0; color: var(--rt-muted); }
+.rt-security-failed { color: var(--rt-danger-text); }
+.rt-security-list { margin: 0; padding: 0; list-style: none; border: 1px solid var(--rt-border); border-radius: var(--rt-radius); }
+.rt-security-item { display: flex; gap: 12px; padding: 14px 16px; }
+.rt-security-item + .rt-security-item { border-top: 1px solid var(--rt-border); }
+.rt-security-icon { flex: 0 0 auto; margin-top: 1px; font-size: 1.1rem; line-height: 1.4; }
+.rt-security-ok .rt-security-icon { color: var(--rt-success); }
+.rt-security-missing .rt-security-icon { color: var(--rt-danger); }
+.rt-security-wrong .rt-security-icon { color: var(--rt-warning); }
+.rt-security-off .rt-security-icon,
+.rt-security-unknown .rt-security-icon { color: var(--rt-subtle); }
+.rt-security-body { flex: 1 1 auto; min-width: 0; }
+.rt-security-line { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.rt-security-name { margin: 0; font-size: .95rem; font-weight: 600; }
+.rt-security .rt-status-running::before { animation: none; }
+.rt-security-why { margin: 4px 0 0; color: var(--rt-muted); font-size: .88rem; }
+.rt-security-detail { margin: 6px 0 0; color: var(--rt-text-2); font-size: .88rem; }
+.rt-security-found { margin: 6px 0 0; color: var(--rt-muted); font-size: .85rem; overflow-wrap: anywhere; }
+.rt-security-found code,
+.rt-record code { color: var(--rt-text); background: none; font-family: var(--rt-mono); font-size: .82rem; overflow-wrap: anywhere; }
+.rt-security-action { margin-top: 10px; }
+.rt-security-note { display: flex; gap: 8px; margin: 12px 0 0; color: var(--rt-muted); font-size: .88rem; }
+.rt-records { margin-top: 10px; }
+.rt-records-title { margin: 0 0 6px; font-size: .82rem; font-weight: 600; color: var(--rt-text-2); }
+.rt-record {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) auto minmax(0, 3fr);
+  gap: 8px 16px;
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  background: var(--rt-surface-2);
+  border: 1px solid var(--rt-border);
+  border-radius: var(--rt-radius-sm);
+}
+.rt-record-field { min-width: 0; }
+.rt-record dt { margin-bottom: 2px; color: var(--rt-muted); font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.rt-record dd { display: flex; gap: 6px; align-items: flex-start; margin: 0; }
+.rt-copy {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-top: -3px;
+  padding: 0;
+  color: var(--rt-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--rt-radius-xs);
+}
+.rt-copy:hover { color: var(--rt-primary-text); background: var(--rt-primary-soft); }
+.rt-copy:focus-visible { outline: 2px solid var(--rt-primary); outline-offset: 1px; }
+.rt-copy.is-copied { color: var(--rt-success-text); }
+@media (max-width: 767.98px) {
+  .rt-security-head { flex-direction: column; }
+  .rt-record { grid-template-columns: minmax(0, 1fr); }
+  .rt-security-item { padding: 12px; }
+}
+
 /* ------------------------------------------------------- responsive bits */
 @media (max-width: 767.98px) {
   .card-header { padding: 10px 14px; }

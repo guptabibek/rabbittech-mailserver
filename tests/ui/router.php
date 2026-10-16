@@ -11,6 +11,8 @@
 //   HARNESS_CERT_PLACEHOLDER=1, HARNESS_ACME=aaaa, HARNESS_BACKUP=never|off|old|failed,
 //   HARNESS_DNS=1                more Overview states (no certificate yet, backups, mail DNS)
 //   HARNESS_RESTORE=none|old|failed  the last restore test (default: passed two days ago)
+//   HARNESS_REPORTS=off|waiting|problems  DMARC and TLS reports (default: a month of good ones);
+//                                with HARNESS_DNS=1 a domain's Mail security tab shows problems too
 $WEB = getenv('MAILCOW_WEB') ?: realpath(__DIR__ . '/../../data/web');
 $CACHE = getenv('HARNESS_CACHE') ?: sys_get_temp_dir() . '/rt-ui-cache';
 if (!is_dir($CACHE)) mkdir($CACHE, 0777, true);
@@ -94,6 +96,17 @@ require $WEB . '/inc/lib/CSSminifierExtended.php';
 require $WEB . '/inc/lib/JSminifierExtended.php';
 
 require $WEB . '/inc/functions.rabbittech.inc.php';
+require $WEB . '/inc/functions.rabbittech-mail.inc.php';
+// Redis as the console reads it; only what scripts/mail-reports.sh stores is there
+$redis = new class {
+  public function Get($key) { return $key === 'RT_MAIL_REPORTS' ? json_encode(harness_reports()) : false; }
+};
+// The database, as far as the mail security code asks it: the server's domains
+$pdo = new class {
+  public function query($sql) {
+    return new class { public function fetchAll($mode) { return ['rabbittech.com.np', 'mail.rabbittech.com.np', 'staging.rabbittech.com.np']; } };
+  }
+};
 
 $lang = $lang_en = json_decode(file_get_contents($WEB . '/lang/lang.en-gb.json'), true);
 $rt_locale = getenv('HARNESS_LOCALE') ?: 'en-gb';
@@ -123,6 +136,8 @@ $routes = [
   '/quarantine' => ['quarantine.twig', 'admin', ['/css/site/quarantine.css'], ['/js/site/quarantine.js']],
   '/admin/queue' => ['queue.twig', 'admin', [], ['/js/site/queue.js']],
   '/qhandler' => ['qhandler.twig', null, ['/css/site/quarantine.css'], []],
+  // A domain's Mail security tab loads its checks from here
+  '/inc/ajax/rt_mail_security.php' => ['rabbittech/mail-security.twig', 'admin', [], []],
 ];
 if (strpos($path, '/edit/mailbox/') === 0) $routes[$path] = ['edit/mailbox.twig', 'admin', ['/css/site/edit.css'], ['/js/site/edit.js', '/js/site/pwgen.js']];
 elseif (strpos($path, '/edit/domain/') === 0) $routes[$path] = ['edit/domain.twig', 'admin', ['/css/site/edit.css'], ['/js/site/edit.js']];
@@ -232,10 +247,12 @@ if ($template === 'dashboard.twig') {
         default: return $ok;
       }
     }
-    function rt_mail_dns_problems($h) {
-      $fine = ['ip' => '94.136.186.45', 'ptr' => null, 'mx' => [], 'spf' => [], 'dkim_key' => [], 'dkim' => [], 'dmarc' => []];
+    function rt_mail_dns_problems($h, $reports) {
+      $fine = ['ip' => '94.136.186.45', 'ptr' => null, 'mta_sts_enforced' => false];
       return getenv('HARNESS_DNS') ? ['ptr' => ['missing', ''], 'mx' => ['example.org'], 'spf' => ['rabbittech.com.np'], 'dkim_key' => ['shop.example'],
-        'dkim' => ['blog.example'], 'dmarc' => ['a.example', 'b.example', 'c.example', 'd.example', 'e.example']] + $fine : $fine;
+        'dkim' => ['blog.example'], 'dmarc' => ['a.example', 'b.example', 'c.example', 'd.example', 'e.example'], 'dmarc_reports' => ['staging.rabbittech.com.np'],
+        'dmarc_auth' => ['shop.example'], 'mta_sts_txt' => ['rabbittech.com.np'], 'mta_sts_policy' => ['rabbittech.com.np'], 'mta_sts_mx' => ['rabbittech.com.np'],
+        'mta_sts_enforced' => true, 'tls_reports' => ['rabbittech.com.np', 'staging.rabbittech.com.np']] + $fine : $fine;
     }
   }
   $src = file_get_contents($WEB . '/admin/dashboard.php');
@@ -246,6 +263,60 @@ if ($template === 'dashboard.twig') {
   $data['rt_backup_last'] = $rt_backup_last;
   $data['rt_restore'] = $rt_restore;
   $data['rt_restore_days'] = $rt_restore_days;
+  $data['rt_reports'] = $rt_reports;
+}
+// What scripts/mail-reports.sh would have stored, built with the real helpers: a month of
+// reports from Google and Outlook, with a spoofer; "problems" adds this server's own mail
+// failing DMARC and failed TLS connections this week, and a failed last run
+function harness_reports() {
+  $mode = getenv('HARNESS_REPORTS') ?: 'ok';
+  if ($mode === 'off') return ['status' => ['enabled' => false, 'time' => time() - 600]];
+  $status = ['enabled' => true, 'mailbox' => 'reports@rabbittech.com.np', 'time' => time() - 300, 'ok' => true, 'error' => '', 'last_success' => time() - 300];
+  if ($mode === 'waiting') return ['status' => $status];
+  $row = fn($ip, $count, $dkim, $spf) => ['ip' => $ip, 'count' => $count, 'disposition' => $dkim || $spf ? 'none' : 'quarantine', 'dkim' => $dkim, 'spf' => $spf];
+  $found = ['dmarc' => [], 'tls' => []];
+  for ($day = 1; $day <= 28; $day++) {
+    $end = strtotime('today', time()) - ($day - 1) * 86400 - 1;
+    $found['dmarc'][] = ['org' => 'google.com', 'id' => "g$day", 'begin' => $end - 86399, 'end' => $end, 'domain' => 'rabbittech.com.np', 'p' => 'quarantine',
+      'rows' => [$row('94.136.186.45', 38 + $day % 5, true, true), $row('209.85.220.69', 3, true, false)] + ($day % 7 === 0 ? [2 => $row('203.0.113.66', 4, false, false)] : [])];
+    $found['dmarc'][] = ['org' => 'Enterprise Outlook', 'id' => "o$day", 'begin' => $end - 86399, 'end' => $end, 'domain' => 'rabbittech.com.np', 'p' => 'quarantine',
+      'rows' => [$row('94.136.186.45', 12, true, true)]];
+    $found['tls'][] = ['org' => 'Google Inc.', 'id' => "t$day", 'begin' => $end - 86399, 'end' => $end,
+      'policies' => [['domain' => 'rabbittech.com.np', 'type' => 'sts', 'ok' => 51, 'failed' => 0, 'failures' => []]]];
+    if ($day % 2) {
+      $found['dmarc'][] = ['org' => 'google.com', 'id' => "s$day", 'begin' => $end - 86399, 'end' => $end, 'domain' => 'staging.rabbittech.com.np', 'p' => 'none',
+        'rows' => [$row('94.136.186.45', 2, true, true)]];
+    }
+  }
+  if ($mode === 'problems') {
+    $end = time() - 3600;
+    $found['dmarc'][] = ['org' => 'Yahoo', 'id' => 'y1', 'begin' => $end - 86400, 'end' => $end, 'domain' => 'rabbittech.com.np', 'p' => 'quarantine',
+      'rows' => [$row('94.136.186.45', 9, false, false)]];
+    $found['tls'][] = ['org' => 'Microsoft Corporation', 'id' => 'm1', 'begin' => $end - 86400, 'end' => $end,
+      'policies' => [['domain' => 'rabbittech.com.np', 'type' => 'sts', 'ok' => 40, 'failed' => 6, 'failures' => ['certificate-expired' => 5, 'validation-failure' => 1]]]];
+    $status = ['ok' => false, 'time' => time() - 900, 'error' => 'There is no mailbox reports@rabbittech.com.np. Create it in the console, or set RT_REPORTS_MAILBOX to one that exists'] + $status;
+  }
+  $names = ['94.136.186.45' => 'mail.rabbittech.com.np', '209.85.220.69' => 'mail-sor-f69.google.com'];
+  return ['status' => $status] + rabbittech_reports_add(null, $found, time(), fn($ip) => $names[$ip] ?? $ip);
+}
+if ($template === 'rabbittech/mail-security.twig') {
+  // A fake zone for the domain; HARNESS_DNS=1 breaks most of it
+  $domain = $_GET['domain'] ?? 'rabbittech.com.np';
+  $broken = (bool)getenv('HARNESS_DNS');
+  $reports = rt_reports_address(harness_reports());
+  $zone = [
+    "MX $domain" => $broken ? ['mail.rabbittech.com.np', 'backup-mx.example.net'] : ['mail.rabbittech.com.np'],
+    "TXT $domain" => [$broken ? 'v=spf1 include:_spf.google.com ~all' : 'v=spf1 mx a:mail.rabbittech.com.np -all'],
+    "TXT dkim._domainkey.$domain" => ['v=DKIM1; k=rsa; t=s; s=email; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAx2k8'],
+    "TXT _dmarc.$domain" => [$broken ? 'v=DMARC1; p=none' : 'v=DMARC1; p=quarantine; rua=mailto:reports@rabbittech.com.np'],
+    "TXT _mta-sts.$domain" => ['v=STSv1; id=20261001090000'],
+    "TXT _smtp._tls.$domain" => $broken || $reports === '' ? [] : ['v=TLSRPTv1; rua=mailto:reports@rabbittech.com.np'],
+  ];
+  $sts = $broken ? ['id' => '20261016120000', 'mode' => 'enforce', 'mx' => ['mail.rabbittech.com.np'], 'active' => '1'] : null;
+  $data['checks'] = rabbittech_domain_checks($domain, ['hostname' => 'mail.rabbittech.com.np', 'ip' => '94.136.186.45', 'reports' => $reports],
+    ['dkim' => ['selector' => 'dkim', 'txt' => 'v=DKIM1;k=rsa;t=s;s=email;p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAx2k8'], 'sts' => $sts],
+    fn($name, $type) => $zone["$type $name"] ?? [], fn($url) => ['error' => 'cert'], fn($d) => strpos($zone["TXT $d"][0], 'a:mail.rabbittech.com.np') ? ['94.136.186.45'] : []);
+  $data += ['domain' => $domain, 'hostname' => 'mail.rabbittech.com.np', 'reports' => $reports, 'is_admin' => true];
 }
 if (strpos($template, 'edit/') === 0) {
   $data['result'] = ['username' => 'bibek@rabbittech.com.np', 'local_part' => 'bibek', 'domain' => 'rabbittech.com.np', 'domain_name' => 'rabbittech.com.np', 'name' => 'Bibek Gupta', 'active' => 1, 'active_int' => 1,

@@ -167,17 +167,19 @@ if [ "${#heal[@]}" -gt 0 ]; then
 fi
 
 # Nightly backups: cron calls scripts/backup-mail.sh every hour and it decides whether one is
-# due. The entry sits between markers in the deploy user's crontab, so it is replaced, not added
-# twice, and other entries stay as they are.
+# due. DMARC and TLS reports: scripts/mail-reports.sh reads new ones every 15 minutes. The entries
+# sit between markers in the deploy user's crontab, so they are replaced, not added twice, and
+# other entries stay as they are.
 if command -v crontab >/dev/null 2>&1; then
   {
     { crontab -l 2>/dev/null || true; } | sed '/^# BEGIN rabbittech-backup/,/^# END rabbittech-backup/d'
     echo "# BEGIN rabbittech-backup (managed by scripts/deploy-vps.sh)"
     echo "17 * * * * APP_ROOT=$APP_ROOT bash $APP_DIR/scripts/backup-mail.sh >> $BACKUP_DIR/backup.log 2>&1"
+    echo "*/15 * * * * APP_ROOT=$APP_ROOT bash $APP_DIR/scripts/mail-reports.sh >> $STATE_DIR/mail-reports.log 2>&1"
     echo "# END rabbittech-backup"
   } | crontab -
 else
-  echo "crontab is not installed, so no nightly backups are scheduled (apt-get install cron)" >&2
+  echo "crontab is not installed, so no nightly backups are scheduled and no mail reports are read (apt-get install cron)" >&2
 fi
 
 docker compose ps
