@@ -292,11 +292,30 @@ server:
   `php -S 127.0.0.1:8088 tests/ui/router.php` to look at pages by hand.
 - `sogo/prepare.sh` builds a webmail mock from SOGo's own stylesheets and scripts at the version in
   `docker-compose.yml`, plus `data/conf/sogo`, with page markup copied from SOGo's templates.
+- It also builds the **live Mail page**: `sogo/wox.py` renders SOGo's own `.wox` templates the way
+  SOGo's framework does (patched with mailcow's toolbar change), `sogo/live.py` assembles the page
+  with SOGo's real scripts, and `sogo/backend.mjs` answers the app's requests like SOGo does, from
+  an in-memory mailbox that really flags, moves and deletes. So SOGo's real Mail app runs in the
+  browser, with or without our `custom-sogo.js`. `node sogo/live-check.mjs` walks through it on its
+  own and prints anything the fake server doesn't know.
 - `smoke.mjs` starts both and checks every main page in light, dark and phone width (no errors, the
   shell starts, no sideways scrolling). It also checks the behaviour that broke before: select-all,
   the bulk toolbars, the 2FA status, the Overview alerts, the session warning across tabs, and the
   webmail palette, top bar and selected message. Pages for mailbox users and domain admins must not
   name mailcow, SOGo or Rspamd, closed dialogs included.
+- In the live Mail app it checks the Gmail-style layout end to end:
+  - Stock SOGo runs against the fake server without errors.
+  - Every layout change applies.
+  - The search box is readable, filters the folder, and resets when emptied.
+  - Rows are one line and 56px tall, and no icon shows as its name.
+  - Star, read/unread, Archive and Delete reach the server and the message really moves.
+  - An open message replaces the list, and back returns to it.
+  - Compose opens as a window, and the mail behind it stays usable.
+  - The classic layout switch works both ways.
+  - Dark mode works; at phone width the search box wraps, back is reachable, and compose is full
+    screen.
+  - Fail-safe: with templates broken on purpose, those changes are skipped with a warning and
+    that part keeps SOGo's own layout.
 
 Run locally:
 
