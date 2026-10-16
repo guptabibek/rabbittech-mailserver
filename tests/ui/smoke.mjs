@@ -433,8 +433,8 @@ if (webmail) {
   // layout custom-sogo.js applies to it, what its buttons do on the server, and the fail-safe.
   console.log('Webmail: Mail app');
   // One of SOGo's apps against the fake server: errors, failed requests and the layout's
-  // warnings are collected. Calendar, Contacts and Settings run on a pinned clock (Thursday 15
-  // October 2026, 10:20 in Kathmandu), the date their seeded events and views are built around.
+  // warnings are collected. Calendar and Contacts run on a pinned clock (Thursday 15 October
+  // 2026, 10:20 in Kathmandu), the date their seeded events and views are built around.
   // allow404: requests whose 404 is SOGo's normal answer, not an error.
   const CLOCK = '2026-10-15T10:20:00+05:45';
   const openApp = async (path, ready, { theme = 'light', width = 1366, height = 900, custom = true, pageFilter, clock, allow404 } = {}) => {
@@ -930,10 +930,11 @@ if (webmail) {
   // ---------------------------------------------------------------- Settings
   // SOGo's real Preferences app (Settings): live.py rendered its page and its account and filter
   // dialogs; sogo/backend-apps.mjs records what Save sends. Settings asks whether another Sieve
-  // script is active, and SOGo answers 404 when none is.
+  // script is active, and SOGo answers 404 when none is. No pinned clock here: a frozen
+  // Date.now() now and then keeps the address fields from turning what is typed into a chip.
   console.log('Webmail: Settings');
   const openPrefs = (hash = '#!/general', options = {}) =>
-    openApp(PREFS_PAGE + hash, 'md-tabs md-tab-item', { clock: CLOCK, allow404: /\/activeExternalSieveScripts$/, ...options });
+    openApp(PREFS_PAGE + hash, 'md-tabs md-tab-item', { allow404: /\/activeExternalSieveScripts$/, ...options });
   const prefsChanges = ['toolbar', 'layout', 'brand', 'save', 'here'].map(c => 'rt-gmail-' + c);
   const openTab = async (page, name) => {
     await page.locator('md-tabs-canvas md-tab-item', { hasText: name }).click();
@@ -1005,11 +1006,11 @@ if (webmail) {
     // SOGo makes the typed address a chip on a comma (Enter is ignored there)
     await page.locator('#forwardAddress input').pressSequentially('backup@example.com');
     await page.keyboard.press(',');
-    await page.waitForTimeout(300);
-    await page.click('.rt-save-bar .rt-save');
-    check('settings: Save sends the forwarding address', await until(() => saved(backend).length === 2) &&
+    const chip = await until(() => page.locator('#forwardAddress md-chip', { hasText: 'backup@example.com' }).count().then(n => n === 1));
+    if (chip) await page.click('.rt-save-bar .rt-save');
+    check('settings: Save sends the forwarding address', chip && await until(() => saved(backend).length === 2) &&
       saved(backend)[1].defaults.Forward.enabled === 1 && (saved(backend)[1].defaults.Forward.forwardAddress || []).includes('backup@example.com'),
-      JSON.stringify(saved(backend)[1] && saved(backend)[1].defaults.Forward));
+      chip ? JSON.stringify(saved(backend)[1] && saved(backend)[1].defaults.Forward) : 'the address did not become a chip');
 
     // The filter and account dialogs SOGo fetches
     await openTab(page, 'Filters');
