@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Builds the "live" webmail page: SOGo's real Mail page (UIxPageFrame.wox wrapped around
-MailerUI/UIxMailMainFrame.wox, rendered by wox.py) plus the templates and data the app asks
-the server for. tests/ui/sogo/backend.mjs serves these files from Playwright route handlers.
+"""Builds the "live" webmail pages: SOGo's real Mail, Calendar and Contacts pages
+(UIxPageFrame.wox wrapped around UIxMailMainFrame.wox, UIxCalMainView.wox and
+UIxContactFoldersView.wox, rendered by wox.py) plus the templates and data the apps ask the
+server for. tests/ui/sogo/backend.mjs serves these files from Playwright route handlers.
 
 Values mirror what SOGo 5.12 sends a mailcow user with default preferences: data/conf/sogo/
 sogo.conf for the system defaults, SoObjects/SOGo/SOGoDefaults.plist for SOGo's own, and the
@@ -9,10 +10,14 @@ Objective-C code that turns them into JSON (UIxJSONPreferences.m, SOGoUser.m mai
 UIxPageFrame.m). See the comments next to each value.
 
 Usage: live.py <SOGo source checkout> <patched templates dir> <output dir>
-Output: view.html (the page), view-plain.html (the same without SOGoUIAdditionalJSFiles, i.e.
+Output: view.html (the Mail page), view-plain.html (the same without SOGoUIAdditionalJSFiles, i.e.
 without our theme.js and custom-sogo.js), UIxMailEditor.html and the other templates fetched
 over HTTP, parts.json (mail part viewers with @@...@@ placeholders) and data.json (JSON the
-backend answers with). @@CURRENT_DAY@@ in the pages is filled in by the backend per request."""
+backend answers with). @@CURRENT_DAY@@ in the pages is filled in by the backend per request.
+calendar/ and contacts/ hold the same for those apps; the calendar's day, week and month views
+(templates the server renders per date) are rendered for the weeks around TODAY, the date the
+tests pin the browser's clock to."""
+import datetime
 import json
 import os
 import sys
@@ -269,17 +274,20 @@ template_dirs = [templates]
 problems = []
 
 
-def render(component, extra=None):
-    renderer = Renderer(template_dirs, [mailer, common], dict(bindings, **(extra or {})), accessors)
+def render(component, extra=None, tables=None, base=None, nil=()):
+    renderer = Renderer(template_dirs, tables or [mailer, common], dict(base or bindings, **(extra or {})), accessors)
     html = renderer.render_component(component)
-    unknown = {k for k in renderer.missing if k not in NIL_BINDINGS and not k.startswith('dialogCtrl.')}
+    unknown = {k for k in renderer.missing
+               if k not in NIL_BINDINGS and k not in nil and not k.startswith('dialogCtrl.')}
     if unknown:
         problems.append('%s: no value for %s' % (component, ', '.join(sorted(unknown))))
     return html
 
 
 def write(name, text):
-    with open(os.path.join(out, name), 'w', encoding='utf-8') as f:
+    path = os.path.join(out, name)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as f:
         f.write(text)
 
 
@@ -313,6 +321,282 @@ write('data.json', json.dumps({
     'jsonDefaults': bindings['jsonDefaults'],
     'jsonSettings': bindings['jsonSettings'],
     'labels': {'MailerUI': mailer, 'Common': common, 'PreferencesUI': prefs},
+}, indent=1))
+
+# ================================================================== Calendar and Contacts
+scheduler, contacts = strings('Scheduler'), strings('Contacts')
+TODAY = datetime.date(2026, 10, 15)       # a Thursday; the tests pin the browser's clock to it
+FIRST_DAY = 1                             # SOGoFirstDayOfWeek: Monday
+CAL_URL = 'https://mail.rabbittech.com.np/SOGo/dav/%s/Calendar/' % LOGIN
+CARD_URL = 'https://mail.rabbittech.com.np/SOGo/dav/%s/Contacts/' % LOGIN
+
+
+def app_bindings(module, folder, framework, product, title, extra):
+    """The page bindings of another app: the Mail page's, with that app's module and labels."""
+    return dict(bindings, moduleName=label(title, common), angularModule=module, modulePath=FOLDER_URL + folder + '/',
+                productLocalizableStrings='var labels = %s;' % sogo_json(dict(product, _loadedFrameworks=[framework])),
+                framework=framework, **extra)
+
+
+# ------------------------------------------------------------------ calendars (UIxCalendarSelector.m calendars)
+def calendar(id, name, color, active=1):
+    return {
+        'id': id, 'name': name, 'color': color, 'active': active, 'owner': LOGIN, 'isWebCalendar': 0,
+        'includeInFreeBusy': 1, 'showCalendarAlarms': 1, 'showCalendarTasks': 1,
+        'acls': {'objectCreator': 1, 'objectEraser': 1}, 'synchronize': 1,
+        'urls': {'calDavURL': CAL_URL + id + '/', 'webDavICSURL': CAL_URL + id + '.ics',
+                 'webDavXMLURL': CAL_URL + id + '.xml'},
+        'notifications': {'notifyOnPersonalModifications': 0, 'notifyOnExternalModifications': 0,
+                          'notifyUserOnPersonalModifications': 0},
+    }
+
+
+calendars = [calendar('personal', 'Personal Calendar', '#7C3AED'),
+             calendar('work', 'Work', '#0B8043'),
+             calendar('family', 'Family', '#F4511E')]
+
+
+# ------------------------------------------------------------------ address books (UIxContactFoldersView.m contactFolders)
+def address_book(id, name, remote=False):
+    owner = 'nobody' if remote else LOGIN
+    acl = 0 if remote else 1
+    book = {'id': id, 'name': name, 'synchronize': 1 if id == 'personal' else 0, 'owner': owner,
+            'isEditable': 0 if remote else 1, 'isRemote': 1 if remote else 0, 'listRequiresDot': 0,
+            'acls': {'objectCreator': acl, 'objectEditor': acl, 'objectEraser': acl}}
+    if not remote:
+        book['urls'] = {'cardDavURL': CARD_URL + id + '/'}
+    book['searchFields'] = ['name', 'c_mail', 'c_categories', 'c_o']
+    return book
+
+
+address_books = [address_book('personal', 'Personal Address Book'),
+                 address_book('collected', 'Collected Address Book'),
+                 address_book('global', 'Global Address Book', remote=True)]
+
+# Bindings both apps' templates use that the Mail page doesn't
+app_common = {'isCalendarSharingEnabled': True, 'isCalendarExportEnabled': True,
+              'isContactSharingEnabled': True, 'isContactExportEnabled': True,
+              'canSubscribeUsers': True, 'objectRights': [], 'showJitsiLinkCreation': False}
+calendar_bindings = app_bindings('SOGo.SchedulerUI', 'Calendar', 'SchedulerUI', scheduler, 'Calendar', dict(app_common, **{
+    'firstDayOfWeek': FIRST_DAY,
+    'dayStartHour': 8,
+    'currentView': 'weekview',
+    'listIsCollapsed.jsonRepresentation': 'false',
+    'calendars.jsonRepresentation': sogo_json(calendars),
+}))
+contacts_bindings = app_bindings('SOGo.ContactsUI', 'Contacts', 'ContactsUI', contacts, 'Address Book', dict(app_common, **{
+    'contactFolders.jsonRepresentation': sogo_json(address_books),
+}))
+calendar_tables = [scheduler, common]
+contacts_tables = [contacts, common]
+# Labels SOGo binds with var: (nil, so the attribute is left out)
+calendar_nil = {'Create a new event', 'Create a new task'}
+contacts_nil = {'Contact', 'List'}
+
+
+# ------------------------------------------------------------------ the calendar's views (UIxCalDayTable.m, UIxCalMonthView.m, UIxCalView.m)
+class Day:
+    """An NSCalendarDate as the view templates use it."""
+
+    def __init__(self, date):
+        self.date = date
+        self.shortDateString = date.strftime('%Y%m%d')
+        self.iso8601DateString = date.isoformat()
+        self.isToday = date == TODAY
+        self.dayOfMonth = date.day
+        self.yearOfCommonEra = date.year
+
+    @property
+    def day_of_week(self):            # NSCalendarDate dayOfWeek: Sunday is 0
+        return (self.date.weekday() + 1) % 7
+
+
+def first_day_of_week(date):
+    return date - datetime.timedelta(days=(date.weekday() + 1 - FIRST_DAY) % 7)
+
+
+def week_number(date):
+    # SOGoFirstWeekOfYear January1: the week holding January 1st is week 1
+    start = first_day_of_week(date)
+    following = first_day_of_week(datetime.date(start.year + 1, 1, 1))
+    if start >= following:
+        return 1
+    return (start - first_day_of_week(datetime.date(start.year, 1, 1))).days // 7 + 1
+
+
+def ymd(date):
+    return {'day': date.strftime('%Y%m%d')}
+
+
+def view_bindings(view, selected):
+    """Bindings of UIxCal{Day,Week,Month}View for the date the app asked for."""
+    days = lambda n: datetime.timedelta(days=n)
+    b = {'todayQueryParameters': ymd(TODAY), 'startDate': selected}
+    if view == 'dayview':
+        b.update(prevDayQueryParameters=ymd(selected - days(1)), nextDayQueryParameters=ymd(selected + days(1)),
+                 yesterdayName=DAYS[Day(selected - days(1)).day_of_week], tomorrowName=DAYS[Day(selected + days(1)).day_of_week])
+        table = [selected]
+    elif view == 'weekview':
+        start = first_day_of_week(selected)
+        b.update(prevWeekQueryParameters=ymd(start - days(7)), nextWeekQueryParameters=ymd(start + days(7)))
+        table = [start + days(i) for i in range(7)]
+    else:
+        first = selected.replace(day=1)
+        prev = (first - days(1)).replace(day=1)
+        nxt = (first + days(32)).replace(day=1)
+        last = nxt - days(1)
+        start = first_day_of_week(first)
+        weeks = ((last - start).days + 1 + 6) // 7
+        grid = [[Day(start + days(w * 7 + d)) for d in range(7)] for w in range(weeks)]
+        b.update(prevMonthQueryParameters=ymd(prev), nextMonthQueryParameters=ymd(nxt),
+                 headerDaysToDisplay=grid[0], weeksToDisplay=grid)
+
+        def where(scope):
+            week = scope['currentWeek']
+            return grid.index(week), week.index(scope['currentTableDay'])
+
+        def classes(scope):
+            w, d = where(scope)
+            day = scope['currentTableDay']
+            out = 'day weekOf%d week%dof%d day%d' % (weeks, w, weeks, d)
+            if day.day_of_week in (0, 6):
+                out += ' weekEndDay'
+            if day.date.month != selected.month:
+                out += ' dayOfAnotherMonth'
+            if day.isToday:
+                out += ' dayOfToday'
+            return out
+
+        def header_month(scope):
+            day = scope['currentTableDay'].date
+            if day.day == 1 or (day + days(1)).day == 1:
+                return MONTHS[day.month - 1]
+            return None
+        b.update(
+            currentDayId=lambda sc: 'day' + sc['currentTableDay'].shortDateString,
+            currentDayNumber=lambda sc: where(sc)[0] * 7 + where(sc)[1],
+            isFirstDayOfWeek=lambda sc: where(sc)[1] == 0,
+            currentWeekNumber=lambda sc: week_number(sc['currentTableDay'].date),
+            dayCellClasses=classes,
+            dayHeaderMonth=header_month,
+            labelForCurrentDayToDisplay=lambda sc: DAYS[sc['currentTableDay'].day_of_week])
+        return b
+    shown_days[:] = [Day(d) for d in table]
+    return b
+
+
+shown_days = []          # the days UIxCalDayTable shows, set by view_bindings
+
+
+def day_table(bound):
+    """UIxCalDayTable's values; it gets currentView and numberOfDays from the view template."""
+    view = bound.get('currentView')
+    shown = list(shown_days)
+    index = lambda sc: shown.index(sc['currentTableDay'])
+
+    def day_classes(scope):
+        day = scope['currentTableDay']
+        out = 'day'
+        if len(shown) > 1:
+            if day.day_of_week in (0, 6):
+                out += ' weekEndDay'
+            if day.isToday:
+                out += ' dayOfToday'
+        return out
+
+    def month_label(scope):
+        day = scope['currentTableDay']
+        if view.endswith('dayview'):
+            return MONTHS[day.date.month - 1]
+        if day.dayOfMonth == 1 or index(scope) == 0:
+            return SHORT_MONTHS[day.date.month - 1]
+        return None
+
+    def hour_class(scope):
+        hour = scope['currentTableHour']
+        out = 'clickableHourCell clickableHourCell%d' % hour
+        if hour < 8 or hour > 18 - 1:                      # SOGoDayStartTime 08:00, SOGoDayEndTime 18:00
+            out += ' outOfDay'
+        return out
+    return {
+        'daysToDisplay': shown,
+        'hoursToDisplay': list(range(0, 24)),               # UIxCalView dayStartHour 0, dayEndHour 23
+        'isWeekView': view == 'weekview',
+        'isMultiColumnView': view == 'multicolumndayview',
+        'currentHourId': lambda sc: 'hour%d' % sc['currentTableHour'],
+        'currentAllDayId': lambda sc: 'allDay' + sc['currentTableDay'].shortDateString,
+        'currentDayId': lambda sc: 'day' + sc['currentTableDay'].shortDateString,
+        'currentDayNumber': index,
+        'currentAppointmentHour': lambda sc: sc['currentTableHour'],
+        'currentYear': lambda sc: str(sc['currentTableDay'].yearOfCommonEra)
+            if (sc['currentTableDay'].date.month == 1 and sc['currentTableDay'].dayOfMonth == 1) or index(sc) == 0 else None,
+        'currentFormattedHour': lambda sc: '%02d:00' % sc['currentTableHour'],
+        'labelForDay': lambda sc: DAYS[sc['currentTableDay'].day_of_week],
+        'labelForMonth': month_label,
+        'dayClasses': day_classes,
+        'clickableHourCellClass': hour_class,
+    }
+
+
+accessors['UIxCalDayTable'] = day_table
+ICAL_DAYS = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
+# The editors' choice lists (UIxReminderEditor.m, UIxRecurrenceEditor.m, UIxRecurrenceListEditor.m)
+accessors['UIxReminderEditor'] = lambda bound: {
+    'unitsList': ['MINUTES', 'HOURS', 'DAYS', 'WEEKS'], 'referencesList': ['BEFORE', 'AFTER'],
+    'relationsList': ['START', 'END'], 'emailAlarmsEnabled': True,      # sogo.conf SOGoEnableEMailAlarms = YES
+    'itemText': lambda sc: label('reminder_' + sc['item'], scheduler)}
+monthly_repeat = ['First', 'Second', 'Third', 'Fourth', 'Fift', 'Last']
+monthly_days = DAYS + [label('DayOfTheMonth', scheduler)]
+accessors['UIxRecurrenceEditor'] = lambda bound: {
+    'shortWeekDaysList': SHORT_DAYS, 'monthlyRepeatList': monthly_repeat, 'monthlyDayList': monthly_days,
+    'yearlyMonthList': SHORT_MONTHS, 'yearlyDayList': DAYS,
+    'itemText': lambda sc: label(sc['item'], scheduler),
+    'labelForWeekDay': lambda sc: sc['item'],
+    'valueForWeekDay': lambda sc: ICAL_DAYS[SHORT_DAYS.index(sc['item'])],
+    'valueForMonthlyRepeat': lambda sc: ['1', '2', '3', '4', '5', '-1'][monthly_repeat.index(sc['item'])],
+    'valueForMonthlyDay': lambda sc: 'relative' if monthly_days.index(sc['item']) > 6 else ICAL_DAYS[monthly_days.index(sc['item'])],
+    'valueForYearlyMonth': lambda sc: SHORT_MONTHS.index(sc['item']) + 1,
+    'valueForYearlyDay': lambda sc: ICAL_DAYS[DAYS.index(sc['item'])]}
+accessors['UIxRecurrenceListEditor'] = lambda bound: {
+    'repeatFrequenciesKey': ['never', 'daily', 'weekly', 'monthly', 'yearly'],
+    'itemText': lambda sc: label('repeat_' + sc['item'].upper(), scheduler)}
+
+
+def calendar_page(name, component, extra=None):
+    write('calendar/' + name, render(component, extra, calendar_tables, calendar_bindings, calendar_nil))
+
+
+calendar_page('view.html', 'UIxCalMainView')
+calendar_page('view-plain.html', 'UIxCalMainView', {'systemAdditionalJSFiles': []})
+for template in ('UIxAppointmentEditorTemplate', 'UIxAppointmentViewTemplate', 'UIxTaskEditorTemplate', 'UIxTaskViewTemplate'):
+    calendar_page(template + '.html', template, {
+        'dayEndHour': 18, 'userDefaults.timeFormat': '%H:%M',
+        'replyList': ['ACCEPTED', 'DECLINED', 'TENTATIVE'], 'itemReplyText': lambda sc: label('partStat_' + sc['item'], scheduler),
+        'statusList': ['not-specified', 'needs-action', 'in-process', 'completed', 'cancelled'],
+        'itemStatusText': lambda sc: label('status_' + sc['item'].upper(), scheduler)})
+# The views, for the weeks around TODAY: day views by day, week views by their Monday, month
+# views by their first day
+window = [datetime.date(2026, 9, 28) + datetime.timedelta(days=i) for i in range(63)]
+for name, component, dates in (
+        ('dayview', 'UIxCalDayView', window),
+        ('weekview', 'UIxCalWeekView', [d for d in window if d.weekday() == 0]),
+        ('monthview', 'UIxCalMonthView', sorted({d.replace(day=1) for d in window}))):
+    for date in dates:
+        calendar_page('%s-%s.html' % (name, date.strftime('%Y%m%d')), component, view_bindings(name, date))
+
+
+def contacts_page(name, component, extra=None):
+    write('contacts/' + name, render(component, extra, contacts_tables, contacts_bindings, contacts_nil))
+
+
+contacts_page('view.html', 'UIxContactFoldersView')
+contacts_page('view-plain.html', 'UIxContactFoldersView', {'systemAdditionalJSFiles': []})
+contacts_page('UIxContactEditorTemplate.html', 'UIxContactEditorTemplate')
+
+write('apps.json', json.dumps({
+    'today': TODAY.isoformat(),
+    'calendars': calendars, 'addressBooks': address_books,
+    'labels': {'SchedulerUI': scheduler, 'ContactsUI': contacts},
 }, indent=1))
 
 if problems:

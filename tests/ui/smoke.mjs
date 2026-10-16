@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mailBackend, PAGE } from './sogo/backend.mjs';
+import { mailBackend, PAGE, CALENDAR_PAGE, CONTACTS_PAGE } from './sogo/backend.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const output = join(here, 'output');
@@ -302,23 +302,29 @@ if (webmail) {
   // scripts, and sogo/backend.mjs answering its requests like SOGo does. Checks the Gmail-style
   // layout custom-sogo.js applies to it, what its buttons do on the server, and the fail-safe.
   console.log('Webmail: Mail app');
-  const openMail = async ({ theme = 'light', width = 1366, height = 900, custom = true, pageFilter } = {}) => {
-    const ctx = await browser.newContext({ viewport: { width, height } });
+  // One of SOGo's apps against the fake server: errors, failed requests and the layout's
+  // warnings are collected. Calendar and Contacts run on a pinned clock (Thursday 15 October
+  // 2026, 10:20 in Kathmandu), the date their seeded events and views are built around.
+  const CLOCK = '2026-10-15T10:20:00+05:45';
+  const openApp = async (path, ready, { theme = 'light', width = 1366, height = 900, custom = true, pageFilter, clock } = {}) => {
+    const ctx = await browser.newContext({ viewport: { width, height }, timezoneId: 'Asia/Kathmandu' });
     const page = await ctx.newPage();
+    if (clock) await page.clock.setFixedTime(new Date(clock));
     const errors = [], warnings = [];
     page.on('pageerror', e => errors.push('pageerror: ' + e.message));
     page.on('console', m => {
-      if (/RabbitTech mail layout/.test(m.text())) warnings.push(m.text());
+      if (/^RabbitTech .*layout/.test(m.text())) warnings.push(m.text());
       else if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push('console: ' + m.text());
     });
     page.on('response', r => { if (r.status() >= 400 && !fonts.test(r.url())) errors.push(r.status() + ' ' + r.url()); });
     await page.addInitScript(t => { try { localStorage.setItem('mailcow_theme', t); } catch (e) {} }, theme);
-    const backend = await mailBackend(ctx, { custom, pageFilter });
-    await page.goto(webmail + PAGE, { waitUntil: 'load' });
-    await page.waitForSelector('md-list-item.sg-message-list-item .sg-tile-subject', { timeout: 20000 });
+    const backend = await mailBackend(ctx, { custom, pageFilter, clock });
+    await page.goto(webmail + path, { waitUntil: 'load' });
+    await page.waitForSelector(ready, { timeout: 20000 });
     await page.waitForTimeout(500);
     return { ctx, page, backend, errors, warnings };
   };
+  const openMail = (options = {}) => openApp(PAGE, 'md-list-item.sg-message-list-item .sg-tile-subject', options);
   const classes = page => page.evaluate(() => document.documentElement.className.split(/\s+/));
   const changes = ['layout', 'brand', 'compose', 'search', 'rows', 'fab', 'back'].map(c => 'rt-gmail-' + c);
   const rows = page => page.locator('md-list-item.sg-message-list-item');
@@ -521,6 +527,39 @@ if (webmail) {
     check('mail app fail-safe: without the back arrow the list stays beside the open message',
       await page.evaluate(() => getComputedStyle(document.querySelector('.view-list')).visibility === 'visible'));
     check('mail app fail-safe: no errors', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
+  // ---------------------------------------------------------------- Calendar
+  // SOGo's real Calendar app the same way: live.py rendered its page, its event and task
+  // dialogs and its day, week and month views; sogo/backend-apps.mjs has a week of events.
+  console.log('Webmail: Calendar app');
+  const openCalendar = (options = {}) => openApp(CALENDAR_PAGE, '#day20261015 .sg-event.sg-draggable-calendar-block', { clock: CLOCK, ...options });
+  // Where an event's block is: the day column it is in and its top and height in the hour grid
+  const block = (page, title) => page.evaluate(title => {
+    const el = [...document.querySelectorAll('sg-calendar-day .sg-event.sg-draggable-calendar-block')].find(b => b.textContent.includes(title));
+    if (!el) return null;
+    const day = el.closest('sg-calendar-day'), cell = day.querySelector('.clickableHourCell').getBoundingClientRect();
+    const box = el.getBoundingClientRect();
+    return { day: day.id, hour: Math.round((box.top - cell.top) / cell.height * 4) / 4, hours: Math.round(box.height / cell.height * 4) / 4 };
+  }, title);
+  {
+    const { ctx, page, errors } = await openCalendar({ custom: false });
+    check('calendar app: stock SOGo runs against the fake server without errors', errors.length === 0, errors.join(' | '));
+    const cutover = await block(page, 'Webmail cut-over');
+    check('calendar app: the week shows each event on its day, at its time and length',
+      JSON.stringify(cutover) === JSON.stringify({ day: 'day20261015', hour: 10, hours: 1.5 }), JSON.stringify(cutover));
+    await ctx.close();
+  }
+
+  // ---------------------------------------------------------------- Contacts
+  console.log('Webmail: Contacts app');
+  const openContacts = (options = {}) => openApp(CONTACTS_PAGE, '#contactsList md-list-item .sg-md-subhead', { clock: CLOCK, ...options });
+  const cards = page => page.locator('#contactsList md-list-item:has(.sg-md-subhead)');
+  {
+    const { ctx, page, errors } = await openContacts({ custom: false });
+    check('contacts app: stock SOGo runs against the fake server without errors', errors.length === 0, errors.join(' | '));
+    check('contacts app: the address book lists its contacts', await cards(page).count() === 9, String(await cards(page).count()));
     await ctx.close();
   }
 } else {
