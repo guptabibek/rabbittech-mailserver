@@ -851,6 +851,24 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
     var viewport = document.querySelector('meta[name="viewport"]');
     if (viewport) viewport.setAttribute('content', 'width=device-width, initial-scale=1');
 
+    // Installable webmail: the app's manifest (data/web/webmail.webmanifest, opens /webmail), the
+    // iPhone home screen icon, and a window title bar in the page's own light or dark colour
+    var head = document.head || root;
+    var meta = function (tag, attrs) {
+      var el = document.createElement(tag);
+      Object.keys(attrs).forEach(function (name) { el.setAttribute(name, attrs[name]); });
+      head.appendChild(el);
+    };
+    if (!document.querySelector('link[rel="manifest"]')) {
+      meta('link', { rel: 'manifest', href: '/webmail.webmanifest' });
+      meta('link', { rel: 'apple-touch-icon', href: '/img/app/apple-touch-icon.png' });
+      meta('meta', { name: 'apple-mobile-web-app-title', content: 'Webmail' });
+      meta('meta', { name: 'mobile-web-app-capable', content: 'yes' });
+      meta('meta', { name: 'apple-mobile-web-app-capable', content: 'yes' });
+    }
+    if (!document.querySelector('meta[name="theme-color"]')) meta('meta', { name: 'theme-color', content: '' });
+    document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#0b0d12' : '#f5f6fa');
+
     // mailcow's patch to SOGo adds a button to the console labelled "mailcow Preferences" (the
     // second word is SOGo's own translation). Angular reads the label when it starts, which is
     // after this script, so rename it in the page templates and in the page itself.

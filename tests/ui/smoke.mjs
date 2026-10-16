@@ -321,6 +321,38 @@ if (webmail) {
     check('mail app: every layout change applied, no warnings', changes.every(c => cls.includes(c)) && warnings.length === 0, cls.join(' ') + ' ' + warnings.join(' | '));
     await page.screenshot({ path: join(output, 'webmail-app-light.png') });
 
+    // Installable: the manifest, its icons, and Chromium's own verdict on the page
+    const manifest = await page.evaluate(async () => {
+      const link = document.querySelector('link[rel="manifest"]');
+      const m = link && await (await fetch(link.href)).json();
+      const sizes = m ? await Promise.all(m.icons.map(icon => new Promise(done => {
+        const img = new Image();
+        img.onload = () => done(icon.sizes === img.naturalWidth + 'x' + img.naturalHeight);
+        img.onerror = () => done(false);
+        img.src = icon.src;
+      }))) : [];
+      const touch = document.querySelector('link[rel="apple-touch-icon"]');
+      return {
+        fields: !!m && m.name === 'RabbitTech Webmail' && m.start_url === '/webmail' && m.scope === '/' && m.display === 'standalone',
+        purposes: m ? m.icons.map(i => i.sizes + ' ' + i.purpose).join(', ') : '',
+        sizes: sizes.length === 3 && sizes.every(Boolean),
+        touch: !!touch && await fetch(touch.href).then(r => r.ok),
+        theme: (document.querySelector('meta[name="theme-color"]') || {}).content,
+      };
+    });
+    check('mail app: the page links a manifest that opens /webmail in its own window',
+      manifest.fields && manifest.purposes === '192x192 any, 512x512 any, 512x512 maskable', JSON.stringify(manifest));
+    check('mail app: app icons load at their stated sizes, iPhone icon too', manifest.sizes && manifest.touch, JSON.stringify(manifest));
+    check('mail app: the window title bar matches the light page', manifest.theme === '#f5f6fa', manifest.theme);
+    // Chromium itself: it found our manifest, parsed it without errors, and sees nothing that
+    // stops installing (it offers any page as an app, so the manifest part is what counts)
+    const cdp = await ctx.newCDPSession(page);
+    const { installabilityErrors } = await cdp.send('Page.getInstallabilityErrors');
+    const app = await cdp.send('Page.getAppManifest');
+    check('mail app: Chromium reads the manifest without errors and can install webmail',
+      /\/webmail\.webmanifest$/.test(app.url) && app.errors.length === 0 && installabilityErrors.length === 0,
+      JSON.stringify({ url: app.url, errors: app.errors, installabilityErrors }));
+
     // Search box in the top bar, readable, filters and resets the list
     const box = page.locator('md-toolbar.toolbar-main form.rt-search input[type="search"]');
     const look = await box.evaluate(el => {
@@ -423,6 +455,8 @@ if (webmail) {
     await page.screenshot({ path: join(output, 'webmail-app-dark.png') });
     const bg = await page.evaluate(() => getComputedStyle(document.querySelector('.view-list')).backgroundColor);
     check('mail app dark: dark list, no errors', bg === 'rgb(18, 21, 28)' && errors.length === 0, bg + ' ' + errors.join(' | '));
+    const theme = await page.evaluate(() => document.querySelector('meta[name="theme-color"]').content);
+    check('mail app dark: the window title bar is dark too', theme === '#0b0d12', theme);
     await ctx.close();
   }
 
