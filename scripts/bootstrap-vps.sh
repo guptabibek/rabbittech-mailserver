@@ -50,3 +50,6 @@ ufw allow 4190/tcp
 echo "Bootstrap complete."
 echo "Install your GitHub Actions public deploy key into /home/$DEPLOY_USER/.ssh/authorized_keys."
 echo "Then set GitHub secrets VPS_HOST, VPS_USER=$DEPLOY_USER, VPS_SSH_KEY, and MAILCOW_ENV_FILE."
+echo "If another nginx on this server owns ports 80 and 443, also run (after the first deploy):"
+echo "  bash $APP_ROOT/app/scripts/front-nginx.sh setup $DEPLOY_USER"
+echo "and set RT_FRONT_NGINX=y in MAILCOW_ENV_FILE."

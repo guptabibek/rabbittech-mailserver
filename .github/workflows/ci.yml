@@ -19,8 +19,8 @@ jobs:
 
       - name: Validate shell scripts
         run: |
-          bash -n scripts/bootstrap-vps.sh scripts/deploy-vps.sh scripts/backup-mail.sh scripts/check-health.sh scripts/restore-test.sh scripts/mail-reports.sh
-          bash -n tests/backup/test-backup.sh tests/backup/restore-e2e.sh tests/reports/test-mail-reports.sh
+          bash -n scripts/bootstrap-vps.sh scripts/deploy-vps.sh scripts/backup-mail.sh scripts/check-health.sh scripts/restore-test.sh scripts/mail-reports.sh scripts/front-nginx.sh deploy/nginx/rabbittech-front-nginx
+          bash -n tests/backup/test-backup.sh tests/backup/restore-e2e.sh tests/reports/test-mail-reports.sh tests/deploy/test-front-nginx.sh tests/deploy/front-nginx-e2e.sh
           sh -n scripts/sync-release.sh
 
       - name: Test release sync
@@ -49,6 +49,9 @@ jobs:
 
       - name: Test reading DMARC and TLS reports
         run: bash tests/reports/test-mail-reports.sh
+
+      - name: Test installing the front nginx site
+        run: bash tests/deploy/test-front-nginx.sh
 
       - name: Validate Docker Compose file
         run: docker compose config >/dev/null
@@ -160,3 +163,16 @@ jobs:
 
       - name: Restore a backup made like mailcow's, and broken copies of it
         run: bash tests/backup/restore-e2e.sh
+
+  front-nginx:
+    name: Front nginx site (Docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # nginx 1.24, the version Ubuntu 24.04 ships
+      - name: Run the site in real nginx in front of a stub mailcow
+        run: bash tests/deploy/front-nginx-e2e.sh
+        env:
+          RT_E2E_NGINX_IMAGE: nginx:1.24-alpine

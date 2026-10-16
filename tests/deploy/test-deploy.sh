@@ -96,6 +96,7 @@ IMAPS_PORT=993
 POP_PORT=110
 POPS_PORT=995
 SIEVE_PORT=4190
+${EXTRA_CONF:-}
 CONF
 }
 
@@ -160,6 +161,7 @@ deploy one && rc=0 || rc=$?
 check "a healthy release is recorded as the one to return to" '[ "$rc" = 0 ] && [ "$(cat "$APP_ROOT/shared/current-release")" = "$APP_ROOT/releases/one" ] && [ -f "$APP_ROOT/shared/last-good-mailcow.conf" ]'
 check "the backup cron entry is installed" 'grep -q "scripts/backup-mail.sh" "$T/crontab"'
 check "the mail reports cron entry is installed" 'grep -q "^\*/15 .*scripts/mail-reports.sh >> .*/shared/mail-reports.log" "$T/crontab"'
+check "no front nginx without RT_FRONT_NGINX=y" '! grep -q front-nginx "$T/crontab" && ! grep -qi "nginx site" "$T/out"'
 release twotwo fail
 echo "only in release two" > "$APP_ROOT/releases/twotwo/ONLY-IN-TWO"
 deploy twotwo && rc=0 || rc=$?
@@ -170,6 +172,18 @@ printf '#!/bin/bash\nexit 1\n' > "$APP_ROOT/releases/one/scripts/check-health.sh
 release three fail
 deploy three && rc=0 || rc=$?
 check "when the previous release fails too, it stops and says so" '[ "$rc" = 1 ] && grep -q "not healthy either" "$T/out" && [ "$(grep -c "Rolling back" "$T/out")" = 1 ]'
+
+# With a front nginx (RT_FRONT_NGINX=y) a healthy release also installs its site, through the
+# root helper (a fake here, tests/deploy/test-front-nginx.sh tests the real one)
+printf '#!/bin/bash\necho "$*" >> "%s/helper-calls"; if [ "$1" = install ]; then head -n 1 >> "%s/helper-calls"; fi\n' "$T" "$T" > "$T/bin/fake-helper"
+chmod +x "$T/bin/fake-helper"
+printf '#!/bin/sh\n[ "$1" = -n ] && shift\nexec "$@"\n' > "$T/bin/sudo"
+chmod +x "$T/bin/sudo"
+printf '#!/bin/bash\nexit 0\n' > "$APP_ROOT/releases/one/scripts/check-health.sh"
+release front ok
+EXTRA_CONF=RT_FRONT_NGINX=y RT_FRONT_HELPER="$T/bin/fake-helper" deploy front && rc=0 || rc=$?
+check "with RT_FRONT_NGINX=y a healthy release installs the nginx site" '[ "$rc" = 0 ] && grep -qx "install mail.rabbittech.com.np" "$T/helper-calls" && grep -qx "# RabbitTech mail front" "$T/helper-calls"'
+check "... and cron reloads nginx after certificate renewals" 'grep -q "^\*/15 .*scripts/front-nginx.sh reload >> .*/shared/front-nginx.log" "$T/crontab"'
 
 echo
 echo "$passed passed, $failures failed"
