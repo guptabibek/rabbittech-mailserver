@@ -117,25 +117,39 @@ console.log('Behaviour');
   const header = page.locator('#mailbox_table thead .rt-select-all');
   // mailcow navigates after a bulk action, so each case starts from a fresh page load
   const reload = async () => { await page.goto(main + '/admin/mailbox#/mailboxes', { waitUntil: 'networkidle' }); await page.waitForTimeout(600); };
-  const activate = async () => {
+  // The bulk action posts the selected rows. Wait for that request itself: a fixed wait was too
+  // short on slow CI runners. With nothing selected there is no request, so that case only waits.
+  const activate = async (expectRequest = true) => {
     sent = null;
+    const request = expectRequest ? page.waitForRequest('**/api/v1/edit/**', { timeout: 10000 }).catch(() => null) : null;
     await page.evaluate(() => document.querySelector('#tab-mailboxes [data-action="edit_selected"][data-id="mailbox"][data-api-attr*="active"]').click());
-    await page.waitForTimeout(400);
-    return sent === null ? [] : JSON.parse(sent).sort();
+    if (!expectRequest) {
+      await page.waitForTimeout(400);
+      return sent === null ? [] : JSON.parse(sent).sort();
+    }
+    const posted = await request;
+    return posted ? JSON.parse(new URLSearchParams(posted.postData()).get('items')).sort() : null;
   };
+  const same = (got, want) => JSON.stringify(got) === JSON.stringify(want);
+  const sentVs = (got, want) => `sent ${got === null ? 'nothing' : JSON.stringify(got)}, expected ${JSON.stringify(want)}`;
   // The checkboxes hold URL-encoded usernames; mailcow decodes them when it sends the request
   const all = (await rows.evaluateAll(list => list.map(i => decodeURIComponent(i.value)))).sort();
   await rows.first().check(); await header.check(); await header.uncheck();
-  check('select one row, select all, select none → nothing selected', (await activate()).length === 0);
+  let got = await activate(false);
+  check('select one row, select all, select none → nothing selected', got.length === 0, sentVs(got, []));
   await reload(); await header.check();
-  check('select all → every row once', JSON.stringify(await activate()) === JSON.stringify(all));
+  got = await activate();
+  check('select all → every row once', same(got, all), sentVs(got, all));
   await reload(); await rows.nth(0).check(); await rows.nth(1).check(); await header.check();
-  check('select two rows, then all → every row once', JSON.stringify(await activate()) === JSON.stringify(all));
+  got = await activate();
+  check('select two rows, then all → every row once', same(got, all), sentVs(got, all));
   await reload(); await header.check();
   const third = decodeURIComponent(await rows.nth(2).getAttribute('value'));
   await rows.nth(2).uncheck();
   const counter = (await page.locator('#tab-mailboxes .rt-selection-count').first().textContent()).trim();
-  check('select all, then clear one row → the others, counted', JSON.stringify(await activate()) === JSON.stringify(all.filter(v => v !== third)) && counter.startsWith(String(all.length - 1)), counter);
+  const others = all.filter(v => v !== third);
+  got = await activate();
+  check('select all, then clear one row → the others, counted', same(got, others) && counter.startsWith(String(all.length - 1)), `${counter}; ${sentVs(got, others)}`);
   await page.close();
 }
 {
