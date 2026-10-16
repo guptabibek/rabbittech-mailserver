@@ -8,7 +8,7 @@ import sys
 here = pathlib.Path(__file__).parent
 root = pathlib.Path(sys.argv[1])
 frame = (here / 'frame.html').read_text()
-modules = {'calendar': 'Calendar', 'contacts': 'Contacts', 'prefs': 'Preferences'}
+modules = {'calendar': 'Calendar', 'contacts': 'Contacts'}
 
 
 def part(name, suffix):
