@@ -92,3 +92,9 @@ RT_RESTORE_TEST_DAYS=7
 # the console first; each domain's Mail security tab then shows the DNS records that send reports
 # there. Empty: reports are not collected.
 RT_REPORTS_MAILBOX=
+
+# Another nginx on the server owns ports 80 and 443 (for other sites) and passes the mail names on
+# to mailcow: set HTTP_BIND=127.0.0.1, HTTP_PORT=8088, HTTPS_BIND=127.0.0.1 and HTTPS_PORT=8448
+# above, run "bash scripts/front-nginx.sh setup <deploy user>" once as root, then set this to y.
+# Each deploy then installs that nginx's mail site from deploy/nginx/ (see RABBITTECH_CUSTOMIZATION.md).
+RT_FRONT_NGINX=n

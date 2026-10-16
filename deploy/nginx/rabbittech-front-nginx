@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+# Root helper for the host nginx's mail site, installed as /usr/local/sbin/rabbittech-front-nginx
+# by "scripts/front-nginx.sh setup". The deploy user may run it with sudo, and only it, so it
+# accepts nothing but a RabbitTech mail site and never leaves nginx with a config that fails
+# "nginx -t": the server's other sites keep working whatever happens here.
+#
+#   rabbittech-front-nginx install <hostname>   the site config on stdin; installs it as
+#                                               sites-available/<hostname>, enabled, and reloads
+#   rabbittech-front-nginx restore <hostname>   puts back the config from before the last install
+#   rabbittech-front-nginx reload-if-changed    reloads nginx when mailcow renewed its certificate
+#
+# The previous files are kept in /var/backups/rabbittech-front-nginx (newest 10 per site).
+# tests/deploy/test-front-nginx.sh moves the paths with RT_NGINX_DIR, RT_FRONT_STATE and
+# RT_FRONT_BACKUPS; sudo drops those variables, so the deploy user can't.
+set -Eeuo pipefail
+umask 022
+
+NGINX_DIR="${RT_NGINX_DIR:-/etc/nginx}"
+STATE="${RT_FRONT_STATE:-/var/lib/rabbittech-front-nginx}"
+BACKUPS="${RT_FRONT_BACKUPS:-/var/backups/rabbittech-front-nginx}"
+MARKER='# RabbitTech mail front'
+
+fail() { echo "rabbittech-front-nginx: $*" >&2; exit 1; }
+
+reload_nginx() {
+  if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet nginx; then
+    systemctl reload nginx
+  else
+    nginx -s reload
+  fi
+}
+
+host_arg() {
+  [[ "${1:-}" =~ ^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$ ]] || fail "not a host name: ${1:-}"
+  HOST=$1
+  AVAILABLE="$NGINX_DIR/sites-available/$HOST"
+  ENABLED="$NGINX_DIR/sites-enabled/$HOST"
+}
+
+# The certificate a RabbitTech site file uses
+cert_of() { sed -n 's/^[[:space:]]*ssl_certificate[[:space:]]\+\([^;[:space:]]*\);.*/\1/p' "$1" | head -n 1; }
+
+# Remember the certificate the running config was loaded with, for reload-if-changed
+remember_cert() {
+  local cert
+  cert=$(cert_of "$AVAILABLE")
+  mkdir -p "$STATE"
+  if [ -n "$cert" ] && [ -r "$cert" ]; then
+    sha256sum < "$cert" | cut -d' ' -f1 > "$STATE/$HOST.cert"
+  fi
+}
+
+# Copies of the site's current files: sites-available/<host> and sites-enabled/<host> (a link
+# or, for a site set up by hand, a file)
+backup() {
+  local dir
+  dir="$BACKUPS/$HOST.$(date -u +%Y%m%d%H%M%S).$$"
+  mkdir -p "$dir"
+  if [ -f "$AVAILABLE" ]; then cp -p "$AVAILABLE" "$dir/sites-available"; fi
+  if [ -L "$ENABLED" ]; then
+    readlink "$ENABLED" > "$dir/sites-enabled.link"
+  elif [ -f "$ENABLED" ]; then
+    cp -p "$ENABLED" "$dir/sites-enabled"
+  fi
+  touch "$dir/complete"
+  # Keep the newest 10
+  ls -1d "$BACKUPS/$HOST".* 2>/dev/null | sort | head -n -10 | xargs -r rm -rf -- || true
+  BACKUP=$dir
+}
+
+restore_from() {
+  local dir=$1
+  rm -f "$ENABLED"
+  if [ -f "$dir/sites-available" ]; then cp -p "$dir/sites-available" "$AVAILABLE"; else rm -f "$AVAILABLE"; fi
+  if [ -f "$dir/sites-enabled.link" ]; then
+    ln -s "$(cat "$dir/sites-enabled.link")" "$ENABLED"
+  elif [ -f "$dir/sites-enabled" ]; then
+    cp -p "$dir/sites-enabled" "$ENABLED"
+  fi
+}
+
+case "${1:-}" in
+  install)
+    host_arg "${2:-}"
+    new=$(mktemp)
+    trap 'rm -f "$new"' EXIT
+    head -c 65537 > "$new"
+    [ "$(wc -c < "$new")" -le 65536 ] || fail "the site config is over 64 KB"
+    [ "$(head -n 1 "$new")" = "$MARKER" ] || fail "not a RabbitTech mail site config (its first line must be \"$MARKER\")"
+    # The certificate must be there, and not mailcow's placeholder: until mailcow has a real
+    # one, the current config (and its certificate) stays
+    cert=$(cert_of "$new")
+    [ -n "$cert" ] && [ -r "$cert" ] || fail "the certificate $cert doesn't exist yet"
+    if openssl x509 -in "$cert" -noout -issuer 2>/dev/null | grep -q 'O *= *mailcow'; then
+      echo "mailcow has no Let's Encrypt certificate yet ($cert is its placeholder); the current config stays" >&2
+      exit 3
+    fi
+    if [ -L "$ENABLED" ] && [ "$(readlink "$ENABLED")" = "$AVAILABLE" ] && cmp -s "$new" "$AVAILABLE"; then
+      echo "The nginx site $HOST is up to date"
+      exit 0
+    fi
+    mkdir -p "$NGINX_DIR/sites-available" "$NGINX_DIR/sites-enabled"
+    backup
+    install -m 644 "$new" "$AVAILABLE"
+    rm -f "$ENABLED"
+    ln -s "$AVAILABLE" "$ENABLED"
+    if ! result=$(nginx -t 2>&1); then
+      restore_from "$BACKUP"
+      printf '%s\n' "$result" >&2
+      fail "nginx -t failed with the new config for $HOST, so the previous one was put back"
+    fi
+    # Another site file serving the same name only gets a warning, and nginx would then answer
+    # with whichever it read first
+    if printf '%s\n' "$result" | grep -qF "conflicting server name \"$HOST\""; then
+      restore_from "$BACKUP"
+      printf '%s\n' "$result" | grep -F 'conflicting server name' >&2
+      fail "another nginx site also serves $HOST; remove it (grep -rl '$HOST' $NGINX_DIR/sites-enabled), then deploy again"
+    fi
+    reload_nginx
+    remember_cert
+    echo "Installed the nginx site $HOST (the previous one is in $BACKUP)"
+    ;;
+  restore)
+    host_arg "${2:-}"
+    last=$(ls -1d "$BACKUPS/$HOST".* 2>/dev/null | sort | tail -n 1 || true)
+    [ -n "$last" ] && [ -f "$last/complete" ] || fail "there is no earlier config of $HOST to put back"
+    restore_from "$last"
+    nginx -t >/dev/null 2>&1 || fail "the earlier config of $HOST fails nginx -t too; check it by hand"
+    reload_nginx
+    echo "Put back the nginx site $HOST from $last"
+    ;;
+  reload-if-changed)
+    changed=0
+    for file in "$NGINX_DIR"/sites-available/*; do
+      [ -f "$file" ] && [ "$(head -n 1 "$file")" = "$MARKER" ] || continue
+      HOST=$(basename "$file")
+      cert=$(cert_of "$file")
+      [ -n "$cert" ] && [ -r "$cert" ] || continue
+      sum=$(sha256sum < "$cert" | cut -d' ' -f1)
+      if [ "$sum" != "$(cat "$STATE/$HOST.cert" 2>/dev/null)" ]; then
+        changed=1
+      fi
+    done
+    [ "$changed" = 1 ] || exit 0
+    nginx -t >/dev/null 2>&1 || fail "nginx -t fails, so nginx wasn't reloaded for the new certificate"
+    reload_nginx
+    for file in "$NGINX_DIR"/sites-available/*; do
+      [ -f "$file" ] && [ "$(head -n 1 "$file")" = "$MARKER" ] || continue
+      HOST=$(basename "$file") AVAILABLE=$file
+      remember_cert
+    done
+    echo "Reloaded nginx for the renewed certificate"
+    ;;
+  *)
+    echo "Usage: rabbittech-front-nginx install <hostname> < site.conf | restore <hostname> | reload-if-changed" >&2
+    exit 2
+    ;;
+esac

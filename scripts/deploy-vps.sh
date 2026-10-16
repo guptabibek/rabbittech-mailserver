@@ -176,6 +176,10 @@ if command -v crontab >/dev/null 2>&1; then
     echo "# BEGIN rabbittech-backup (managed by scripts/deploy-vps.sh)"
     echo "17 * * * * APP_ROOT=$APP_ROOT bash $APP_DIR/scripts/backup-mail.sh >> $BACKUP_DIR/backup.log 2>&1"
     echo "*/15 * * * * APP_ROOT=$APP_ROOT bash $APP_DIR/scripts/mail-reports.sh >> $STATE_DIR/mail-reports.log 2>&1"
+    # The host nginx's mail site uses mailcow's certificate; reload it after a renewal
+    if [[ "$(sed -n 's/^RT_FRONT_NGINX=//p' "$APP_DIR/mailcow.conf" | tail -n 1)" =~ ^[yY] ]]; then
+      echo "*/15 * * * * bash $APP_DIR/scripts/front-nginx.sh reload >> $STATE_DIR/front-nginx.log 2>&1"
+    fi
     echo "# END rabbittech-backup"
   } | crontab -
 else
@@ -207,6 +211,10 @@ else
   fi
   exit 1
 fi
+
+# The host nginx's site for the mail server, when one sits in front (RT_FRONT_NGINX=y). The release
+# is already recorded as healthy; a site that fails its checks is put back and fails the deploy.
+bash "$APP_DIR/scripts/front-nginx.sh" install
 
 # Keep the newest releases for reference; older ones only use disk space.
 if [ "$(dirname "$RELEASE_DIR")" = "$APP_ROOT/releases" ]; then

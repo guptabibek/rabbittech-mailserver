@@ -1,0 +1,65 @@
+# RabbitTech mail front
+# The host nginx's site for the mail server, in front of mailcow. Installed by the deploy
+# (scripts/front-nginx.sh); changes made on the server are overwritten. The host name, mailcow's
+# ports and the certificate paths are filled in from mailcow.conf. It serves the mail hostname
+# and every mail domain's autodiscover., autoconfig. and mta-sts. names with mailcow's own
+# Let's Encrypt certificate, which covers them and renews itself. Wildcard names rank below the
+# exact names of the server's other sites.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name @HOSTNAME@ autodiscover.* autoconfig.* mta-sts.*;
+
+    # Let's Encrypt checks go straight to mailcow's ACME client
+    location ^~ /.well-known/acme-challenge/ {
+        proxy_pass http://@HTTP_UPSTREAM@;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name @HOSTNAME@ autodiscover.* autoconfig.* mta-sts.*;
+
+    ssl_certificate @CERT@;
+    ssl_certificate_key @KEY@;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+
+    # mailcow limits uploads itself
+    client_max_body_size 0;
+
+    # mailcow's nginx picks the site by name (mta-sts., autodiscover., …), so the name goes on in
+    # both the Host header and TLS (SNI). It trusts these forwarded headers from Docker's network.
+    proxy_ssl_server_name on;
+    proxy_ssl_name $host;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    # Webmail sign-in needs large headers (mailcow's documented reverse-proxy settings)
+    proxy_buffer_size 128k;
+    proxy_buffers 64 512k;
+    proxy_busy_buffers_size 512k;
+
+    # Phones keep ActiveSync requests open for up to an hour to push new mail
+    location ^~ /Microsoft-Server-ActiveSync {
+        proxy_pass https://@HTTPS_UPSTREAM@;
+        proxy_connect_timeout 75;
+        proxy_send_timeout 3650;
+        proxy_read_timeout 3650;
+        client_body_buffer_size 512k;
+    }
+
+    location / {
+        proxy_pass https://@HTTPS_UPSTREAM@;
+        proxy_read_timeout 3600;
+    }
+}

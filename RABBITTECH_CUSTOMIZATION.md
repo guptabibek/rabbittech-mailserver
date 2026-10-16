@@ -350,7 +350,8 @@ script against a fake mailcow helper, including when it runs the restore test
 (`tests/deploy/test-deploy.sh`), the ACME log reader and SPF range check behind the Overview
 alerts (`tests/php/overview-checks.php`), the mail security checks against a fake DNS and the
 reading of real-world DMARC and TLS reports (`tests/php/mail-security.php`), and the report reader
-with fake Docker (`tests/reports/test-mail-reports.sh`).
+with fake Docker (`tests/reports/test-mail-reports.sh`), and the front nginx site's helper and
+deploy step with fake nginx (`tests/deploy/test-front-nginx.sh`).
 
 A second job runs the UI smoke tests and uploads their screenshots as the `ui-screenshots` artifact.
 
@@ -361,6 +362,16 @@ mailcow's, DKIM keys in a Redis dump), checks that the restore test passes, then
 it (a cut-off archive, other encryption keys, a missing DKIM key, no `mailcow.conf`…) and checks
 that each is caught. It runs anywhere with Docker:
 `bash tests/backup/restore-e2e.sh`.
+
+A fourth job runs the front nginx site in real nginx (1.24) in front of a stub mailcow
+(`tests/deploy/front-nginx-e2e.sh`). It checks:
+- `nginx -t` passes without warnings;
+- HTTP redirects, except Let's Encrypt checks;
+- HTTPS reaches mailcow with the right name and the right certificate, including `mta-sts.` and
+  `autodiscover.` names;
+- the visitor's address is passed on;
+- a 20 MB upload goes through;
+- the image's own default site still answers other names.
 
 ### UI tests
 
@@ -611,27 +622,56 @@ reads them, and the Overview shows a 30-day summary and warns about failures.
 
 ### Behind another nginx
 
-When another nginx on the server owns ports 80 and 443 and passes `mail.<domain>` on to mailcow
-(`HTTP_BIND=127.0.0.1`, `HTTP_PORT=8088`, `HTTPS_PORT=8448` or similar):
+When another nginx on the server owns ports 80 and 443 for other sites, mailcow runs behind it
+(`HTTP_BIND=127.0.0.1`, `HTTP_PORT=8088`, `HTTPS_BIND=127.0.0.1`, `HTTPS_PORT=8448` or similar), and
+the deploy keeps that nginx's mail site in step with the repo.
 
-- **Pass the visitor's address on**, or every console and webmail login looks like it comes from
-  Docker's network: the logs can't tell who signed in and Fail2ban never bans anyone for web
-  logins. In each `location` that proxies to mailcow:
-  ```nginx
-  proxy_set_header Host $host;
-  proxy_set_header X-Real-IP $remote_addr;
-  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-  proxy_set_header X-Forwarded-Proto $scheme;
-  ```
-  mailcow's nginx trusts these headers from private networks, which includes Docker's.
-- **Certificates:** Let's Encrypt follows the usual port 80 to HTTPS redirect, so ACME works as long
-  as the HTTPS server block passes `/.well-known/acme-challenge/` on to mailcow.
-- **MTA-STS:** senders fetch a domain's policy from `https://mta-sts.<domain>/.well-known/mta-sts.txt`.
-  The front nginx must pass `mta-sts.<domain>` on to mailcow too, keeping `Host` (mailcow answers
-  by the name asked for), with a certificate that includes the name, and without redirecting the
-  policy URL. The domain's Mail security tab checks all of this from the outside. Don't publish an
-  AAAA record unless mailcow runs with IPv6 (`ENABLE_IPV6=true`): ACME checks IPv6 first and gives
-  up.
+- **The site** is `deploy/nginx/mail-front.conf.template`, with the host name, mailcow's ports and the
+  certificate paths filled in from `mailcow.conf`:
+  - It serves the mail hostname plus every mail domain's `autodiscover.`, `autoconfig.` and `mta-sts.`
+    names (wildcards, which rank below the exact names of the server's other sites).
+  - It serves them with **mailcow's own Let's Encrypt certificate** (`data/assets/ssl`), which
+    already covers all those names (`AUTODISCOVER_SAN=y`) and renews itself. No certbot is needed
+    for the mail names.
+  - Port 80 sends Let's Encrypt checks (`/.well-known/acme-challenge/`) straight to mailcow and
+    redirects the rest to HTTPS.
+  - Port 443 proxies to mailcow's HTTPS port. It passes the name on in `Host` and in TLS (SNI), so
+    mailcow answers `mta-sts.<domain>` and the others correctly. It also passes the visitor's
+    address (`X-Real-IP`, `X-Forwarded-For`; mailcow trusts them from Docker's network, so logins
+    are logged and Fail2ban works).
+  - It has no upload limit (mailcow has its own), mailcow's documented buffers for webmail, and
+    hour-long ActiveSync requests for push mail.
+- **Turn it on:**
+  1. Once a release with this is deployed, run this once on the server, as root:
+     `bash /opt/rabbittech-mailserver/app/scripts/front-nginx.sh setup <VPS_USER>`.
+     It installs the root helper `/usr/local/sbin/rabbittech-front-nginx` and a sudo rule that lets
+     the deploy user run that helper, and nothing else.
+  2. Set `RT_FRONT_NGINX=y` in `MAILCOW_ENV_FILE`.
+  3. Deploy.
+
+  The first install replaces the site you set up by hand, `sites-available/<hostname>` and
+  `sites-enabled/<hostname>`.
+- **Every deploy**, after the health check passes:
+  - The helper installs the site and runs `nginx -t`. It reloads nginx only if the test passes;
+    otherwise it puts the previous files back exactly and the deploy fails with nginx's error.
+  - Another site file that also serves the mail hostname is refused too, because nginx would only
+    warn and then serve whichever it read first.
+  - Then the deploy fetches `https://<hostname>/` through the new site. A 502 or no answer puts the
+    previous site back and fails the deploy.
+  - The server's other sites are never touched.
+  - Until mailcow has a real certificate (on a new server it starts with a placeholder), the
+    current site stays.
+- **Certificate renewals:** cron runs `scripts/front-nginx.sh reload` every 15 minutes. It reloads
+  nginx only when mailcow's certificate changed.
+- **Backups:** the previous files are kept in `/var/backups/rabbittech-front-nginx/` (the newest
+  10). `sudo rabbittech-front-nginx restore <hostname>` puts the last one back.
+- **Changing it:** edit the template in the repo and deploy; edits on the server are overwritten.
+  When `deploy/nginx/rabbittech-front-nginx` itself changes, the deploy prints a note: run `setup`
+  again to install the new helper.
+- **The old certbot certificate** for the mail hostname isn't used any more:
+  `certbot delete --cert-name mail.rabbittech.com.np` removes it.
+- **IPv6:** don't publish an AAAA record unless mailcow runs with IPv6 (`ENABLE_IPV6=true`). ACME
+  checks IPv6 first and gives up.
 - **Alerts by email:** set `WATCHDOG_NOTIFY_EMAIL` so mailcow's health monitor emails you when a
   service stops.
 
