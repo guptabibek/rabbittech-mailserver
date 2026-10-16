@@ -1,9 +1,10 @@
-// A fake SOGo server for the live webmail page (tests/ui/.cache/sogo-root/live, built by
+// A fake SOGo server for the live webmail pages (tests/ui/.cache/sogo-root/live, built by
 // prepare.sh → live.py). It answers the Mail app's requests from Playwright route handlers,
 // with the JSON shapes SOGo 5.12 sends (UI/MailerUI/UIxMailListActions.m, UIxMailFolderActions.m,
 // UIxMailAccountActions.m, UIxMailActions.m, UIxMailEditor.m, UIxMailView.m and the part
 // viewers), backed by an in-memory store of folders and messages that moves, flags and deletes
 // for real. The static server (python -m http.server on the cache root) serves everything else.
+// Calendar and Contacts requests go to backend-apps.mjs (CALENDAR_PAGE, CONTACTS_PAGE).
 //
 //   import { mailBackend, PAGE } from './sogo/backend.mjs';
 //   const backend = await mailBackend(page, { custom: true });   // options: custom, now, olderMessages, pageFilter
@@ -15,6 +16,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { appsBackend } from './backend-apps.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const live = join(here, '..', '.cache', 'sogo-root', 'live');
@@ -22,6 +24,8 @@ const live = join(here, '..', '.cache', 'sogo-root', 'live');
 export const USER = 'bibek';
 export const BASE = `/SOGo/so/${USER}`;
 export const PAGE = `${BASE}/Mail/view`;
+export const CALENDAR_PAGE = `${BASE}/Calendar/view`;
+export const CONTACTS_PAGE = `${BASE}/Contacts/view`;
 
 const KiB = 1024;
 const QUOTA_KB = 5 * 1024 * 1024;   // a 5 GiB mailbox (Dovecot reports quotas in KiB)
@@ -34,8 +38,9 @@ export async function mailBackend(target, options = {}) {
   return backend;
 }
 
-// pageFilter(html) changes the page before it is served, e.g. to break a template on purpose
-export function createBackend({ custom = true, now = new Date(), olderMessages = 0, pageFilter = html => html } = {}) {
+// pageFilter(html) changes the page before it is served, e.g. to break a template on purpose.
+// clock: the date the pages show as today (the tests pin the browser's clock to the same date).
+export function createBackend({ custom = true, now = new Date(), olderMessages = 0, pageFilter = html => html, clock = null } = {}) {
   const files = name => readFileSync(join(live, name), 'utf8');
   const data = JSON.parse(files('data.json'));
   const parts = JSON.parse(files('parts.json'));
@@ -49,6 +54,8 @@ export function createBackend({ custom = true, now = new Date(), olderMessages =
   const store = seed(now, olderMessages);
   const log = [];
   const timeZone = data.timeZone;
+  const apps = appsBackend({ apps: JSON.parse(files('apps.json')), files, json, text, empty, html, login: data.login,
+    pageFilter, custom, currentDayJSON: () => sogoJSON(currentDay()) });
 
   const backend = {
     log,
@@ -61,6 +68,8 @@ export function createBackend({ custom = true, now = new Date(), olderMessages =
     folder: path => store.folders[path],
     message: (path, uid) => (store.folders[path] || { messages: [] }).messages.find(m => m.uid === Number(uid)),
     unseen: path => unseenCount(store.folders[path]),
+    /** Calendar and Contacts: store, event(summary), card(full name) */
+    apps,
     handle,
   };
 
@@ -93,9 +102,13 @@ export function createBackend({ custom = true, now = new Date(), olderMessages =
     const segments = url.pathname.slice(BASE.length + 1).split('/').map(decodeURIComponent);
     entry.action = segments[segments.length - 1] || segments[segments.length - 2];
     const [module, ...rest] = segments;
+    entry.module = module;
+    entry.user = USER;
     if (module === 'Mail') return mail(entry, rest);
-    if (module === 'Calendar' && rest[0] === 'alarmslist') return json(200, { alarms: [] }, 'string');
+    if (module === 'Calendar') return apps.calendar(entry, rest);
     if (module === 'Contacts' && rest[0] === 'allContactSearch') return json(200, { contacts: contactSearch(entry.query.search) }, 'string');
+    if (module === 'Contacts') return apps.contacts(entry, rest);
+    if (module === 'freebusy.ifb') return json(200, {});
     if (module === 'labels' && entry.method === 'POST') return labelsFor(entry.body && entry.body.framework);
     if (module === 'date') return json(200, currentDay(), 'string');
     return null;
@@ -717,7 +730,8 @@ export function createBackend({ custom = true, now = new Date(), olderMessages =
   }
 
   function labelsFor(framework) {
-    const strings = { MailerUI: data.labels.MailerUI, CommonUI: data.labels.Common, PreferencesUI: data.labels.PreferencesUI }[framework];
+    const strings = { MailerUI: data.labels.MailerUI, CommonUI: data.labels.Common, PreferencesUI: data.labels.PreferencesUI,
+      ...apps.labels }[framework];
     if (!strings) return null;
     return json(200, { labels: { ...strings, _loadedFrameworks: [framework] } });
   }
@@ -760,7 +774,7 @@ export function createBackend({ custom = true, now = new Date(), olderMessages =
   }
 
   function currentDay() {
-    const d = zoned(new Date());
+    const d = zoned(clock ? new Date(clock) : new Date());
     const seconds = Number(d.H) * 3600 + Number(d.M) * 60 + d.S;
     return {
       weekday: d.weekday, month: MONTHS[d.mo - 1], day: String(d.d).padStart(2, '0'), year: String(d.y),

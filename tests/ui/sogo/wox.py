@@ -15,7 +15,8 @@ renders a template, because the browser's HTML parser has to see the same text:
     the browser ends the outer script at the first inner </script>, exactly like in production.
 
 Bindings (var:...) and conditions (var:if) come from a plain dict; a value can be a function of
-the current scope. Python 3 standard library only.
+the current scope. A key path like currentTableDay.isToday looks up currentTableDay, then its
+isToday attribute or key (lists answer count). Python 3 standard library only.
 
 Usage as a script: wox.py <templates dir> <strings file>... -- <Component> renders a component
 with no bindings (handy to look at a template)."""
@@ -36,8 +37,9 @@ NAMESPACES = {
     'http://www.w3.org/XML/1998/namespace': 'xml',
 }
 RESOURCES_URL = '/SOGo.woa/WebServerResources/'
-# <input> types SOPE renders with WOTextField (WOxHTMLElemBuilder classForInputElement)
-TEXT_FIELD_TYPES = {'', 'text', 'url', 'date', 'email', 'search', 'number'}
+# <input> types SOPE renders with WOTextField (WOxHTMLElemBuilder classForInputElement), and
+# WOPasswordField, which writes the same attributes
+TEXT_FIELD_TYPES = {'', 'text', 'url', 'date', 'email', 'search', 'number', 'password'}
 
 
 # ------------------------------------------------------------------ escaping (NGExtensions)
@@ -132,9 +134,25 @@ class Renderer:
         return key
 
     def value(self, keypath):
+        if keypath.isdigit():
+            return int(keypath)        # SOPE reads a number as a constant, e.g. var:md-min-length="2"
         if keypath in self.scope:
             value = self.scope[keypath]
             return value(self.scope) if callable(value) else value
+        head, _, rest = keypath.partition('.')
+        if rest and head in self.scope:
+            value = self.value(head)
+            for key in rest.split('.'):
+                if isinstance(value, (list, tuple)) and key == 'count':
+                    value = len(value)
+                elif isinstance(value, dict) and key in value:
+                    value = value[key]
+                elif hasattr(value, key):
+                    value = getattr(value, key)
+                else:
+                    self.missing.add(keypath)
+                    return None
+            return value
         self.missing.add(keypath)
         return None
 
@@ -333,6 +351,9 @@ class Renderer:
         if tag == 'component-content':
             content = self.content[-1] if self.content else None
             return content() if content else ''
+        if tag == 'entity':
+            # WOEntity: a character entity reference, e.g. &nbsp;
+            return '&%s;' % el.get('{http://www.skyrix.com/od/constant}name')
         raise ValueError('unsupported element var:%s' % tag)
 
     def _string(self, el):
