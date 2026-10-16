@@ -886,26 +886,36 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
   }
 })();
 
-// Mail laid out like Gmail ----------------------------------------------------------------------
-// The Mail screen's templates are <script type="text/ng-template"> blocks in the page, which
-// Angular reads after this script. Before that, this section changes them:
-//   search   SOGo's folder search moves into the top bar as a search box that is always there
+// Mail, Calendar and Contacts laid out like Gmail ---------------------------------------------------
+// Each app's templates are <script type="text/ng-template"> blocks in the page, which Angular
+// reads after this script. Before that, this section changes them. In all three apps:
+//   brand    a menu button and the logo at the left of the top bar
+//   search   SOGo's search moves into the top bar as a search box that is always there
+//   layout   a top bar button to switch to SOGo's classic layout and back
+// Mail:
 //   compose  a Compose button at the top of the folder list, and one compose button on phones
 //   rows     a star on every message and Archive, Delete and Read/Unread when the pointer is on it
 //   back     the open message gets a back arrow and Archive; the list hides while one is open
-//   layout   a top bar button to switch to SOGo's classic three-pane layout and back
-// and its stylesheet (rt-gmail-mail below) does the rest: one-line rows, folders as pills, the
-// list in a card, compose in a window at the bottom right. Each change first looks for all the
-// markup it needs and is skipped (with a console warning) if a SOGo upgrade changed it; the html
-// element carries an rt-gmail-<change> class for each change that was made, and the styles that
-// depend on a change only apply with its class, so a mismatch leaves SOGo's own behaviour.
-// localStorage rt_webmail_layout = "classic" turns all of it off except the switch back.
+// Calendar and Contacts:
+//   create   a Create button at the top of the sidebar: Event or Task, Contact or List
+//   colors   (Calendar) each calendar's colour as --rt-folder, for dots instead of filled cards
+// The stylesheets (rabbittech-sogo-layout for all three, then one per app) do the rest:
+// sidebar items as pills, the list in a card, compose in a window at the bottom right, the
+// calendar's header, the contact card. Each change first looks for all the markup it needs and
+// is skipped (with a console warning) if a SOGo upgrade changed it; the html element carries an
+// rt-gmail-<change> class for each change that was made, and the styles that depend on a change
+// only apply with its class, so a mismatch leaves SOGo's own behaviour. Templates SOGo fetches
+// over HTTP (the calendar's views, the event and contact editors) are only styled.
+// localStorage rt_webmail_layout = "classic" turns all of it off, in all three apps, except the
+// switch back.
 (function () {
   'use strict';
-  var warn = function (what) { if (window.console) console.warn('RabbitTech mail layout: ' + what); };
+  var body = document.body;
+  var app = body && body.classList.contains('main') &&
+    { 'SOGo.MailerUI': 'mail', 'SOGo.SchedulerUI': 'calendar', 'SOGo.ContactsUI': 'contacts' }[body.getAttribute('ng-app')];
+  var warn = function (what) { if (window.console) console.warn('RabbitTech ' + app + ' layout: ' + what); };
   try {
-    var body = document.body;
-    if (!body || body.getAttribute('ng-app') !== 'SOGo.MailerUI' || !body.classList.contains('main')) return;
+    if (!app) return;
     var root = document.documentElement;
     var classic = false;
     try { classic = localStorage.getItem('rt_webmail_layout') === 'classic'; } catch (e) {}
@@ -953,7 +963,7 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
       if (changed) script.text = box.innerHTML;
     };
 
-    // ---- top bar (Mail screen and "No mailbox selected")
+    // ---- top bar (every screen of the app)
     var layoutSwitch = function (box) {
       var last = box.querySelector('md-toolbar.toolbar-main .sg-toolbar-group-last');
       if (!last) return false;
@@ -972,7 +982,8 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
       if (!toggle) return false;
       // The button that hides the folder list is Gmail's menu button
       toggle.textContent = 'menu';
-      first.appendChild(html('<a class="rt-brand" ng-href="{{::activeUser.path.mail}}" aria-label="' + esc(say('Mail')) + '"></a>'));
+      first.appendChild(html('<a class="rt-brand" ng-href="{{::activeUser.path.' + app + '}}" aria-label="' +
+        esc(say({ mail: 'Mail', calendar: 'Calendar', contacts: 'Address Book' }[app])) + '"></a>'));
       // Clearer icons for the console link (a wrench) and signing out (a power symbol)
       Array.prototype.forEach.call(box.querySelectorAll('md-toolbar.toolbar-main .sg-toolbar-group-last md-icon'), function (icon) {
         var name = icon.textContent.trim();
@@ -1003,7 +1014,15 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
       return true;
     };
 
-    // ---- message list: search in the top bar
+    // ---- the list's search in the top bar. The list's own search button goes; the input empties
+    // the search (Mail: rt-search-reset; Calendar and Contacts: rt-search-input, see below).
+    var searchMode = { mail: 'mailbox.searchMode', calendar: 'list.searchMode', contacts: 'addressbook.searchMode' }[app];
+    var searchInput = {
+      mail: { 'rt-search-reset': '' },
+      // The event list may be folded away; typing shows it
+      calendar: { 'rt-search-input': '', 'rt-search-empty': 'list.cancelSearch()', 'rt-search-text': 'app.centerIsClose(centerIsClose) && toggleCenter()' },
+      contacts: { 'rt-search-input': '', 'rt-search-empty': 'addressbook.cancelSearch()' }
+    }[app];
     var search = function (box) {
       var last = box.querySelector('md-toolbar.toolbar-main > .sg-toolbar-group-last');
       var form = box.querySelector('.view-list form[sg-search]');
@@ -1022,13 +1041,13 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
       cancel.setAttribute('aria-label', say('Close'));
       var icon = cancel.querySelector('md-icon');
       if (icon) icon.textContent = 'close';
-      input.setAttribute('rt-search-reset', '');
+      Object.keys(searchInput).forEach(function (name) { input.setAttribute(name, searchInput[name]); });
       var more = form.querySelector('a.show-advanced-search md-icon');
       if (more) more.textContent = 'tune';
       last.parentNode.insertBefore(form, last);
       // The list toolbar no longer gives way to the search form; its search button goes
       tools.removeAttribute('ng-hide');
-      var button = tools.querySelector('md-button[ng-click^="mailbox.searchMode"]');
+      var button = tools.querySelector('md-button[ng-click^="' + searchMode + '"]');
       if (button) button.parentNode.removeChild(button);
       return true;
     };
@@ -1078,156 +1097,260 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
       return true;
     };
 
+    // ---- Calendar and Contacts: Create at the top of the sidebar, a menu of what to create.
+    // The sidebar and the list are in different scopes; rt-list-ref on the top bar (in the
+    // list's scope) hands the list's controller to the sidebar as rtList.
+    var english = window.UserLanguage === 'English';
+    var createItems = {
+      calendar: [['appointment', 'event', say('Event')], ['task', 'assignment_turned_in', say('Task')]],
+      contacts: [['card', 'person', say('Contact')], ['list', 'group', english ? 'Contact list' : say('New List'), 'rtList.selectedFolder.isRemote']]
+    }[app];
+    var createLabel = app === 'calendar' ? say('Create') : english ? 'Create contact' : say('New Contact');
+    var create = function (box) {
+      var header = box.querySelector('md-sidenav.md-sidenav-left > md-toolbar');
+      if (!header || !createItems) return false;
+      header.parentNode.insertBefore(html(
+        '<div class="rt-compose-bar" flex-none="flex-none"><md-menu md-position-mode="target-left target" md-offset="0 60">' +
+        '<button type="button" class="rt-compose rt-create" ng-click="$mdMenu.open($event)" ng-disabled="!rtCanCreate()">' +
+        '<md-icon>add</md-icon><span>' + esc(createLabel) + '</span></button>' +
+        '<md-menu-content width="3" class="rt-create-menu">' + createItems.map(function (item) {
+          return '<md-menu-item' + (item[3] ? ' ng-hide="' + item[3] + '"' : '') + '><md-button ng-click="rtCreate($event, \'' + item[0] + '\')">' +
+            '<md-icon>' + item[1] + '</md-icon><span>' + esc(item[2]) + '</span></md-button></md-menu-item>';
+        }).join('') + '</md-menu-content></md-menu></div>'), header.nextSibling);
+      return true;
+    };
+    var listRef = function (box) {
+      var bar = box.querySelector('md-toolbar.toolbar-main');
+      if (!bar) return false;
+      bar.setAttribute('rt-list-ref', app === 'calendar' ? 'list' : 'addressbook');
+      return true;
+    };
+
     var layout = ['layout', layoutSwitch];
+    var mainTemplates = { mail: ['UIxMailMainFrame', 'UIxMailFolderTemplate'], calendar: ['UIxCalMainView'], contacts: ['addressbook'] }[app];
     if (classic) {
-      rewrite('UIxMailMainFrame', [layout]);
-      rewrite('UIxMailFolderTemplate', [layout]);
+      mainTemplates.forEach(function (id) { rewrite(id, [layout]); });
       return;
     }
 
-    // ---- Angular: the functions the new markup calls, and compose as a window. Registered
-    // before any template changes, so if this fails nothing is changed.
-    var mail = angular.module('SOGo.MailerUI');
-    mail.directive('rtSearchReset', function () {
-      // Emptying the search box shows the whole folder again
-      return {
-        restrict: 'A',
-        link: function (scope, element) {
-          element.on('input', function () {
-            if (element.val()) return;
-            scope.$evalAsync(function () {
-              var list = window.$mailboxController;
-              if (list && list.cancelSearch) list.cancelSearch();
-            });
-          });
-        }
-      };
-    });
-
-    mail.config(['$provide', function ($provide) {
-      $provide.decorator('$mdDialog', ['$delegate', '$injector', function ($delegate, $injector) {
-        var show = $delegate.show, open = 0;
-        $delegate.show = function (options) {
-          var o = options && options._options ? options._options : options;
-          try {
-            if (o && o.templateUrl === 'UIxMailEditor' && $injector.get('$mdMedia')('gt-sm')) {
-              // A window at the bottom right; the mail behind it stays usable
-              var index = open, showing = o.onShowing;
-              o.hasBackdrop = false;
-              o.disableParentScroll = false;
-              o.multiple = true;
-              o.onShowing = function (scope, element) {
-                element.addClass('rt-float');
-                element[0].style.setProperty('--rt-float-index', index);
-                if (showing) return showing.apply(this, arguments);
-              };
-              open++;
-              var closed = function () { open--; };
-              var promise = show.apply(this, arguments);
-              promise.then(closed, closed);
-              return promise;
-            }
-            // Other dialogs would close an open compose window
-            if (o && open > 0) o.multiple = true;
-          } catch (e) {
-            warn('compose window: ' + e);
+    if (app !== 'mail') {
+      // ---- Angular for Calendar and Contacts: the functions the new markup calls. Registered
+      // before any template changes, so if this fails nothing is changed.
+      var appModule = angular.module(app === 'calendar' ? 'SOGo.SchedulerUI' : 'SOGo.ContactsUI');
+      appModule.directive('rtListRef', ['$rootScope', function ($rootScope) {
+        return {
+          restrict: 'A',
+          link: function (scope, element, attrs) {
+            var list = scope.$eval(attrs.rtListRef);
+            $rootScope.rtList = list;
+            scope.$on('$destroy', function () { if ($rootScope.rtList === list) $rootScope.rtList = null; });
           }
-          return show.apply(this, arguments);
         };
-        return $delegate;
       }]);
-    }]);
+      // Typing in the search box (rt-search-text) and emptying it (rt-search-empty)
+      appModule.directive('rtSearchInput', function () {
+        return {
+          restrict: 'A',
+          link: function (scope, element, attrs) {
+            element.on('input', function () {
+              var expression = element.val() ? attrs.rtSearchText : attrs.rtSearchEmpty;
+              if (expression) scope.$evalAsync(expression);
+            });
+          }
+        };
+      });
+      if (app === 'calendar') {
+        appModule.config(['$provide', function ($provide) {
+          // Each calendar's colour as a CSS variable on the elements SOGo colours with it
+          $provide.decorator('sgFolderStylesheetDirective', ['$delegate', function ($delegate) {
+            var directive = $delegate[0];
+            if (directive && typeof directive.template === 'string' && directive.template.indexOf('</style>') > 0) {
+              directive.template = directive.template.replace('</style>',
+                ' .bg-folder{{ cssCtrl.ngModel.id }} { --rt-folder: {{ cssCtrl.ngModel.color }}; }</style>');
+              root.classList.add('rt-gmail-colors');
+            } else {
+              warn('"colors" skipped, sgFolderStylesheet is not as expected');
+            }
+            return $delegate;
+          }]);
+        }]);
+      }
+      appModule.run(['$rootScope', '$injector', function ($rootScope, $injector) {
+        var $mdSidenav = $injector.has('$mdSidenav') ? $injector.get('$mdSidenav') : null;
+        $rootScope.rtCanCreate = function () {
+          var list = $rootScope.rtList, folder = list && list.selectedFolder;
+          if (!list) return false;
+          return app === 'calendar' || !!(folder && (folder.isOwned || (folder.acls && folder.acls.objectCreator)));
+        };
+        $rootScope.rtCreate = function ($event, type) {
+          var list = $rootScope.rtList;
+          if (!list || !list.newComponent || !$rootScope.rtCanCreate()) return;
+          if (app === 'calendar') list.newComponent($event, type);
+          else list.newComponent(type);
+          try {
+            var nav = $mdSidenav && $mdSidenav('left');
+            if (nav && !nav.isLockedOpen()) nav.close();
+          } catch (e) {}
+        };
+      }]);
+      if (app === 'calendar') {
+        rewrite('UIxCalMainView', [layout, ['brand', brand], ['search', search], ['create', create], ['listref', listRef]]);
+      } else {
+        rewrite('UIxContactFoldersView', [['create', create]]);
+        rewrite('addressbook', [layout, ['brand', brand], ['search', search], ['listref', listRef]]);
+      }
+    }
 
-    mail.run(['$rootScope', '$state', '$injector', function ($rootScope, $state, $injector) {
-      var get = function (name) { return $injector.has(name) ? $injector.get(name) : null; };
-      var Mailbox = get('Mailbox'), $mdToast = get('$mdToast'), $mdSidenav = get('$mdSidenav'), sgConstant = get('sgConstant');
-      $rootScope.rtText = {
-        archive: say('Archive'),
-        remove: say('Delete'),
-        read: say('Mark as Read'),
-        unread: say('Mark as Unread'),
-        flag: say('Flag'),
-        unflag: say('Unflag')
-      };
-      var stop = function ($event) {
-        if ($event) {
-          $event.stopPropagation();
-          $event.preventDefault();
-        }
-      };
-      var toast = function (message) {
-        if ($mdToast) $mdToast.show($mdToast.simple().textContent(message)
-          .position(sgConstant ? sgConstant.toastPosition : 'bottom right').hideDelay(2000));
-      };
-      // mailcow creates an Archive folder (special-use \Archive) in every mailbox
-      var archiveOf = function (message) {
-        var account = message && message.$mailbox && message.$mailbox.$account;
-        if (!account || !account.$getMailboxByPath) return null;
-        if (account.$rtArchiveOf !== account.$mailboxes) {
-          account.$rtArchiveOf = account.$mailboxes;
-          account.$rtArchive = account.$getMailboxByPath('Archive') || null;
-        }
-        return account.$rtArchive;
-      };
-      // Removes a message from its folder; an open message closes and the list shows again
-      var remove = function (message, action, done) {
-        var folder = message.$mailbox;
-        var open = folder.$selectedMessage == message.uid;
-        action(folder).then(function () {
-          if (open) $state.go('mail.account.mailbox');
-          if (done) toast(done);
-        }, function () {
-          toast(say('Error'));
-        });
-      };
-      $rootScope.rtRow = {
-        virtual: function () { return !!(Mailbox && Mailbox.$virtualMode); },
-        canArchive: function (message) {
-          var archive = archiveOf(message);
-          return !!archive && message.$mailbox.path !== archive.path && !this.virtual();
-        },
-        // In Trash, SOGo deletes for good; that stays behind its confirmation in the message view
-        canDelete: function (message) { return !!(message && message.$mailbox) && message.$mailbox.type !== 'trash'; },
-        star: function ($event, message) {
-          stop($event);
-          if (message && message.toggleFlag) message.toggleFlag();
-        },
-        read: function ($event, message) {
-          stop($event);
-          if (message && message.toggleRead) message.toggleRead();
-        },
-        remove: function ($event, message) {
-          stop($event);
-          if (!this.canDelete(message)) return;
-          remove(message, function (folder) { return folder.$deleteMessages([message]); });
-        },
-        archive: function ($event, message) {
-          stop($event);
-          if (!this.canArchive(message)) return;
-          var archive = archiveOf(message);
-          remove(message, function (folder) { return folder.$moveMessages([message], '/' + archive.id); },
-            say('%{0} message(s) moved').replace('%{0}', '1'));
-        }
-      };
-      $rootScope.rtCompose = function ($event) {
-        var list = window.$mailboxController;
-        if (list && list.newMessage) list.newMessage($event);
-        try {
-          var nav = $mdSidenav && $mdSidenav('left');
-          if (nav && !nav.isLockedOpen()) nav.close();
-        } catch (e) {}
-      };
-    }]);
+    if (app === 'mail') {
+      // ---- Angular: the functions the new markup calls, and compose as a window. Registered
+      // before any template changes, so if this fails nothing is changed.
+      var mail = angular.module('SOGo.MailerUI');
+      mail.directive('rtSearchReset', function () {
+        // Emptying the search box shows the whole folder again
+        return {
+          restrict: 'A',
+          link: function (scope, element) {
+            element.on('input', function () {
+              if (element.val()) return;
+              scope.$evalAsync(function () {
+                var list = window.$mailboxController;
+                if (list && list.cancelSearch) list.cancelSearch();
+              });
+            });
+          }
+        };
+      });
 
-    rewrite('UIxMailMainFrame', [layout, ['brand', brand], ['compose', compose]]);
-    rewrite('UIxMailFolderTemplate', [layout, ['brand', brand], ['search', search], ['rows', rows], ['fab', fab]]);
-    rewrite('UIxMailViewTemplate', [['back', back]]);
-    root.classList.add('rt-gmail');
+      mail.config(['$provide', function ($provide) {
+        $provide.decorator('$mdDialog', ['$delegate', '$injector', function ($delegate, $injector) {
+          var show = $delegate.show, open = 0;
+          $delegate.show = function (options) {
+            var o = options && options._options ? options._options : options;
+            try {
+              if (o && o.templateUrl === 'UIxMailEditor' && $injector.get('$mdMedia')('gt-sm')) {
+                // A window at the bottom right; the mail behind it stays usable
+                var index = open, showing = o.onShowing;
+                o.hasBackdrop = false;
+                o.disableParentScroll = false;
+                o.multiple = true;
+                o.onShowing = function (scope, element) {
+                  element.addClass('rt-float');
+                  element[0].style.setProperty('--rt-float-index', index);
+                  if (showing) return showing.apply(this, arguments);
+                };
+                open++;
+                var closed = function () { open--; };
+                var promise = show.apply(this, arguments);
+                promise.then(closed, closed);
+                return promise;
+              }
+              // Other dialogs would close an open compose window
+              if (o && open > 0) o.multiple = true;
+            } catch (e) {
+              warn('compose window: ' + e);
+            }
+            return show.apply(this, arguments);
+          };
+          return $delegate;
+        }]);
+      }]);
+
+      mail.run(['$rootScope', '$state', '$injector', function ($rootScope, $state, $injector) {
+        var get = function (name) { return $injector.has(name) ? $injector.get(name) : null; };
+        var Mailbox = get('Mailbox'), $mdToast = get('$mdToast'), $mdSidenav = get('$mdSidenav'), sgConstant = get('sgConstant');
+        $rootScope.rtText = {
+          archive: say('Archive'),
+          remove: say('Delete'),
+          read: say('Mark as Read'),
+          unread: say('Mark as Unread'),
+          flag: say('Flag'),
+          unflag: say('Unflag')
+        };
+        var stop = function ($event) {
+          if ($event) {
+            $event.stopPropagation();
+            $event.preventDefault();
+          }
+        };
+        var toast = function (message) {
+          if ($mdToast) $mdToast.show($mdToast.simple().textContent(message)
+            .position(sgConstant ? sgConstant.toastPosition : 'bottom right').hideDelay(2000));
+        };
+        // mailcow creates an Archive folder (special-use \Archive) in every mailbox
+        var archiveOf = function (message) {
+          var account = message && message.$mailbox && message.$mailbox.$account;
+          if (!account || !account.$getMailboxByPath) return null;
+          if (account.$rtArchiveOf !== account.$mailboxes) {
+            account.$rtArchiveOf = account.$mailboxes;
+            account.$rtArchive = account.$getMailboxByPath('Archive') || null;
+          }
+          return account.$rtArchive;
+        };
+        // Removes a message from its folder; an open message closes and the list shows again
+        var remove = function (message, action, done) {
+          var folder = message.$mailbox;
+          var open = folder.$selectedMessage == message.uid;
+          action(folder).then(function () {
+            if (open) $state.go('mail.account.mailbox');
+            if (done) toast(done);
+          }, function () {
+            toast(say('Error'));
+          });
+        };
+        $rootScope.rtRow = {
+          virtual: function () { return !!(Mailbox && Mailbox.$virtualMode); },
+          canArchive: function (message) {
+            var archive = archiveOf(message);
+            return !!archive && message.$mailbox.path !== archive.path && !this.virtual();
+          },
+          // In Trash, SOGo deletes for good; that stays behind its confirmation in the message view
+          canDelete: function (message) { return !!(message && message.$mailbox) && message.$mailbox.type !== 'trash'; },
+          star: function ($event, message) {
+            stop($event);
+            if (message && message.toggleFlag) message.toggleFlag();
+          },
+          read: function ($event, message) {
+            stop($event);
+            if (message && message.toggleRead) message.toggleRead();
+          },
+          remove: function ($event, message) {
+            stop($event);
+            if (!this.canDelete(message)) return;
+            remove(message, function (folder) { return folder.$deleteMessages([message]); });
+          },
+          archive: function ($event, message) {
+            stop($event);
+            if (!this.canArchive(message)) return;
+            var archive = archiveOf(message);
+            remove(message, function (folder) { return folder.$moveMessages([message], '/' + archive.id); },
+              say('%{0} message(s) moved').replace('%{0}', '1'));
+          }
+        };
+        $rootScope.rtCompose = function ($event) {
+          var list = window.$mailboxController;
+          if (list && list.newMessage) list.newMessage($event);
+          try {
+            var nav = $mdSidenav && $mdSidenav('left');
+            if (nav && !nav.isLockedOpen()) nav.close();
+          } catch (e) {}
+        };
+      }]);
+
+      rewrite('UIxMailMainFrame', [layout, ['brand', brand], ['compose', compose]]);
+      rewrite('UIxMailFolderTemplate', [layout, ['brand', brand], ['search', search], ['rows', rows], ['fab', fab]]);
+      rewrite('UIxMailViewTemplate', [['back', back]]);
+    }
+    root.classList.add('rt-gmail', 'rt-app-' + app);
     done.forEach(function (change) { root.classList.add('rt-gmail-' + change); });
 
-    var style = document.createElement('style');
-    style.id = 'rabbittech-sogo-mail';
-    style.textContent = String.raw`
+    // ---- the stylesheets: the shared layout, then the app's
+    var sheet = function (id, css) {
+      var style = document.createElement('style');
+      style.id = id;
+      style.textContent = css;
+      (document.head || root).appendChild(style);
+    };
+    sheet('rabbittech-sogo-layout', String.raw`
 :root.rt-gmail {
   --rt-g-search: #eceef5;
   --rt-g-row: var(--rt-surface-2);
@@ -1306,6 +1429,12 @@ html .rt-compose md-icon {
   color: #fff;
   font-size: 20px;
 }
+
+/* Calendar and Contacts: what Create offers; it replaces the add button where the sidebar shows */
+.rt-create-menu md-menu-item > .md-button { display: flex; align-items: center; gap: 4px; }
+.rt-create-menu md-menu-item > .md-button md-icon { margin: auto 12px auto 0; color: var(--rt-muted); }
+.rt-create[disabled] { opacity: .45; cursor: default; box-shadow: none; }
+html.rt-gmail-create.rt-gmail-listref body:has(md-sidenav.md-locked-open:not(.sg-close)) .sg-fab-bottom-center { display: none; }
 
 /* Account row and quota, quieter */
 html.rt-gmail md-sidenav .sg-account-section > md-list > md-list-item { padding-left: 12px; }
@@ -1481,6 +1610,9 @@ html.rt-gmail-search form.rt-search a.sg-icon-button:hover { background-color: v
   html.rt-gmail-search .toolbar-main > form.rt-search { order: 4; flex: 1 0 calc(100% - 24px); max-width: none; margin: 0 12px 8px; }
 }
 
+`);
+
+    if (app === 'mail') sheet('rabbittech-sogo-mail', String.raw`
 /* ------------------------------------------------------------ message list */
 html.rt-gmail [ui-view="mailbox"] .sg-block-print {
   position: relative;
@@ -1703,8 +1835,277 @@ html.rt-gmail md-dialog-actions .md-button.md-warn[ng-click*="closeDialog"] { co
   border-radius: 14px;
   border-bottom: 1px solid var(--rt-border);
 }
-`;
-    (document.head || root).appendChild(style);
+`);
+    if (app === 'contacts') sheet('rabbittech-sogo-contacts', String.raw`
+/* -------------------------------------------------------------- sidebar */
+/* Address books as pills against the left edge, like Mail's folders */
+html.rt-gmail md-sidenav.md-sidenav-left md-list-item.md-clickable {
+  margin: 0 12px 0 0;
+  padding-left: 12px;
+  border-radius: 0 999px 999px 0;
+}
+html.rt-gmail md-sidenav md-list-item.md-clickable.md-background.md-hue-1.md-bg { background-color: var(--rt-primary-soft-2) !important; }
+html.rt-gmail md-sidenav md-list-item.md-clickable > .md-no-style > .md-list-item-inner { flex: 1 1 auto; min-width: 0; }
+html.rt-gmail md-sidenav md-list-item.md-clickable .sg-item-name { display: block; flex: 1 1 auto; min-width: 0; max-width: none; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+html.rt-gmail md-sidenav md-list-item.md-clickable > .md-no-style > .md-list-item-inner > md-icon { margin-right: 16px; font-size: 20px; color: var(--rt-muted); }
+html.rt-gmail md-sidenav md-list-item.md-bg > .md-no-style > .md-list-item-inner > md-icon { color: var(--rt-primary-text); }
+
+/* ---------------------------------------------------- list and contact cards */
+html.rt-gmail [ui-view="addressbook"] > .sg-block-print {
+  position: relative;
+  gap: var(--rt-g-gap);
+  padding: 0 var(--rt-g-gap) var(--rt-g-gap) calc(var(--rt-g-gap) * var(--rt-g-left));
+}
+html.rt-gmail [ui-view="addressbook"] .view-list,
+html.rt-gmail [ui-view="addressbook"] #detailView.view-detail {
+  border-radius: 16px;
+  background-color: var(--rt-surface) !important;
+  box-shadow: none;
+  overflow: hidden;
+}
+html.rt-gmail [ui-view="addressbook"] .view-list > md-toolbar:not(.md-menu-toolbar) { min-height: 48px; }
+html.rt-gmail [ui-view="addressbook"] .view-list > md-toolbar > .md-toolbar-tools { height: 48px; max-height: 48px; padding: 0 8px 0 12px; }
+html.rt-gmail [ui-view="addressbook"] .view-list .sg-folder-name { margin: 0 8px 0 4px; font-size: 16px; font-weight: 650; letter-spacing: -.01em; }
+html.rt-gmail #contactsList > .md-subheader .md-subheader-inner { padding: 6px 16px; }
+html.rt-gmail #contactsList > .md-subheader { font-size: 12px; font-weight: 500; }
+html.rt-gmail #contactsList > .md-subheader md-icon { font-size: 16px; }
+/* Rows stay 56px apart (md-item-size); they lift under the pointer, the open one is a tint */
+html.rt-gmail #contactsList md-list-item { height: 56px; min-height: 56px; border: 0; background-color: var(--rt-surface); }
+html.rt-gmail #contactsList md-list-item::before { display: none; }
+html.rt-gmail #contactsList md-list-item:not(.md-bg):hover { z-index: 2; box-shadow: var(--rt-g-lift); }
+html.rt-gmail #contactsList md-list-item .md-no-style.md-button:not([disabled]):hover,
+html.rt-gmail #contactsList md-list-item .md-no-style.md-button:not([disabled]):focus { background-color: transparent; }
+html.rt-gmail .sg-section-list md-list-item.md-default-theme.md-accent.md-hue-2.md-bg,
+html.rt-gmail #contactsList md-list-item.md-bg {
+  border-left: 0;
+  background-color: var(--rt-primary-soft) !important;
+  box-shadow: none;
+}
+html.rt-gmail #contactsList md-list-item .sg-md-subhead { font-size: 14px; font-weight: 600; color: var(--rt-text); }
+html.rt-gmail #contactsList md-list-item .sg-md-body { font-size: 13px; color: var(--rt-muted); }
+@media (max-width: 599px) {
+  html.rt-gmail [ui-view="addressbook"] .view-list,
+  html.rt-gmail [ui-view="addressbook"] #detailView.view-detail { border-radius: 0; }
+}
+
+/* The open contact, like Google Contacts: a large avatar and the name, then label and value rows */
+html.rt-gmail #detailView md-card,
+html.rt-gmail #detailView md-card.md-default-theme { margin: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; }
+html.rt-gmail #detailView md-card > md-card-actions { min-height: 56px; padding: 4px 8px; border-bottom: 0; }
+html.rt-gmail #detailView md-card > md-card-content { padding: 0 32px 32px; }
+html.rt-gmail #detailView .msg-header { display: flex; align-items: center; gap: 24px; padding: 8px 0 24px; border-bottom: 1px solid var(--rt-border); }
+html.rt-gmail #detailView .msg-header > sg-avatar-image {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 88px;
+  height: 88px;
+  margin: 0;
+  border-radius: 50%;
+  background-color: var(--rt-primary-soft);
+  overflow: hidden;
+}
+html.rt-gmail #detailView .msg-header > sg-avatar-image md-icon:first-child { font-size: 48px !important; width: 48px; height: 48px; color: var(--rt-primary-text); }
+html.rt-gmail #detailView .msg-header > sg-avatar-image img { width: 88px !important; height: 88px !important; border-radius: 50%; }
+html.rt-gmail #detailView .msg-header-content { padding: 0; }
+html.rt-gmail #detailView .msg-header .sg-md-display-2--thin { font-size: 28px; font-weight: 650; line-height: 1.2; letter-spacing: -.02em; color: var(--rt-text); }
+html.rt-gmail #detailView .msg-header .sg-md-display-2-subheader--thin { margin-top: 4px; font-size: 15px; color: var(--rt-muted); }
+html.rt-gmail #detailView .msg-header md-chips .md-chips { padding: 6px 0 0; }
+html.rt-gmail #detailView .msg-body { padding-top: 12px; }
+html.rt-gmail #detailView .msg-body .pseudo-input-container {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  align-items: baseline;
+  gap: 16px;
+  min-height: 0;
+  margin: 0;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rt-border);
+}
+html.rt-gmail #detailView .msg-body .pseudo-input-label {
+  position: static;
+  transform: none;
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--rt-muted);
+  text-transform: capitalize;
+}
+html.rt-gmail #detailView .msg-body .pseudo-input-field { min-height: 0; padding: 0; font-size: 15px; color: var(--rt-text); }
+html.rt-gmail #detailView .msg-body .pseudo-input-field a { color: var(--rt-primary-text); text-decoration: none; }
+html.rt-gmail #detailView .msg-body .pseudo-input-field a:hover { text-decoration: underline; }
+/* The editor's header: the card's own colours instead of a violet bar; Save stands out */
+html.rt-gmail #detailView md-card > md-toolbar:not(.md-menu-toolbar),
+html.rt-gmail #detailView md-card > md-toolbar.md-default-theme:not(.md-menu-toolbar) {
+  min-height: 64px;
+  border-bottom: 1px solid var(--rt-border);
+  background-color: var(--rt-surface);
+  color: var(--rt-text);
+  box-shadow: none;
+}
+html.rt-gmail #detailView md-card > md-toolbar .md-toolbar-tools { color: var(--rt-text); font-size: 20px; font-weight: 650; letter-spacing: -.01em; }
+html.rt-gmail #detailView md-card > md-toolbar md-icon { color: var(--rt-muted); }
+html.rt-gmail #detailView md-card > md-toolbar .md-button.md-icon-button:not([disabled]):hover { background-color: var(--rt-hover); }
+html.rt-gmail #detailView md-card > md-toolbar .md-button[ng-click^="editor.save"]:not([disabled]) { background-color: var(--rt-primary); }
+html.rt-gmail #detailView md-card > md-toolbar .md-button[ng-click^="editor.save"]:not([disabled]) md-icon { color: #fff; }
+html.rt-gmail #detailView md-card > md-toolbar .md-button[ng-click^="editor.save"]:not([disabled]):hover { background-color: var(--rt-primary-hover); }
+@media (max-width: 599px) {
+  html.rt-gmail #detailView md-card > md-card-content { padding: 0 16px 24px; }
+  html.rt-gmail #detailView .msg-body .pseudo-input-container { grid-template-columns: 1fr; gap: 2px; }
+}
+`);
+    if (app === 'calendar') sheet('rabbittech-sogo-calendar', String.raw`
+/* -------------------------------------------------------------- sidebar */
+html.rt-gmail md-sidenav md-list-item.sg-calendar-list-item {
+  height: 40px;
+  min-height: 40px;
+  margin: 0 12px 0 0;
+  padding-left: 8px;
+  border-radius: 0 999px 999px 0;
+}
+html.rt-gmail md-sidenav md-list-item.sg-calendar-list-item:hover { background-color: var(--rt-hover); }
+html.rt-gmail md-sidenav md-list-item.sg-calendar-list-item .sg-item-name { display: block; flex: 1 1 auto; min-width: 0; max-width: none; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+/* ------------------------------------------------- the event list and the calendar, as cards */
+html.rt-gmail [ui-view="calendars"] .view-main > div.md-flex {
+  position: relative;
+  gap: var(--rt-g-gap);
+  padding: 0 var(--rt-g-gap) var(--rt-g-gap) calc(var(--rt-g-gap) * var(--rt-g-left));
+}
+html.rt-gmail [ui-view="calendars"] .view-list,
+html.rt-gmail [ui-view="calendars"] #detailView.view-detail {
+  position: relative;
+  border-radius: 16px;
+  background-color: var(--rt-surface) !important;
+  box-shadow: none;
+  overflow: hidden;
+}
+html.rt-gmail [ui-view="calendars"] .view-list.view-list--close { margin-right: calc(-25vw - var(--rt-g-gap)); }
+html.rt-gmail [ui-view="calendars"] .view-list > md-toolbar:not(.md-menu-toolbar) { min-height: 48px; }
+html.rt-gmail [ui-view="calendars"] .view-list > md-toolbar > .md-toolbar-tools { height: 48px; max-height: 48px; padding: 0 8px 0 12px; }
+html.rt-gmail [ui-view="calendars"] #detailView md-card,
+html.rt-gmail [ui-view="calendars"] #detailView md-card.md-default-theme {
+  inset: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+@media (max-width: 599px) {
+  html.rt-gmail [ui-view="calendars"] .view-list { border-radius: 0; }
+}
+
+/* The calendar's header, like Google Calendar's: Today, back and forward, the date, the views */
+html.rt-gmail [ui-view="calendars"] #detailView md-card > md-card-actions {
+  gap: 4px;
+  min-height: 64px;
+  margin: 0;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--rt-border);
+}
+html.rt-gmail #detailView md-card > md-card-actions > .md-button[ng-click^="toggleCenter"] { order: -2; }
+html.rt-gmail #detailView md-card > md-card-actions > .md-button[ng-click="calendar.changeDate($event, null, true)"] {
+  order: -1;
+  height: 36px;
+  min-height: 36px;
+  margin: 0 8px 0 4px;
+  padding: 0 18px;
+  border: 1px solid var(--rt-border-strong);
+  border-radius: 999px;
+  color: var(--rt-text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 34px;
+  text-transform: none;
+}
+html.rt-gmail #detailView md-card > md-card-actions > .md-button[ng-click="calendar.changeDate($event, null, true)"]:hover { background-color: var(--rt-hover); }
+html.rt-gmail #detailView md-card > md-card-actions > .md-button.md-icon-button { border-radius: 50%; }
+html.rt-gmail #detailView md-card > md-card-actions md-datepicker { margin-left: 4px; }
+html.rt-gmail #detailView md-card > md-card-actions md-datepicker .md-datepicker-input-container { border-bottom: 0; }
+html.rt-gmail #detailView md-card > md-card-actions md-datepicker .md-datepicker-input {
+  min-width: 0;
+  max-width: none;
+  color: var(--rt-text);
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -.01em;
+}
+html.rt-gmail #detailView md-card > md-card-actions md-datepicker .md-datepicker-button md-icon { color: var(--rt-muted); }
+/* Day, week, month and columns as one group; the current view is marked */
+html.rt-gmail #detailView md-card > md-card-actions > a.md-button[ng-click^="calendar.changeView"] {
+  width: 44px;
+  height: 36px;
+  min-height: 36px;
+  margin: 0 0 0 -4px;
+  border-radius: 0;
+  background-color: var(--rt-surface-2);
+}
+html.rt-gmail #detailView md-card > md-card-actions > a.md-button[ng-click*="'day'"] { margin-left: 0; border-radius: 999px 0 0 999px; }
+html.rt-gmail #detailView md-card > md-card-actions > a.md-button[ng-click*="'multicolumnday'"] { margin-right: 8px; border-radius: 0 999px 999px 0; }
+html.rt-gmail #detailView md-card > md-card-actions > a.md-button[ng-click^="calendar.changeView"]:not([disabled]):hover { background-color: var(--rt-hover); }
+html.rt-gmail #detailView md-card > md-card-actions > a.md-button[ng-click^="calendar.changeView"][disabled] { background-color: var(--rt-primary-soft-2); opacity: 1; }
+html.rt-gmail #detailView md-card > md-card-actions > a.md-button[ng-click^="calendar.changeView"][disabled] md-icon { color: var(--rt-primary-text); }
+
+/* The grid: events as rounded blocks with a hairline between neighbours */
+html.rt-gmail [ui-view="calendars"] sg-calendar-day .sg-event,
+html.rt-gmail [ui-view="calendars"] sg-calendar-month-day .sg-event { border-radius: 6px; box-shadow: 0 0 0 1px var(--rt-surface); }
+html.rt-gmail [ui-view="calendars"] sg-calendar-day .sg-event .eventInside .text { top: 2px; padding: 0 6px; font-size: 12px; font-weight: 600; line-height: 1.35; }
+html.rt-gmail [ui-view="calendars"] .hours .hour { font-size: 11px; color: var(--rt-muted); }
+
+/* Month: weekday names as small column headings, day numbers in the text colour */
+html.rt-gmail [ui-view="calendars"] md-toolbar.monthView .dayLabels {
+  padding: 8px 0 6px;
+  color: var(--rt-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-align: center;
+  text-transform: uppercase;
+}
+html.rt-gmail [ui-view="calendars"] .sg-calendar-tile-header { color: var(--rt-text-2); font-size: 12px; font-weight: 600; }
+
+/* Event and task editors: the title field in the dialog's white header reads as text */
+html.rt-gmail md-dialog md-toolbar md-input-container .md-input,
+html.rt-gmail md-dialog md-toolbar.md-default-theme:not(.md-menu-toolbar) md-input-container .md-input {
+  color: var(--rt-text) !important;
+  border-color: var(--rt-border-strong) !important;
+  font-size: 20px;
+  font-weight: 650;
+}
+html.rt-gmail md-dialog md-toolbar md-input-container label,
+html.rt-gmail md-dialog md-toolbar.md-default-theme:not(.md-menu-toolbar) md-input-container label { color: var(--rt-muted) !important; }
+html.rt-gmail md-dialog md-toolbar md-input-container.md-input-focused .md-input { border-color: var(--rt-primary) !important; }
+html.rt-gmail md-dialog md-toolbar md-icon.sg-icon-toolbar-bg { display: none; }
+
+/* The event list as an agenda: a dot in the calendar's colour instead of a coloured card */
+html.rt-gmail-colors [ui-view="calendars"] .view-list .sg-event[class*="bg-folder"] {
+  position: relative;
+  margin: 0 8px 2px 0;
+  padding: 8px 8px 8px 30px;
+  border-radius: 8px;
+  background-color: transparent !important;
+  color: var(--rt-text) !important;
+  box-shadow: none;
+}
+html.rt-gmail-colors [ui-view="calendars"] .view-list .sg-event[class*="bg-folder"]::before {
+  content: "";
+  position: absolute;
+  top: 13px;
+  left: 10px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: var(--rt-folder, var(--rt-primary));
+}
+html.rt-gmail-colors [ui-view="calendars"] .view-list .sg-event[class*="bg-folder"]:hover { background-color: var(--rt-hover) !important; }
+html.rt-gmail-colors [ui-view="calendars"] .view-list .sg-event[class*="bg-folder"] md-icon,
+html.rt-gmail-colors [ui-view="calendars"] .view-list .sg-event[class*="bg-folder"] .secondary { color: var(--rt-muted) !important; }
+html.rt-gmail [ui-view="calendars"] .view-list .sg-event .text { font-size: 14px; font-weight: 600; }
+html.rt-gmail [ui-view="calendars"] .view-list .sg-calendar-date { color: var(--rt-text-2); }
+`);
   } catch (e) {
     warn('not applied: ' + e);
   }

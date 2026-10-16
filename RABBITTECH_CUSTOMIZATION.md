@@ -234,7 +234,9 @@ two supported hooks, both loaded on every SOGo page (`SOGoUIAdditionalJSFiles` i
     switch it in the console and reload webmail.
   - The upstream `CKEDITOR.addCss(...)` line is guarded: SOGo 5 ships CKEditor 5, which has no
     `CKEDITOR` global, so that line threw an error on every page.
-- **Mail laid out like Gmail** (also `custom-sogo.js`; the Mail screen only):
+- **Mail, Calendar and Contacts laid out like Gmail** (also `custom-sogo.js`). In all three apps
+  the top bar has the menu button and logo, a search box in the middle that is always there, and
+  the outlined app icons; the sidebar items are pills. Mail:
   - Top bar: the folder search is a search box in the middle that is always there (the `s` key
     still focuses it, and emptying it shows the whole folder again). The menu button hides the
     folder list; the logo then moves into the top bar.
@@ -250,21 +252,46 @@ two supported hooks, both loaded on every SOGo page (`SOGoUIAdditionalJSFiles` i
     compose button instead of SOGo's two-button menu.
   - `SOGoRefreshViewCheck = "every_minute"` in `sogo.conf`, so new mail shows up without
     reloading (users can change it in Preferences).
-  - **How it works:** SOGo's Mail templates are `<script type="text/ng-template">` blocks in the
-    page. Before Angular starts, `custom-sogo.js` parses them, changes them and writes them back,
-    and registers the few Angular functions the new buttons call; those use SOGo's own services
-    (`toggleFlag`, `toggleRead`, `$deleteMessages`, `$moveMessages`, `newMessage`).
+- Calendar, like Google Calendar:
+  - A Create button at the top of the sidebar offers Event or Task. The add button stays on
+    phones.
+  - The search box searches the event list, and opens the list if it was folded away.
+  - The calendar is a card. Its header has a Today pill, round back and forward buttons, the date
+    and the day, week, month and columns views as one group, with the current one marked.
+  - Events are rounded blocks. The event list on the left is an agenda, with a dot in each
+    calendar's colour instead of a coloured card; month view has small weekday headings.
+  - Event and task dialogs have a white header; the editor's title field reads as text.
+- Contacts, like Google Contacts:
+  - A Create contact button at the top of the sidebar offers Contact or Contact list. It is
+    greyed out in address books you can't add to, like a global address book.
+  - The contact list and the open contact are cards, with 56px rows that lift under the pointer.
+  - A contact opens with a large avatar, the name and description, then label and value rows.
+    The editor gets a white header with Save as the one coloured button.
+- How the layout works, in all three apps:
+  - **How it works:** each app's main templates are `<script type="text/ng-template">` blocks in
+    the page. Before Angular starts, `custom-sogo.js` parses them, changes them and writes them
+    back, and registers the few Angular functions the new buttons call. Those use SOGo's own
+    services (`toggleFlag`, `toggleRead`, `$deleteMessages`, `$moveMessages`, `newMessage`,
+    the lists' `newComponent`).
+  - Templates SOGo fetches over HTTP are only restyled, not rewritten: the calendar's day, week
+    and month views, and the event, task and contact editors. Each calendar's colour is also
+    published as `--rt-folder` (a decorator on SOGo's `sgFolderStylesheet`), so the agenda can
+    draw dots in it.
   - **Fail-safe:** each change first checks that the markup it needs is there. If a SOGo upgrade
-    changed it, that change is skipped with a console warning ("RabbitTech mail layout: …"), and
-    the styles that depend on it don't apply either (`html.rt-gmail-<change>`), so that part stays
-    as SOGo has it instead of breaking.
-  - **Classic layout:** a top bar button (columns icon) switches to SOGo's three-pane layout with
-    the RabbitTech look, and back. The choice is kept per browser (`localStorage.rt_webmail_layout`).
+    changed it, that change is skipped with a console warning ("RabbitTech mail layout: …",
+    "RabbitTech calendar layout: …", "RabbitTech contacts layout: …"). The styles that depend on
+    it don't apply either (`html.rt-gmail-<change>`), so that part stays as SOGo has it instead
+    of breaking.
+  - **Classic layout:** a top bar button (columns icon) switches to SOGo's classic layout with the
+    RabbitTech look, and back, in all three apps at once. The choice is kept per browser
+    (`localStorage.rt_webmail_layout`).
   - **Limits:** SOGo sends no preview text, so rows show the subject without Gmail's snippet.
     There are no inbox tabs, snooze or Gmail-style conversations. Rows stay 56px high, because
-    SOGo's scrolling code relies on that height.
-  - **After a SOGo upgrade**, run the UI tests (they run SOGo's real Mail app, see below) and look
-    for "RabbitTech mail layout" warnings in the browser console on `/webmail`.
+    SOGo's scrolling code relies on that height. Calendar has no mini month in the sidebar, and
+    Today, back and forward stay in the calendar's header (they belong to the view SOGo fetches).
+  - **After a SOGo upgrade**, run the UI tests (they run SOGo's real Mail, Calendar and Contacts
+    apps, see below) and look for "RabbitTech … layout" warnings in the browser console on
+    `/webmail`.
 - **Caching:** these two files keep the same URL across releases, so nginx sends them with
   `Cache-Control: no-cache` (`data/conf/nginx/templates/sites-default.conf.j2`). A deploy restarts
   `sogo-mailcow` (which copies them into the web volume) and `nginx-mailcow`.
@@ -330,12 +357,17 @@ server:
   `php -S 127.0.0.1:8088 tests/ui/router.php` to look at pages by hand.
 - `sogo/prepare.sh` builds a webmail mock from SOGo's own stylesheets and scripts at the version in
   `docker-compose.yml`, plus `data/conf/sogo`, with page markup copied from SOGo's templates.
-- It also builds the **live Mail page**: `sogo/wox.py` renders SOGo's own `.wox` templates the way
-  SOGo's framework does (patched with mailcow's toolbar change), `sogo/live.py` assembles the page
-  with SOGo's real scripts, and `sogo/backend.mjs` answers the app's requests like SOGo does, from
-  an in-memory mailbox that really flags, moves and deletes. So SOGo's real Mail app runs in the
-  browser, with or without our `custom-sogo.js`. `node sogo/live-check.mjs` walks through it on its
-  own and prints anything the fake server doesn't know.
+- It also builds the **live Mail, Calendar and Contacts pages**:
+  - `sogo/wox.py` renders SOGo's own `.wox` templates the way SOGo's framework does (patched with
+    mailcow's toolbar change), and `sogo/live.py` assembles the pages with SOGo's real scripts.
+  - The calendar's day, week and month views are rendered for the weeks around Thursday 15
+    October 2026, the date the tests pin the browser's clock to.
+  - `sogo/backend.mjs` and `sogo/backend-apps.mjs` answer the apps' requests like SOGo does, from
+    an in-memory mailbox, calendars with a week of events, and address books, which really flag,
+    move, delete and save.
+  - So SOGo's real apps run in the browser, with or without our `custom-sogo.js`.
+    `node sogo/live-check.mjs` walks through Mail on its own and prints anything the fake server
+    doesn't know.
 - `smoke.mjs` starts both and checks every main page in light, dark and phone width (no errors, the
   shell starts, no sideways scrolling). It also checks the behaviour that broke before: select-all,
   the bulk toolbars, the 2FA status, the Overview alerts, the session warning across tabs, and the
@@ -356,6 +388,18 @@ server:
     colour follows the theme; and Chromium itself reads the manifest without errors.
   - Fail-safe: with templates broken on purpose, those changes are skipped with a warning and
     that part keeps SOGo's own layout.
+- In the live Calendar and Contacts apps it checks the same way:
+  - Stock SOGo runs, each event is on its day at its time and length, and the address book lists
+    its contacts.
+  - Every layout change applies, with the search box, the Create button and no add button on a
+    wide screen.
+  - Search filters and resets.
+  - Create → Event, Task, Contact and Contact list open the editors. Saving reaches the server,
+    and the new event or contact shows up.
+  - Calendar: the header's Today pill and view group; agenda dots in each calendar's colour;
+    back, forward, Today, month and day views; switching a calendar off; an event's dialog.
+  - Contacts: 56px rows; the contact card; Create greyed out in a read-only address book.
+  - The classic switch, dark mode, phone width and the fail-safe, as in Mail.
 
 Run locally:
 

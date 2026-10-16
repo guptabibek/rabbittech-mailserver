@@ -530,6 +530,16 @@ if (webmail) {
     await ctx.close();
   }
 
+  // Calendar and Contacts
+  const appChanges = ['layout', 'brand', 'search', 'create', 'listref'].map(c => 'rt-gmail-' + c);
+  const textIconsIn = page => page.evaluate(() => [...document.querySelectorAll('md-icon')]
+    .filter(i => i.offsetParent && i.getBoundingClientRect().width > 40).map(i => i.textContent.trim()));
+  // The Create button's menu, then one of its items
+  const createFromMenu = async (page, index) => {
+    await page.click('.rt-create');
+    await page.locator('.rt-create-menu md-menu-item').nth(index).locator('.md-button').click();
+  };
+
   // ---------------------------------------------------------------- Calendar
   // SOGo's real Calendar app the same way: live.py rendered its page, its event and task
   // dialogs and its day, week and month views; sogo/backend-apps.mjs has a week of events.
@@ -539,8 +549,9 @@ if (webmail) {
   const block = (page, title) => page.evaluate(title => {
     const el = [...document.querySelectorAll('sg-calendar-day .sg-event.sg-draggable-calendar-block')].find(b => b.textContent.includes(title));
     if (!el) return null;
-    const day = el.closest('sg-calendar-day'), cell = day.querySelector('.clickableHourCell').getBoundingClientRect();
-    const box = el.getBoundingClientRect();
+    const day = el.closest('sg-calendar-day'), first = day && day.querySelector('.clickableHourCell');
+    if (!first) return null;
+    const cell = first.getBoundingClientRect(), box = el.getBoundingClientRect();
     return { day: day.id, hour: Math.round((box.top - cell.top) / cell.height * 4) / 4, hours: Math.round(box.height / cell.height * 4) / 4 };
   }, title);
   {
@@ -549,6 +560,133 @@ if (webmail) {
     const cutover = await block(page, 'Webmail cut-over');
     check('calendar app: the week shows each event on its day, at its time and length',
       JSON.stringify(cutover) === JSON.stringify({ day: 'day20261015', hour: 10, hours: 1.5 }), JSON.stringify(cutover));
+    await ctx.close();
+  }
+  const calendarChanges = ['layout', 'brand', 'search', 'create', 'listref', 'colors'].map(c => 'rt-gmail-' + c);
+  const listEvents = page => page.locator('[ui-view="calendars"] .view-list sg-calendar-list-event, [ui-view="calendars"] .view-list .sg-event');
+  const header = page => page.locator('#detailView md-card > md-card-actions');
+  {
+    const { ctx, page, backend, errors, warnings } = await openCalendar();
+    const cls = await classes(page);
+    check('calendar app: every layout change applied, no warnings', calendarChanges.every(c => cls.includes(c)) && warnings.length === 0, cls.join(' ') + ' ' + warnings.join(' | '));
+    check('calendar app: search box, Create button and logo, no add button on a wide screen', await page.evaluate(() =>
+      !!document.querySelector('md-toolbar.toolbar-main > form.rt-search') && !!document.querySelector('md-sidenav .rt-create:not([disabled])') &&
+      getComputedStyle(document.querySelector('.sg-fab-bottom-center')).display === 'none'));
+    const head = await header(page).evaluate(bar => {
+      const x = sel => bar.querySelector(sel).getBoundingClientRect().x;
+      const today = bar.querySelector('.md-button[ng-click="calendar.changeDate($event, null, true)"]');
+      return { todayFirst: today.getBoundingClientRect().x < x('[aria-label="Previous Week"]'),
+        pill: getComputedStyle(today).borderRadius, current: getComputedStyle(bar.querySelector('a[ng-click*="\'week\'"]')).backgroundColor,
+        other: getComputedStyle(bar.querySelector('a[ng-click*="\'month\'"]')).backgroundColor };
+    });
+    check('calendar app: the header has a Today pill before back and forward, the current view marked',
+      head.todayFirst && parseFloat(head.pill) > 100 && head.current !== head.other, JSON.stringify(head));
+    // The event list: a dot in the calendar's colour (Personal is #7C3AED) instead of a filled card
+    const agenda = await page.evaluate(() => {
+      const ev = [...document.querySelectorAll('[ui-view="calendars"] .view-list .sg-event')].find(e => /Webmail cut-over/.test(e.textContent));
+      return ev && { bg: getComputedStyle(ev).backgroundColor, dot: getComputedStyle(ev, '::before').backgroundColor };
+    });
+    check('calendar app: the event list shows each event with a dot in its calendar\'s colour',
+      agenda && agenda.bg === 'rgba(0, 0, 0, 0)' && agenda.dot === 'rgb(124, 58, 237)', JSON.stringify(agenda));
+    check('calendar app: every visible icon is drawn as an icon, not as its name', (await textIconsIn(page)).length === 0, (await textIconsIn(page)).join(', '));
+    await page.screenshot({ path: join(output, 'webmail-calendar-light.png') });
+
+    // Search
+    const box = page.locator('form.rt-search input[name="folderSearch"]');
+    const all = await listEvents(page).count();
+    await box.fill('dentist');
+    const found = await until(async () => (await page.locator('[ui-view="calendars"] .view-list .sg-event').count()) === 1);
+    check('calendar app: typing in the search box filters the event list', found && backend.calls('eventslist').some(c => c.query.value === 'dentist'),
+      String(await page.locator('[ui-view="calendars"] .view-list .sg-event').count()));
+    await box.fill('');
+    check('calendar app: emptying the search box lists every event again', await until(async () => (await listEvents(page).count()) === all));
+
+    // An event
+    await page.click('#day20261015 .sg-event:has-text("Webmail cut-over")');
+    await page.waitForSelector('md-dialog .md-toolbar-tools');
+    await page.waitForTimeout(400);
+    const dialog = await page.evaluate(() => {
+      const d = document.querySelector('md-dialog'), bar = d.querySelector('md-toolbar');
+      return { title: bar.textContent.replace(/\s+/g, ' ').trim(), bar: getComputedStyle(bar).backgroundColor, radius: getComputedStyle(d).borderRadius };
+    });
+    check('calendar app: an event opens in a dialog with a white header and its title', /Webmail cut-over/.test(dialog.title) &&
+      dialog.bar === 'rgb(255, 255, 255)' && parseFloat(dialog.radius) >= 12, JSON.stringify(dialog));
+    await page.screenshot({ path: join(output, 'webmail-calendar-event.png') });
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('md-dialog', { state: 'detached' });
+
+    // Create an event and a task
+    await createFromMenu(page, 0);
+    await page.waitForSelector('md-dialog input[ng-model="editor.component.summary"]');
+    await page.fill('md-dialog input[ng-model="editor.component.summary"]', 'Planning session');
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: join(output, 'webmail-calendar-editor.png') });
+    await page.click('md-dialog md-dialog-actions .md-button.md-primary[ng-click="editor.save(eventForm)"]');
+    check('calendar app: Create → Event saves a new event on the server', await until(() => backend.calls('saveAsAppointment').length === 1));
+    check('calendar app: the new event shows in the week', await until(async () => !!(await block(page, 'Planning session'))), JSON.stringify(await block(page, 'Planning session')));
+    await createFromMenu(page, 1);
+    check('calendar app: Create → Task opens the task editor', await until(() => page.locator('md-dialog [ng-model="editor.component.percentComplete"]').count().then(n => n > 0)));
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('md-dialog', { state: 'detached' });
+
+    // Back, forward, today and the other views
+    await page.click('[aria-label="Next Week"]');
+    check('calendar app: forward shows the next week', await until(() => backend.calls('eventsblocks').some(c => c.query.sd === '20261019')) &&
+      await until(async () => !!(await block(page, 'Quarterly review'))));
+    await page.click('#detailView .md-button[ng-click="calendar.changeDate($event, null, true)"]');
+    check('calendar app: Today goes back to this week', await until(async () => !!(await block(page, 'Webmail cut-over'))));
+    await page.click('#detailView a[ng-click*="\'month\'"]');
+    check('calendar app: the month view loads with its events', await until(() => page.locator('sg-calendar-month-day .sg-event:has-text("Dashain holiday")').count().then(n => n > 0)));
+    await page.click('#detailView a[ng-click*="\'day\'"]');
+    check('calendar app: the day view loads with its events', await until(async () => (await block(page, 'Dentist') || {}).day === 'day20261015'));
+
+    // Switching a calendar off
+    await page.click('md-sidenav md-list-item.sg-calendar-list-item:has-text("Family") md-switch');
+    check('calendar app: switching a calendar off saves it and hides its events', await until(() =>
+      backend.calls('saveFoldersActivation').some(c => c.body && Number(c.body.family) === 0)) && await until(async () => !(await block(page, 'Dentist'))));
+    check('calendar app light: no errors', errors.length === 0, errors.join(' | '));
+
+    // Classic layout and back
+    await Promise.all([page.waitForEvent('load'), page.click('.rt-layout-switch')]);
+    await page.waitForSelector('[ui-view="calendars"] .view-list .sg-event');
+    const classic = await page.evaluate(() => ({ gmail: document.documentElement.classList.contains('rt-gmail'),
+      search: !!document.querySelector('.view-list form[sg-search]'), button: !!document.querySelector('.rt-layout-switch') }));
+    check('calendar app: the switch gives the classic layout, with a way back', !classic.gmail && classic.search && classic.button, JSON.stringify(classic));
+    await Promise.all([page.waitForEvent('load'), page.click('.rt-layout-switch')]);
+    await page.waitForSelector('[ui-view="calendars"] .view-list .sg-event');
+    check('calendar app: switching back restores the new layout', (await classes(page)).includes('rt-gmail-create'));
+    await ctx.close();
+  }
+  {
+    const { ctx, page, errors } = await openCalendar({ theme: 'dark' });
+    await page.screenshot({ path: join(output, 'webmail-calendar-dark.png') });
+    const bg = await page.evaluate(() => getComputedStyle(document.querySelector('[ui-view="calendars"] #detailView')).backgroundColor);
+    check('calendar app dark: dark calendar, no errors', bg === 'rgb(18, 21, 28)' && errors.length === 0, bg + ' ' + errors.join(' | '));
+    await ctx.close();
+  }
+  {
+    const { ctx, page, errors } = await openApp(CALENDAR_PAGE, '[ui-view="calendars"] .view-list .sg-event', { clock: CLOCK, width: 390, height: 844 });
+    const phone = await page.evaluate(() => {
+      const form = document.querySelector('form.rt-search').getBoundingClientRect();
+      const apps = document.querySelector('.toolbar-main .sg-toolbar-group-last').getBoundingClientRect();
+      const fab = document.querySelector('.sg-fab-bottom-center');
+      return { sideways: document.documentElement.scrollWidth > innerWidth, searchBelow: form.top >= apps.bottom - 1,
+        fab: !!fab && getComputedStyle(fab).display !== 'none' };
+    });
+    check('calendar app 390px: no sideways scrolling, search on its own row, the add button shows', !phone.sideways && phone.searchBelow && phone.fab, JSON.stringify(phone));
+    await page.screenshot({ path: join(output, 'webmail-calendar-phone.png') });
+    check('calendar app 390px: no errors', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+  {
+    const pageFilter = html => html.replace('type="search" name="folderSearch"', 'type="text" name="folderSearch"');
+    const { ctx, page, errors, warnings } = await openCalendar({ pageFilter });
+    const cls = await classes(page);
+    check('calendar app fail-safe: an unmatched change is skipped with a warning, the rest apply',
+      !cls.includes('rt-gmail-search') && cls.includes('rt-gmail-create') && cls.includes('rt-gmail-colors') &&
+      warnings.some(w => /RabbitTech calendar layout: .*"search" skipped/.test(w)), cls.join(' ') + ' ' + warnings.join(' | '));
+    check('calendar app fail-safe: search stays in the list toolbar', await page.locator('.view-list form[sg-search]').count() === 1);
+    check('calendar app fail-safe: no errors', errors.length === 0, errors.join(' | '));
     await ctx.close();
   }
 
@@ -560,6 +698,99 @@ if (webmail) {
     const { ctx, page, errors } = await openContacts({ custom: false });
     check('contacts app: stock SOGo runs against the fake server without errors', errors.length === 0, errors.join(' | '));
     check('contacts app: the address book lists its contacts', await cards(page).count() === 9, String(await cards(page).count()));
+    await ctx.close();
+  }
+  {
+    const { ctx, page, backend, errors, warnings } = await openContacts();
+    const cls = await classes(page);
+    check('contacts app: every layout change applied, no warnings', appChanges.every(c => cls.includes(c)) && warnings.length === 0, cls.join(' ') + ' ' + warnings.join(' | '));
+    check('contacts app: search box, Create button and logo, no add button on a wide screen', await page.evaluate(() =>
+      !!document.querySelector('md-toolbar.toolbar-main > form.rt-search') && !!document.querySelector('md-sidenav .rt-create:not([disabled])') &&
+      getComputedStyle(document.querySelector('.sg-fab-bottom-center')).display === 'none'));
+    const height = await cards(page).first().evaluate(el => el.getBoundingClientRect().height);
+    check('contacts app: rows are 56px tall', height === 56, String(height));
+    check('contacts app: every visible icon is drawn as an icon, not as its name', (await textIconsIn(page)).length === 0, (await textIconsIn(page)).join(', '));
+    await page.screenshot({ path: join(output, 'webmail-contacts-light.png') });
+
+    // Search
+    const box = page.locator('form.rt-search input[name="folderSearch"]');
+    await box.fill('sharma');
+    const found = await until(async () => (await cards(page).count()) === 1);
+    check('contacts app: typing in the search box filters the address book', found && backend.calls('view').some(c => c.body && c.body.value === 'sharma')
+      && /Sita Sharma/.test(await cards(page).first().textContent()), String(await cards(page).count()));
+    await box.fill('');
+    check('contacts app: emptying the search box lists everyone again', await until(async () => (await cards(page).count()) === 9), String(await cards(page).count()));
+
+    // A contact
+    await cards(page).filter({ hasText: 'Sita Sharma' }).click();
+    await page.waitForSelector('#detailView .msg-header');
+    const card = await page.evaluate(() => ({ name: document.querySelector('#detailView .msg-header .sg-md-display-2--thin').textContent.trim(),
+      email: document.querySelector('#detailView .msg-body a[ng-click*="newMessageWithRecipient"]').textContent.trim(),
+      avatar: Math.round(document.querySelector('#detailView .msg-header > sg-avatar-image').getBoundingClientRect().width) }));
+    check('contacts app: a contact opens as a card with a large avatar, name and email',
+      card.name === 'Sita Sharma' && card.email === 'sita@example.com' && card.avatar === 88, JSON.stringify(card));
+    await page.screenshot({ path: join(output, 'webmail-contacts-card.png') });
+
+    // Create a contact
+    await createFromMenu(page, 0);
+    await page.waitForSelector('#detailView input[ng-model="editor.card.c_givenname"]');
+    await page.fill('#detailView input[ng-model="editor.card.c_givenname"]', 'Hari');
+    await page.fill('#detailView input[ng-model="editor.card.c_sn"]', 'Bahadur');
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: join(output, 'webmail-contacts-editor.png') });
+    await page.click('#detailView md-card > md-toolbar .md-button[ng-click^="editor.save"]');
+    check('contacts app: Create → Contact saves a new contact on the server', await until(() => backend.calls('saveAsContact').length === 1));
+    check('contacts app: the new contact is listed', await until(async () => (await cards(page).filter({ hasText: 'Hari Bahadur' }).count()) === 1));
+    await createFromMenu(page, 1);
+    check('contacts app: Create → Contact list opens the list editor', await until(() => page.evaluate(() =>
+      /\/list\/new$/.test(location.hash) && !!document.querySelector('#detailView form[name="contactForm"]'))), await page.evaluate(() => location.hash));
+    // A global address book is read-only: nothing to create there
+    await page.click('md-sidenav md-list-item:has-text("Global Address Book")');
+    check('contacts app: Create is disabled in a read-only address book', await until(() => page.locator('.rt-create[disabled]').count().then(n => n === 1)));
+    check('contacts app light: no errors', errors.length === 0, errors.join(' | '));
+
+    // Classic layout and back
+    await Promise.all([page.waitForEvent('load'), page.click('.rt-layout-switch')]);
+    await page.waitForSelector('#contactsList md-list-item .sg-md-subhead');
+    const classic = await page.evaluate(() => ({ gmail: document.documentElement.classList.contains('rt-gmail'),
+      search: !!document.querySelector('.view-list form[sg-search]'), button: !!document.querySelector('.rt-layout-switch') }));
+    check('contacts app: the switch gives the classic layout, with a way back', !classic.gmail && classic.search && classic.button, JSON.stringify(classic));
+    await Promise.all([page.waitForEvent('load'), page.click('.rt-layout-switch')]);
+    await page.waitForSelector('#contactsList md-list-item .sg-md-subhead');
+    check('contacts app: switching back restores the new layout', (await classes(page)).includes('rt-gmail-create'));
+    await ctx.close();
+  }
+  {
+    const { ctx, page, errors } = await openContacts({ theme: 'dark' });
+    await page.screenshot({ path: join(output, 'webmail-contacts-dark.png') });
+    const bg = await page.evaluate(() => getComputedStyle(document.querySelector('[ui-view="addressbook"] .view-list')).backgroundColor);
+    check('contacts app dark: dark list, no errors', bg === 'rgb(18, 21, 28)' && errors.length === 0, bg + ' ' + errors.join(' | '));
+    await ctx.close();
+  }
+  {
+    const { ctx, page, errors } = await openContacts({ width: 390, height: 844 });
+    const phone = await page.evaluate(() => {
+      const form = document.querySelector('form.rt-search').getBoundingClientRect();
+      const apps = document.querySelector('.toolbar-main .sg-toolbar-group-last').getBoundingClientRect();
+      const fab = document.querySelector('.sg-fab-bottom-center');
+      return { sideways: document.documentElement.scrollWidth > innerWidth, searchBelow: form.top >= apps.bottom - 1,
+        fab: !!fab && getComputedStyle(fab).display !== 'none' };
+    });
+    check('contacts app 390px: no sideways scrolling, search on its own row, the add button shows', !phone.sideways && phone.searchBelow && phone.fab, JSON.stringify(phone));
+    await page.screenshot({ path: join(output, 'webmail-contacts-phone.png') });
+    check('contacts app 390px: no errors', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+  {
+    // Fail-safe: a search form that no longer matches stays where SOGo puts it
+    const pageFilter = html => html.replace('type="search" name="folderSearch"', 'type="text" name="folderSearch"');
+    const { ctx, page, errors, warnings } = await openContacts({ pageFilter });
+    const cls = await classes(page);
+    check('contacts app fail-safe: an unmatched change is skipped with a warning, the rest apply',
+      !cls.includes('rt-gmail-search') && cls.includes('rt-gmail-create') && cls.includes('rt-gmail-brand') &&
+      warnings.some(w => /RabbitTech contacts layout: .*"search" skipped/.test(w)), cls.join(' ') + ' ' + warnings.join(' | '));
+    check('contacts app fail-safe: search stays in the list toolbar', await page.locator('.view-list form[sg-search]').count() === 1);
+    check('contacts app fail-safe: no errors', errors.length === 0, errors.join(' | '));
     await ctx.close();
   }
 } else {

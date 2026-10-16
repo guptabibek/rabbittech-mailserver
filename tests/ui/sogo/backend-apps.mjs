@@ -412,12 +412,12 @@ export function appsBackend({ apps, files, json, text, empty, html, login, pageF
 
   function cardView(bookId, c) {
     if (c.c_component === 'vlist') {
-      return { id: c.id, pid: bookId, c_component: 'vlist', c_fn: c.c_fn, nickname: c.nickname, description: c.description,
+      return { id: c.id, pid: bookId, c_component: 'vlist', c_cn: c.c_fn, nickname: c.nickname, description: c.description,
         refs: c.refs };
     }
-    const out = { id: c.id, pid: bookId, c_component: 'vcard', c_givenname: c.c_givenname, c_sn: c.c_sn, c_fn: fullName(c),
+    const out = { id: c.id, pid: bookId, c_component: 'vcard', c_givenname: c.c_givenname, c_sn: c.c_sn, c_cn: fullName(c),
       emails: c.emails, phones: c.phones, hasCertificate: 0 };
-    if (c.org) out.orgs = [{ value: c.org }];
+    if (c.org) out.org = c.org;
     if (c.title) out.title = c.title;
     if (c.birthday) out.birthday = c.birthday;
     if (c.categories && c.categories.length) out.categories = c.categories;
@@ -427,11 +427,11 @@ export function appsBackend({ apps, files, json, text, empty, html, login, pageF
   function saveCard(bookId, id, body, list) {
     const existing = cardById(bookId, id);
     const c = existing || { id, c_component: list ? 'vlist' : 'vcard' };
-    if (list) Object.assign(c, { c_fn: body.c_fn || '', nickname: body.nickname || '', description: body.description || '', refs: body.refs || [] });
+    if (list) Object.assign(c, { c_fn: body.c_cn || '', nickname: body.nickname || '', description: body.description || '', refs: body.refs || [] });
     else {
-      Object.assign(c, { c_givenname: body.c_givenname || '', c_sn: body.c_sn || '', c_fn: body.c_fn || '',
+      Object.assign(c, { c_givenname: body.c_givenname || '', c_sn: body.c_sn || '', c_fn: body.c_cn || '',
         emails: (body.emails || []).filter(e => e.value), phones: (body.phones || []).filter(p => p.value),
-        categories: body.categories || [], org: (body.orgs && body.orgs[0] && body.orgs[0].value) || '' });
+        categories: body.categories || [], org: body.org || (body.orgs && body.orgs[0]) || '' });
     }
     if (!existing) cardsOf(bookId).push(c);
     return c;
