@@ -459,7 +459,26 @@ if (webmail) {
   };
   const openMail = (options = {}) => openApp(PAGE, 'md-list-item.sg-message-list-item .sg-tile-subject', options);
   const classes = page => page.evaluate(() => document.documentElement.className.split(/\s+/));
-  const changes = ['layout', 'brand', 'compose', 'search', 'rows', 'fab', 'back'].map(c => 'rt-gmail-' + c);
+  const changes = ['layout', 'brand', 'compose', 'search', 'rows', 'fab', 'sort', 'back'].map(c => 'rt-gmail-' + c);
+  // The order above the message list, in words, and a choice from the list's Sort menu
+  const sortLine = page => page.evaluate(() => {
+    const line = document.querySelector('#messagesList .md-subheader span[ng-bind^="rtSortText"]');
+    return line ? line.innerText.trim() : null;
+  });
+  // A menu that stays open (a checkmark) closes on a click outside it, as for a person
+  const closeMenu = async page => {
+    for (let i = 0; i < 3 && await page.locator('.md-open-menu-container.md-active').count(); i++) {
+      await page.locator('md-backdrop.md-menu-backdrop').first().click({ force: true }).catch(() => {});
+      await page.waitForTimeout(300);
+    }
+  };
+  const sortBy = async (page, item) => {
+    await page.click('.view-list .md-button[aria-label="Sort"]');
+    // A missing item fails the checks that follow, not the whole run
+    await page.locator('.md-open-menu-container.md-active md-menu-item', { hasText: item }).first().click({ timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    await closeMenu(page);
+  };
   const rows = page => page.locator('md-list-item.sg-message-list-item');
   // The message a list row shows (its directive's controller; Angular's scope() is off in SOGo)
   const messageOf = row => row.evaluate(el => {
@@ -532,6 +551,27 @@ if (webmail) {
     await box.fill('');
     const restored = await until(async () => (await rows(page).count()) === all);
     check('mail app: emptying the search box shows the whole folder again', restored, String(await rows(page).count()));
+
+    // The order in words instead of SOGo's "Order Received"
+    check('mail app: the line above the list says the order in words', (await sortLine(page)) === 'Newest first', await sortLine(page));
+    await page.click('.view-list .md-button[aria-label="Sort"]');
+    const sortMenu = await page.locator('.md-open-menu-container.md-active md-menu-item').allInnerTexts();
+    await closeMenu(page);
+    const items = sortMenu.map(t => t.replace(/^check\s*/, '').trim());
+    check('mail app: the Sort menu says Date received and Date sent', items.includes('Date received') && items.includes('Date sent') &&
+      !items.includes('Order Received'), items.join(' | '));
+    await sortBy(page, 'Subject');
+    const bySubject = await until(async () => (await sortLine(page)) === 'Subject Z\u2013A');
+    const subjects = (await rows(page).locator('.sg-tile-subject').allInnerTexts()).slice(0, 3);
+    check('mail app: sorting by subject says "Subject Z\u2013A" and the server sorts the folder', bySubject &&
+      backend.calls('view').some(c => JSON.stringify(c.body || '').includes('"sort":"subject"')) && subjects[0].startsWith('W'),
+      (await sortLine(page)) + ' ' + JSON.stringify(subjects));
+    await sortBy(page, 'Descending Order');
+    check('mail app: ascending, the line says "Subject A\u2013Z"', await until(async () => (await sortLine(page)) === 'Subject A\u2013Z'), await sortLine(page));
+    await sortBy(page, 'Date received');
+    check('mail app: by date received, ascending, the line says "Oldest first"', await until(async () => (await sortLine(page)) === 'Oldest first'), await sortLine(page));
+    await sortBy(page, 'Descending Order');
+    check('mail app: back to the usual order, newest first', await until(async () => (await sortLine(page)) === 'Newest first'), await sortLine(page));
 
     // Rows: one line, 56px apart (SOGo's scrolling relies on it)
     const geo = await rows(page).first().evaluate(el => {
@@ -660,6 +700,14 @@ if (webmail) {
     check('mail app fail-safe: without the back arrow the list stays beside the open message',
       await page.evaluate(() => getComputedStyle(document.querySelector('.view-list')).visibility === 'visible'));
     check('mail app fail-safe: no errors', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+  {
+    // In other languages the order keeps SOGo's own (translated) label
+    const pageFilter = html => html.replace("var UserLanguage = 'English';", "var UserLanguage = 'French';");
+    const { ctx, page } = await openMail({ pageFilter });
+    check('mail app: in other languages the order keeps SOGo\'s own label', (await classes(page)).includes('rt-gmail-sort') &&
+      (await sortLine(page)) === 'Order Received', await sortLine(page));
     await ctx.close();
   }
 

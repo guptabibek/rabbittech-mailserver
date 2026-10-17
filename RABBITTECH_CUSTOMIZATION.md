@@ -262,6 +262,10 @@ two supported hooks, both loaded on every SOGo page (`SOGoUIAdditionalJSFiles` i
     Archive moves it to the `Archive` folder mailcow creates in every mailbox (not offered inside
     Archive); Delete is not offered in Trash, where SOGo deletes for good.
   - The list fills the width and an open message takes its place, with a back arrow and Archive.
+  - The line above the list says the order in words ("Newest first", "Subject A–Z", "Largest
+    first") instead of SOGo's "Order Received" and a sort icon. The Sort menu says "Date received"
+    (when the message reached the mailbox) and "Date sent" (the date in the message) instead of
+    "Order Received" and "Date". In English only; other languages keep SOGo's translated words.
   - Compose opens as a window at the bottom right (960px and wider) and the mail behind it stays
     usable; SOGo's expand button makes it large. Phones keep SOGo's full-screen editor, with one
     compose button instead of SOGo's two-button menu.
@@ -430,6 +434,8 @@ server:
   - Every layout change applies.
   - The search box is readable, filters the folder, and resets when emptied.
   - Rows are one line and 56px tall, and no icon shows as its name.
+  - The order is in words and follows the Sort menu: subject, ascending and back to newest
+    first, sorted by the server. Other languages keep SOGo's label.
   - Star, read/unread, Archive and Delete reach the server and the message really moves.
   - An open message replaces the list, and back returns to it.
   - Compose opens as a window, and the mail behind it stays usable.
