@@ -4,7 +4,8 @@
 // UIxMailAccountActions.m, UIxMailActions.m, UIxMailEditor.m, UIxMailView.m and the part
 // viewers), backed by an in-memory store of folders and messages that moves, flags and deletes
 // for real. The static server (python -m http.server on the cache root) serves everything else.
-// Calendar and Contacts requests go to backend-apps.mjs (CALENDAR_PAGE, CONTACTS_PAGE).
+// Calendar, Contacts and Settings requests go to backend-apps.mjs (CALENDAR_PAGE, CONTACTS_PAGE,
+// PREFS_PAGE).
 //
 //   import { mailBackend, PAGE } from './sogo/backend.mjs';
 //   const backend = await mailBackend(page, { custom: true });   // options: custom, now, olderMessages, pageFilter
@@ -26,6 +27,7 @@ export const BASE = `/SOGo/so/${USER}`;
 export const PAGE = `${BASE}/Mail/view`;
 export const CALENDAR_PAGE = `${BASE}/Calendar/view`;
 export const CONTACTS_PAGE = `${BASE}/Contacts/view`;
+export const PREFS_PAGE = `${BASE}/Preferences`;
 
 const KiB = 1024;
 const QUOTA_KB = 5 * 1024 * 1024;   // a 5 GiB mailbox (Dovecot reports quotas in KiB)
@@ -68,7 +70,7 @@ export function createBackend({ custom = true, now = new Date(), olderMessages =
     folder: path => store.folders[path],
     message: (path, uid) => (store.folders[path] || { messages: [] }).messages.find(m => m.uid === Number(uid)),
     unseen: path => unseenCount(store.folders[path]),
-    /** Calendar and Contacts: store, event(summary), card(full name) */
+    /** Calendar, Contacts and Settings: store (store.preferences.saved: the bodies Settings saved), event(summary), card(full name) */
     apps,
     handle,
   };
@@ -108,6 +110,7 @@ export function createBackend({ custom = true, now = new Date(), olderMessages =
     if (module === 'Calendar') return apps.calendar(entry, rest);
     if (module === 'Contacts' && rest[0] === 'allContactSearch') return json(200, { contacts: contactSearch(entry.query.search) }, 'string');
     if (module === 'Contacts') return apps.contacts(entry, rest);
+    if (['Preferences', 'activeExternalSieveScripts', 'editAccount', 'editFilter'].includes(module)) return apps.preferences(entry, module, rest);
     if (module === 'freebusy.ifb') return json(200, {});
     if (module === 'labels' && entry.method === 'POST') return labelsFor(entry.body && entry.body.framework);
     if (module === 'date') return json(200, currentDay(), 'string');

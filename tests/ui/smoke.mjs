@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mailBackend, PAGE, CALENDAR_PAGE, CONTACTS_PAGE } from './sogo/backend.mjs';
+import { mailBackend, PAGE, CALENDAR_PAGE, CONTACTS_PAGE, PREFS_PAGE } from './sogo/backend.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const output = join(here, 'output');
@@ -398,7 +398,7 @@ if (webmail) {
   console.log('Webmail mock');
   // SOGo's stylesheet links Fira Sans files that aren't part of the web resources in git
   const fonts = /FiraSans/;
-  for (const name of ['mail', 'compose', 'calendar', 'contacts', 'prefs']) {
+  for (const name of ['mail', 'compose', 'calendar', 'contacts']) {
     for (const theme of ['light', 'dark']) {
       const { page, errors } = await open(`${webmail}/${name}.html`, { theme, ignore: fonts });
       await page.waitForTimeout(700);
@@ -435,8 +435,9 @@ if (webmail) {
   // One of SOGo's apps against the fake server: errors, failed requests and the layout's
   // warnings are collected. Calendar and Contacts run on a pinned clock (Thursday 15 October
   // 2026, 10:20 in Kathmandu), the date their seeded events and views are built around.
+  // allow404: requests whose 404 is SOGo's normal answer, not an error.
   const CLOCK = '2026-10-15T10:20:00+05:45';
-  const openApp = async (path, ready, { theme = 'light', width = 1366, height = 900, custom = true, pageFilter, clock } = {}) => {
+  const openApp = async (path, ready, { theme = 'light', width = 1366, height = 900, custom = true, pageFilter, clock, allow404 } = {}) => {
     const ctx = await browser.newContext({ viewport: { width, height }, timezoneId: 'Asia/Kathmandu' });
     const page = await ctx.newPage();
     if (clock) await page.clock.setFixedTime(new Date(clock));
@@ -446,7 +447,9 @@ if (webmail) {
       if (/^RabbitTech .*layout/.test(m.text())) warnings.push(m.text());
       else if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push('console: ' + m.text());
     });
-    page.on('response', r => { if (r.status() >= 400 && !fonts.test(r.url())) errors.push(r.status() + ' ' + r.url()); });
+    page.on('response', r => {
+      if (r.status() >= 400 && !fonts.test(r.url()) && !(r.status() === 404 && allow404 && allow404.test(r.url()))) errors.push(r.status() + ' ' + r.url());
+    });
     await page.addInitScript(t => { try { localStorage.setItem('mailcow_theme', t); } catch (e) {} }, theme);
     const backend = await mailBackend(ctx, { custom, pageFilter, clock });
     await page.goto(webmail + path, { waitUntil: 'load' });
@@ -921,6 +924,181 @@ if (webmail) {
       warnings.some(w => /RabbitTech contacts layout: .*"search" skipped/.test(w)), cls.join(' ') + ' ' + warnings.join(' | '));
     check('contacts app fail-safe: search stays in the list toolbar', await page.locator('.view-list form[sg-search]').count() === 1);
     check('contacts app fail-safe: no errors', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
+  // ---------------------------------------------------------------- Settings
+  // SOGo's real Preferences app (Settings): live.py rendered its page and its account and filter
+  // dialogs; sogo/backend-apps.mjs records what Save sends. Settings asks whether another Sieve
+  // script is active, and SOGo answers 404 when none is. No pinned clock here: a frozen
+  // Date.now() now and then keeps the address fields from turning what is typed into a chip.
+  console.log('Webmail: Settings');
+  const openPrefs = (hash = '#!/general', options = {}) =>
+    openApp(PREFS_PAGE + hash, 'md-tabs md-tab-item', { allow404: /\/activeExternalSieveScripts$/, ...options });
+  const prefsChanges = ['toolbar', 'layout', 'brand', 'save', 'here'].map(c => 'rt-gmail-' + c);
+  const openTab = async (page, name) => {
+    await page.locator('md-tabs-canvas md-tab-item', { hasText: name }).click();
+    await page.waitForTimeout(400);
+  };
+  const saveBar = page => page.evaluate(() => {
+    const bar = document.querySelector('.rt-save-bar');
+    return bar && !bar.classList.contains('ng-hide') ? { width: Math.round(bar.getBoundingClientRect().width),
+      enabled: !document.querySelector('.rt-save-bar .rt-save').disabled, text: bar.textContent.trim().replace(/\s+/g, ' ') } : null;
+  });
+  const saved = backend => backend.apps.store.preferences.saved;
+  {
+    const { ctx, page, errors } = await openPrefs('#!/general', { custom: false });
+    check('settings: stock SOGo runs against the fake server without errors', errors.length === 0, errors.join(' | '));
+    check('settings: the four sections are listed', await page.locator('md-sidenav md-list-item').count() === 4);
+    await ctx.close();
+  }
+  {
+    const { ctx, page, backend, errors, warnings } = await openPrefs();
+    const cls = await classes(page);
+    check('settings: every layout change applied, no warnings', prefsChanges.every(c => cls.includes(c)) && warnings.length === 0, cls.join(' ') + ' ' + warnings.join(' | '));
+    const bar = await page.evaluate(() => {
+      const el = document.querySelector('form[name="preferencesForm"] > section > md-toolbar');
+      const date = el.querySelector('.sg-date-group');
+      return { main: el.classList.contains('toolbar-main'), tall: el.classList.contains('md-tall'), height: Math.round(el.getBoundingClientRect().height),
+        date: date ? getComputedStyle(date).display : 'none', title: (el.querySelector('.rt-page-title') || {}).textContent,
+        brand: (el.querySelector('a.rt-brand') || {}).href, console: el.querySelector('[ng-href="/user"]').getAttribute('aria-label'),
+        fab: !!el.querySelector('.md-fab'), here: (() => { const b = document.querySelector('md-sidenav .rt-here');
+          return !!b && b.disabled && getComputedStyle(b).display !== 'none'; })() };
+    });
+    check('settings: the top bar is the other apps\' (no tall bar or date, the title, the logo to Mail, no Save button in it)',
+      bar.main && !bar.tall && bar.height <= 64 && bar.date === 'none' && bar.title === 'Settings' && /\/SOGo\/so\/bibek\/Mail$/.test(bar.brand) && !bar.fab,
+      JSON.stringify(bar));
+    check('settings: the console button says RabbitTech Mail', bar.console === 'RabbitTech Mail Preferences', bar.console);
+    check('settings: the settings button by the logo shows as the current place', bar.here, JSON.stringify(bar));
+    check('settings: no Save bar while nothing has changed', (await saveBar(page)) === null);
+    check('settings: every visible icon is drawn as an icon, not as its name', (await textIconsIn(page)).length === 0, (await textIconsIn(page)).join(', '));
+    await page.screenshot({ path: join(output, 'webmail-prefs-light.png') });
+
+    // Sections in the sidebar, as pills
+    await page.click('md-sidenav md-list-item:has-text("Mail")');
+    await page.waitForSelector('md-tabs-canvas md-tab-item:has-text("Vacation")');
+    const pill = await page.evaluate(() => {
+      const item = [...document.querySelectorAll('md-sidenav md-list-item')].find(i => /Mail/.test(i.textContent));
+      const s = getComputedStyle(item);
+      return { selected: item.classList.contains('md-bg'), radius: s.borderTopRightRadius, background: s.backgroundColor, hash: location.hash };
+    });
+    check('settings: the sidebar opens a section, shown as a tinted pill', pill.selected && pill.hash === '#!/mailer' && pill.radius === '999px' &&
+      pill.background !== 'rgba(0, 0, 0, 0)', JSON.stringify(pill));
+
+    // Vacation: turn it on, write the reply, Save
+    await openTab(page, 'Vacation');
+    await page.click('md-checkbox[ng-model="app.preferences.defaults.Vacation.enabled"]');
+    await page.fill('#autoReplyText', 'I am away until Monday.');
+    await page.waitForTimeout(300);
+    const dirty = await saveBar(page);
+    check('settings: a change shows the Save bar, with Save on', !!dirty && dirty.enabled && /Unsaved changes/.test(dirty.text), JSON.stringify(dirty));
+    await page.screenshot({ path: join(output, 'webmail-prefs-vacation.png') });
+    await page.click('.rt-save-bar .rt-save');
+    check('settings: Save sends the vacation reply to the server', await until(() => saved(backend).length === 1) &&
+      saved(backend)[0].defaults.Vacation.enabled === 1 && saved(backend)[0].defaults.Vacation.autoReplyText === 'I am away until Monday.',
+      JSON.stringify(saved(backend)[0] && saved(backend)[0].defaults.Vacation));
+    check('settings: after saving, the Save bar goes and SOGo says so', await until(async () => (await saveBar(page)) === null) &&
+      await until(() => page.locator('md-toast').filter({ hasText: 'Preferences saved' }).count().then(n => n === 1)));
+
+    // Forward: an address, Save
+    await openTab(page, 'Forward');
+    await page.click('md-checkbox[ng-model="app.preferences.defaults.Forward.enabled"]');
+    // SOGo makes the typed address a chip on a comma (Enter is ignored there)
+    await page.locator('#forwardAddress input').pressSequentially('backup@example.com');
+    await page.keyboard.press(',');
+    const chip = await until(() => page.locator('#forwardAddress md-chip', { hasText: 'backup@example.com' }).count().then(n => n === 1));
+    if (chip) await page.click('.rt-save-bar .rt-save');
+    check('settings: Save sends the forwarding address', chip && await until(() => saved(backend).length === 2) &&
+      saved(backend)[1].defaults.Forward.enabled === 1 && (saved(backend)[1].defaults.Forward.forwardAddress || []).includes('backup@example.com'),
+      chip ? JSON.stringify(saved(backend)[1] && saved(backend)[1].defaults.Forward) : 'the address did not become a chip');
+
+    // The filter and account dialogs SOGo fetches
+    await openTab(page, 'Filters');
+    await page.click('.md-button[aria-label="Create Filter"]');
+    await page.waitForSelector('md-dialog #filterForm');
+    await page.waitForTimeout(500);
+    const filter = await page.evaluate(() => ({ header: getComputedStyle(document.querySelector('#filterForm > md-toolbar')).backgroundColor,
+      ok: getComputedStyle(document.querySelector('#filterForm md-dialog-actions .md-button')).borderRadius }));
+    check('settings: Create Filter opens the filter dialog, white header and pill buttons',
+      backend.calls('editFilter').some(c => c.query.filter === 'new' && c.status === 200) && filter.header === 'rgb(255, 255, 255)' && filter.ok === '999px',
+      JSON.stringify(filter));
+    await page.screenshot({ path: join(output, 'webmail-prefs-filter.png') });
+    await page.click('#filterForm md-dialog-actions .md-button:has-text("Cancel")');
+    await page.waitForSelector('md-dialog', { state: 'detached' });
+    await openTab(page, 'IMAP Accounts');
+    await page.click('.md-button[aria-label="Edit Account"]');
+    await page.waitForSelector('md-dialog #accountForm');
+    await page.waitForTimeout(500);
+    const account = await page.evaluate(() => ({ name: document.querySelector('#accountForm > md-toolbar input').value,
+      identity: document.querySelector('#accountForm md-dialog-content').textContent.includes('Bibek Gupta') }));
+    check('settings: Edit opens the account dialog with its identity', backend.calls('editAccount').some(c => c.query.account === '0') &&
+      account.name === 'bibek@rabbittech.com.np' && account.identity, JSON.stringify(account));
+    await page.screenshot({ path: join(output, 'webmail-prefs-account.png') });
+    // A first signature, written in the identity's editor
+    await page.locator('#accountForm md-icon', { hasText: 'expand_more' }).first().click();
+    await page.locator('#accountForm .ck-editor__editable').first().click();
+    await page.keyboard.type('Bibek, RabbitTech');
+    await page.waitForTimeout(300);
+    await page.click('#accountForm md-dialog-actions .md-button.md-primary');
+    await page.waitForSelector('md-dialog', { state: 'detached' });
+    await page.click('.rt-save-bar .rt-save');
+    check('settings: a signature written in the account dialog is saved', await until(() => saved(backend).length === 3) &&
+      saved(backend)[2].defaults.AuxiliaryMailAccounts[0].identities[0].signature === '<p>Bibek, RabbitTech</p>',
+      JSON.stringify(saved(backend)[2] && saved(backend)[2].defaults.AuxiliaryMailAccounts[0].identities[0]));
+    // SOGo's signature editor logs this for an identity without a signature yet (mailcow's
+    // default identity has none); stock SOGo does the same, and the signature saves (above)
+    const ours = errors.filter(e => !/CKEditorError: Cannot convert undefined or null to object/.test(e));
+    check('settings light: no errors', ours.length === 0, ours.join(' | '));
+
+    // The layout switch goes through SOGo's prompt about unsaved changes
+    await openTab(page, 'General');
+    await page.click('md-checkbox[ng-model="app.preferences.defaults.SOGoMailSortByThreads"]');
+    await page.click('.rt-layout-switch');
+    check('settings: with unsaved changes, the layout switch asks first (SOGo\'s prompt)',
+      await until(() => page.locator('md-dialog').filter({ hasText: 'Do you want to save your changes' }).count().then(n => n === 1)));
+    await Promise.all([page.waitForEvent('load'), page.click('md-dialog .md-button:has-text("Don\'t Save")')]);
+    await page.waitForSelector('md-tabs md-tab-item');
+    const classic = await page.evaluate(() => ({ gmail: document.documentElement.classList.contains('rt-gmail'),
+      tall: !!document.querySelector('form[name="preferencesForm"] > section > md-toolbar.md-tall'),
+      button: !!document.querySelector('.rt-layout-switch'), url: location.search + location.hash }));
+    check('settings: the switch gives SOGo\'s classic Settings, with a way back, on the same section',
+      !classic.gmail && classic.tall && classic.button && classic.url === '#!/mailer', JSON.stringify(classic));
+    await Promise.all([page.waitForEvent('load'), page.click('.rt-layout-switch')]);
+    await page.waitForSelector('md-tabs md-tab-item');
+    check('settings: switching back restores the new layout', (await classes(page)).includes('rt-gmail-toolbar'));
+    await ctx.close();
+  }
+  {
+    const { ctx, page, errors } = await openPrefs('#!/mailer', { theme: 'dark' });
+    await page.screenshot({ path: join(output, 'webmail-prefs-dark.png') });
+    const bg = await page.evaluate(() => getComputedStyle(document.querySelector('[ui-view="module"] md-tabs')).backgroundColor);
+    check('settings dark: dark card, no errors', bg === 'rgb(18, 21, 28)' && errors.length === 0, bg + ' ' + errors.join(' | '));
+    await ctx.close();
+  }
+  {
+    const { ctx, page, errors } = await openPrefs('#!/mailer', { width: 390, height: 844 });
+    await page.click('md-checkbox[ng-model="app.preferences.defaults.SOGoMailSortByThreads"]');
+    await page.waitForTimeout(300);
+    const phone = await page.evaluate(() => ({ sideways: document.documentElement.scrollWidth > innerWidth, width: innerWidth }));
+    const bar = await saveBar(page);
+    check('settings 390px: no sideways scrolling, the Save bar spans the screen', !phone.sideways && !!bar && bar.width === phone.width,
+      JSON.stringify({ phone, bar }));
+    await page.screenshot({ path: join(output, 'webmail-prefs-phone.png') });
+    await page.click('.toolbar-main .md-button.hide-gt-md[ng-click="toggleLeft()"]');
+    check('settings 390px: the menu button opens the sections', await until(() => page.evaluate(() =>
+      !document.querySelector('md-sidenav#left-sidenav').classList.contains('md-closed'))));
+    check('settings 390px: no errors', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+  {
+    // Fail-safe: a top bar that no longer matches stays SOGo's; the rest apply
+    const pageFilter = html => html.replace('layout-align="space-between start" class="md-tall"', 'layout-align="space-between start" class="rt-changed"');
+    const { ctx, page, errors, warnings } = await openPrefs('#!/general', { pageFilter });
+    const cls = await classes(page);
+    check('settings fail-safe: an unmatched change is skipped with a warning, the rest apply',
+      !cls.includes('rt-gmail-toolbar') && cls.includes('rt-gmail-save') && cls.includes('rt-gmail-layout') && cls.includes('rt-gmail-here') &&
+      warnings.some(w => /RabbitTech prefs layout: .*"toolbar" skipped/.test(w)), cls.join(' ') + ' ' + warnings.join(' | '));
+    check('settings fail-safe: no errors', errors.length === 0, errors.join(' | '));
     await ctx.close();
   }
 } else {

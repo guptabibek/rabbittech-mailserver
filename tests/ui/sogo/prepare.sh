@@ -2,8 +2,8 @@
 # Builds the webmail mock used by tests/ui/smoke.mjs. SOGo can't run without its database and
 # mail services, so the mock loads SOGo's own stylesheets and scripts (Angular Material,
 # CKEditor 5) at the version mailcow runs, our data/conf/sogo files, and pages whose markup is
-# copied from SOGo's templates. It also builds the "live" Mail, Calendar and Contacts pages
-# (live.py): SOGo's real pages rendered from its .wox templates, which run against the fake
+# copied from SOGo's templates. It also builds the "live" Mail, Calendar, Contacts and Settings
+# pages (live.py): SOGo's real pages rendered from its .wox templates, which run against the fake
 # server in backend.mjs.
 # Output: tests/ui/.cache/sogo-root (served as the web root on port 8095), live page in live/.
 set -euo pipefail
@@ -15,16 +15,18 @@ mkdir -p "$cache"
 
 version=$(grep -o 'ghcr.io/mailcow/sogo:[0-9.]*' "$repo/docker-compose.yml" | head -n 1 | sed 's/.*sogo://; s/\.$//')
 src="$cache/sogo-$version"
-# Web resources, the .wox templates and the English strings (for the live page, see live.py)
+# Web resources, the .wox templates, the English strings and the languages' locales (for the
+# live pages, see live.py)
 parts="UI/WebServerResources/css UI/WebServerResources/js UI/WebServerResources/img UI/Templates
   UI/Common/English.lproj UI/MailerUI/English.lproj UI/PreferencesUI/English.lproj
-  UI/Scheduler/English.lproj UI/Contacts/English.lproj"
+  UI/Scheduler/English.lproj UI/Contacts/English.lproj UI/MainUI"
 if [ ! -d "$src/UI/WebServerResources/js" ]; then
   rm -rf "$src"
   git -c advice.detachedHead=false clone --quiet --depth 1 --branch "SOGo-$version" --filter=blob:none --sparse https://github.com/Alinto/sogo.git "$src"
 fi
 if [ ! -f "$src/UI/Scheduler/English.lproj/Localizable.strings" ] || [ ! -f "$src/UI/Contacts/English.lproj/Localizable.strings" ] \
-    || [ ! -f "$src/UI/MailerUI/English.lproj/Localizable.strings" ] || [ ! -d "$src/UI/WebServerResources/img" ]; then
+    || [ ! -f "$src/UI/MailerUI/English.lproj/Localizable.strings" ] || [ ! -d "$src/UI/WebServerResources/img" ] \
+    || [ ! -f "$src/UI/MainUI/English.lproj/Locale" ]; then
   # shellcheck disable=SC2086
   git -C "$src" sparse-checkout set $parts
 fi

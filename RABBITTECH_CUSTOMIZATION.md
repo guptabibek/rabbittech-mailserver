@@ -248,9 +248,10 @@ two supported hooks, both loaded on every SOGo page (`SOGoUIAdditionalJSFiles` i
     switch it in the console and reload webmail.
   - The upstream `CKEDITOR.addCss(...)` line is guarded: SOGo 5 ships CKEditor 5, which has no
     `CKEDITOR` global, so that line threw an error on every page.
-- **Mail, Calendar and Contacts laid out like Gmail** (also `custom-sogo.js`). In all three apps
-  the top bar has the menu button and logo, a search box in the middle that is always there, and
-  the outlined app icons; the sidebar items are pills. Mail:
+- **Mail, Calendar, Contacts and Settings laid out like Gmail** (also `custom-sogo.js`). In all
+  four apps the top bar has the menu button and logo and the outlined app icons, and the sidebar
+  items are pills. Mail, Calendar and Contacts also have a search box in the middle of the top
+  bar that is always there. Mail:
   - Top bar: the folder search is a search box in the middle that is always there (the `s` key
     still focuses it, and emptying it shows the whole folder again). The menu button hides the
     folder list; the logo then moves into the top bar.
@@ -281,30 +282,47 @@ two supported hooks, both loaded on every SOGo page (`SOGoUIAdditionalJSFiles` i
   - The contact list and the open contact are cards, with 56px rows that lift under the pointer.
   - A contact opens with a large avatar, the name and description, then label and value rows.
     The editor gets a white header with Save as the one coloured button.
-- How the layout works, in all three apps:
+- Settings (SOGo's Preferences), like Gmail's settings:
+  - The top bar is the other apps' (no tall violet bar or big date), with "Settings" as the
+    title. The logo leads to Mail, and the settings button by the logo shows as the current place.
+  - The sections (General, Calendar, Address Book, Mail) are pills in the sidebar. Each section's
+    tabs are text tabs with a violet underline on one card, with the settings in a readable
+    column, sub-options indented and the Create, Add and Reset buttons as outlined pills.
+  - Save is no longer a round button in the top bar: a bar under the page shows "Unsaved
+    changes" and Save while something has changed. It runs SOGo's own save, and SOGo's
+    "Preferences saved" message follows.
+  - The account and filter dialogs (SOGo fetches them over HTTP) are only restyled: white
+    header, the name field as the title, pill buttons.
+  - The settings themselves stay where SOGo puts them, so upgrades keep working.
+- How the layout works, in all four apps:
   - **How it works:** each app's main templates are `<script type="text/ng-template">` blocks in
     the page. Before Angular starts, `custom-sogo.js` parses them, changes them and writes them
     back, and registers the few Angular functions the new buttons call. Those use SOGo's own
     services (`toggleFlag`, `toggleRead`, `$deleteMessages`, `$moveMessages`, `newMessage`,
-    the lists' `newComponent`).
+    the lists' `newComponent`). Settings needs none: its new markup calls SOGo's own
+    `app.save` and `app.confirmChanges`.
   - Templates SOGo fetches over HTTP are only restyled, not rewritten: the calendar's day, week
-    and month views, and the event, task and contact editors. Each calendar's colour is also
+    and month views, the event, task and contact editors, and Settings' account and filter
+    dialogs. Each calendar's colour is also
     published as `--rt-folder` (a decorator on SOGo's `sgFolderStylesheet`), so the agenda can
     draw dots in it.
   - **Fail-safe:** each change first checks that the markup it needs is there. If a SOGo upgrade
     changed it, that change is skipped with a console warning ("RabbitTech mail layout: …",
-    "RabbitTech calendar layout: …", "RabbitTech contacts layout: …"). The styles that depend on
+    "RabbitTech calendar layout: …", "RabbitTech contacts layout: …", "RabbitTech prefs
+    layout: …"). The styles that depend on
     it don't apply either (`html.rt-gmail-<change>`), so that part stays as SOGo has it instead
     of breaking.
   - **Classic layout:** a top bar button (columns icon) switches to SOGo's classic layout with the
-    RabbitTech look, and back, in all three apps at once. The choice is kept per browser
-    (`localStorage.rt_webmail_layout`).
+    RabbitTech look, and back, in all four apps at once. The choice is kept per browser
+    (`localStorage.rt_webmail_layout`). On Settings the button is a link (`?rt-layout=classic`
+    or `?rt-layout=new`), so SOGo first asks whether to save unsaved changes, as it does for its
+    other top bar buttons.
   - **Limits:** SOGo sends no preview text, so rows show the subject without Gmail's snippet.
     There are no inbox tabs, snooze or Gmail-style conversations. Rows stay 56px high, because
     SOGo's scrolling code relies on that height. Calendar has no mini month in the sidebar, and
     Today, back and forward stay in the calendar's header (they belong to the view SOGo fetches).
-  - **After a SOGo upgrade**, run the UI tests (they run SOGo's real Mail, Calendar and Contacts
-    apps, see below) and look for "RabbitTech … layout" warnings in the browser console on
+  - **After a SOGo upgrade**, run the UI tests (they run SOGo's real Mail, Calendar, Contacts
+    and Settings apps, see below) and look for "RabbitTech … layout" warnings in the browser console on
     `/webmail`.
 - **Caching:** these two files keep the same URL across releases, so nginx sends them with
   `Cache-Control: no-cache` (`data/conf/nginx/templates/sites-default.conf.j2`). A deploy restarts
@@ -386,14 +404,15 @@ server:
   `php -S 127.0.0.1:8088 tests/ui/router.php` to look at pages by hand.
 - `sogo/prepare.sh` builds a webmail mock from SOGo's own stylesheets and scripts at the version in
   `docker-compose.yml`, plus `data/conf/sogo`, with page markup copied from SOGo's templates.
-- It also builds the **live Mail, Calendar and Contacts pages**:
+- It also builds the **live Mail, Calendar, Contacts and Settings pages**:
   - `sogo/wox.py` renders SOGo's own `.wox` templates the way SOGo's framework does (patched with
     mailcow's toolbar change), and `sogo/live.py` assembles the pages with SOGo's real scripts.
   - The calendar's day, week and month views are rendered for the weeks around Thursday 15
     October 2026, the date the tests pin the browser's clock to.
   - `sogo/backend.mjs` and `sogo/backend-apps.mjs` answer the apps' requests like SOGo does, from
     an in-memory mailbox, calendars with a week of events, and address books, which really flag,
-    move, delete and save.
+    move, delete and save. Settings' Save is recorded, and its account and filter dialogs are
+    served like SOGo's.
   - So SOGo's real apps run in the browser, with or without our `custom-sogo.js`.
     `node sogo/live-check.mjs` walks through Mail on its own and prints anything the fake server
     doesn't know.
@@ -433,6 +452,17 @@ server:
     back, forward, Today, month and day views; switching a calendar off; an event's dialog.
   - Contacts: 56px rows; the contact card; Create greyed out in a read-only address book.
   - The classic switch, dark mode, phone width and the fail-safe, as in Mail.
+- In live Settings:
+  - Stock SOGo runs. Every change applies: the other apps' top bar with the title, the logo to
+    Mail and the console button's name; no Save button in the bar; and no icon shows as its name.
+  - The sidebar opens a section as a pill.
+  - Vacation: turning it on and writing the reply shows the Save bar. Save sends both to the
+    server, then the bar goes and "Preferences saved" shows. Forward: an added address is saved.
+  - Create Filter and Edit account open SOGo's dialogs, restyled.
+  - With unsaved changes, the layout switch shows SOGo's prompt first. The classic layout keeps
+    the section and has a way back.
+  - Dark mode, phone width (the Save bar spans the screen, the menu opens the sections) and the
+    fail-safe.
 
 Run locally:
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Builds the "live" webmail pages: SOGo's real Mail, Calendar and Contacts pages
-(UIxPageFrame.wox wrapped around UIxMailMainFrame.wox, UIxCalMainView.wox and
-UIxContactFoldersView.wox, rendered by wox.py) plus the templates and data the apps ask the
-server for. tests/ui/sogo/backend.mjs serves these files from Playwright route handlers.
+"""Builds the "live" webmail pages: SOGo's real Mail, Calendar, Contacts and Settings pages
+(UIxPageFrame.wox wrapped around UIxMailMainFrame.wox, UIxCalMainView.wox,
+UIxContactFoldersView.wox and UIxPreferences.wox, rendered by wox.py) plus the templates and data
+the apps ask the server for. tests/ui/sogo/backend.mjs serves these files from Playwright route
+handlers.
 
 Values mirror what SOGo 5.12 sends a mailcow user with default preferences: data/conf/sogo/
 sogo.conf for the system defaults, SoObjects/SOGo/SOGoDefaults.plist for SOGo's own, and the
@@ -14,7 +15,8 @@ Output: view.html (the Mail page), view-plain.html (the same without SOGoUIAddit
 without our theme.js and custom-sogo.js), UIxMailEditor.html and the other templates fetched
 over HTTP, parts.json (mail part viewers with @@...@@ placeholders) and data.json (JSON the
 backend answers with). @@CURRENT_DAY@@ in the pages is filled in by the backend per request.
-calendar/ and contacts/ hold the same for those apps; the calendar's day, week and month views
+calendar/, contacts/ and prefs/ hold the same for those apps (prefs/ also has the account and
+filter dialogs Settings fetches); the calendar's day, week and month views
 (templates the server renders per date) are rendered for the weeks around TODAY, the date the
 tests pin the browser's clock to."""
 import datetime
@@ -129,7 +131,7 @@ defaults = {
     'SOGoLongDateFormat': '%A, %B %d, %Y',
     'SOGoTimeFormat': '%H:%M',
     'SOGoLoginModule': 'Mail',
-    'SOGoRefreshViewCheck': 'manually',
+    'SOGoRefreshViewCheck': 'every_minute',         # sogo.conf
     'SOGoGravatarEnabled': False,
     'SOGoAlternateAvatar': 'none',
     'SOGoAnimationMode': 'normal',
@@ -598,6 +600,171 @@ write('apps.json', json.dumps({
     'calendars': calendars, 'addressBooks': address_books,
     'labels': {'SchedulerUI': scheduler, 'ContactsUI': contacts},
 }, indent=1))
+
+# ================================================================== Settings (UI/PreferencesUI/UIxPreferences.m)
+# The page is /SOGo/so/bibek/Preferences, a page of the user folder: its modulePath has no
+# trailing slash (UIxComponent modulePath) and the other apps' paths are relative to the user
+# folder (relativePathToUserFolderSubPath).
+REFERENCE_DAY = TODAY.replace(day=1) if TODAY.day > 9 else TODAY      # UIxPreferences init: the date the format examples show
+SUPPORTED_LANGUAGES = [                                                # SOGoDefaults.plist SOGoSupportedLanguages
+    'Arabic', 'Basque', 'Bosnian', 'Bulgarian', 'Catalan', 'ChineseChina', 'ChineseTaiwan', 'Croatian', 'Czech', 'Danish',
+    'Dutch', 'English', 'Finnish', 'French', 'Galician', 'German', 'Greek', 'Hebrew', 'Hungarian', 'Icelandic',
+    'Indonesian', 'Italian', 'Japanese', 'Kazakh', 'Korean', 'Latvian', 'Lithuanian', 'Macedonian', 'Montenegrin',
+    'NorwegianBokmal', 'NorwegianNynorsk', 'Polish', 'Portuguese', 'BrazilianPortuguese', 'Romanian', 'Russian',
+    'Serbian', 'SerbianLatin', 'Slovak', 'Slovenian', 'SpanishArgentina', 'SpanishSpain', 'Swedish', 'Thai',
+    'TurkishTurkey', 'Ukrainian', 'Welsh']
+REMINDERS = [('NONE', 'NONE'), ('5_MINUTES_BEFORE', '-PT5M'), ('10_MINUTES_BEFORE', '-PT10M'),
+             ('15_MINUTES_BEFORE', '-PT15M'), ('30_MINUTES_BEFORE', '-PT30M'), ('45_MINUTES_BEFORE', '-PT45M'),
+             ('1_HOUR_BEFORE', '-PT1H'), ('2_HOURS_BEFORE', '-PT2H'), ('5_HOURS_BEFORE', '-PT5H'),
+             ('15_HOURS_BEFORE', '-PT15H'), ('1_DAY_BEFORE', '-P1D'), ('2_DAYS_BEFORE', '-P2D'), ('1_WEEK_BEFORE', '-P1W')]
+# Dovecot's default Sieve extensions plus mailcow's sieve_extensions (data/conf/dovecot/dovecot.conf)
+SIEVE_CAPABILITIES = ['fileinto', 'reject', 'envelope', 'encoded-character', 'vacation', 'subaddress',
+                      'comparator-i;ascii-numeric', 'relational', 'regex', 'imap4flags', 'copy', 'include', 'variables',
+                      'body', 'enotify', 'environment', 'mailbox', 'date', 'index', 'ihave', 'duplicate', 'mime',
+                      'foreverypart', 'extracttext', 'notify', 'imapflags', 'vacation-seconds', 'editheader']
+
+
+def locale_code(language):
+    """NSLocaleCode from SOGo's MainUI/<language>.lproj/Locale (WOResourceManager localeForLanguageNamed)."""
+    path = os.path.join(src, 'UI', 'MainUI', language + '.lproj', 'Locale')
+    if not os.path.exists(path):
+        return None
+    import re
+    match = re.search(r'NSLocaleCode\s*=\s*"([^"]*)"', open(path, encoding='utf-8').read())
+    return match.group(1) if match else None
+
+
+def calendar_format(fmt, date):
+    """NSCalendarDate descriptionWithCalendarFormat: for the specifiers SOGo's formats use."""
+    values = {'d': '%02d' % date.day, 'e': str(date.day), 'm': '%02d' % date.month, 'y': '%02d' % (date.year % 100),
+              'Y': str(date.year), 'b': SHORT_MONTHS[date.month - 1], 'B': MONTHS[date.month - 1],
+              'a': SHORT_DAYS[(date.weekday() + 1) % 7], 'A': DAYS[(date.weekday() + 1) % 7],
+              'H': '00', 'I': '12', 'M': '00', 'S': '00', 'p': 'AM', '%': '%'}
+    out, i = [], 0
+    while i < len(fmt):
+        if fmt[i] == '%' and i + 1 < len(fmt):
+            out.append(values.get(fmt[i + 1], fmt[i:i + 2]))
+            i += 2
+        else:
+            out.append(fmt[i])
+            i += 1
+    return ''.join(out)
+
+
+def numbered(prefix):
+    """shortDateFmt_0, shortDateFmt_1, ... up to the first empty one."""
+    out = []
+    while prefs.get('%s_%d' % (prefix, len(out))):
+        out.append(prefs['%s_%d' % (prefix, len(out))])
+    return out
+
+
+def format_text(default_format):
+    def text(scope):
+        item = scope['item']
+        if item == 'default':
+            return '%s (%s)' % (label('default', prefs), calendar_format(default_format, REFERENCE_DAY))
+        return calendar_format(item, REFERENCE_DAY)
+    return text
+
+
+def item_label(pattern):
+    return lambda scope: label(pattern % scope['item'], prefs, common)
+
+
+known_zones = sorted((z for z in __import__('zoneinfo').available_timezones()
+                      if z.split('/')[0] in ('Africa', 'America', 'Antarctica', 'Arctic', 'Asia', 'Atlantic',
+                                             'Australia', 'Europe', 'Indian', 'Pacific')), key=str.lower)
+languages = sorted(SUPPORTED_LANGUAGES, key=lambda l: label(l, prefs, common).lower())
+week_days = SHORT_DAYS                                                # English Locale NSShortWeekDayNameArray
+prefs_bindings = app_bindings('SOGo.PreferencesUI', 'Preferences', 'PreferencesUI', prefs, 'Preferences', {
+    'relativeCalendarPath': 'Calendar', 'relativeContactsPath': 'Contacts', 'relativeMailPath': 'Mail',
+    'relativePreferencesPath': 'Preferences', 'relativeAdministrationPath': 'Administration', 'logoffPath': 'logoff',
+    # JavaScript values (the page's first script)
+    'mailCustomFromEnabled': 'true',                                  # sogo.conf SOGoMailCustomFromEnabled = YES
+    'forwardEnabled': 'true',                                         # SOGoForwardEnabled = YES
+    'notificationEnabled': False,                                     # no method: KVC finds isNotificationEnabled
+    'isVacationEnabled': True,                                        # SOGoVacationEnabled = YES
+    'timeZonesList': sogo_json(known_zones),
+    'defaultEmailAddresses': sogo_json([LOGIN]),
+    'defaultCalendarCategoriesColors': sogo_json({label(c, prefs): calendar_colors[c] for c in calendar_categories}),
+    'defaultContactsCategories': sogo_json(prefs['contacts_category_labels'].split(',')),
+    'forwardConstraints': '0',
+    'forwardConstraintsDomains': sogo_json([]),
+    'sieveCapabilities': sogo_json(SIEVE_CAPABILITIES),
+    # What mailcow's SOGo offers (sogo.conf, SOGoDefaults.plist; built without --enable-mfa)
+    'externalAvatarsEnabled': True, 'isTotpEnabled': False, 'shouldDisplayPasswordSection': False,
+    'shouldDisplayPasswordChange': False, 'shouldDisplayPasswordRecovery': False, 'isEasUIEnabled': True,
+    'mailAuxiliaryUserAccountsEnabled': True, 'showCreateIdentity': True, 'isSieveScriptsEnabled': True,
+    'isVacationPeriodEnabled': True, 'isForwardEnabled': True, 'isNotificationEnabled': False,
+    'vacationHeader.length': False, 'vacationFooter.length': False,  # no SOGoVacationHeader/FooterTemplateFile
+    'sogoVersion': '5.12.11',
+    # Choice lists and the text of each choice (the item accessors read the loop's item)
+    'languages': languages,
+    'languageText': lambda sc: label(sc['item'], prefs, common),
+    'languageLocale': lambda sc: {'NSLocaleCode': locale_code(sc['item'])},
+    'shortDateFormatsList': numbered('shortDateFmt'),
+    'itemShortDateFormatText': format_text('%m/%e/%y'),               # English Locale NSShortDateFormatString
+    'longDateFormatsList': ['default'] + numbered('longDateFmt'),
+    'itemLongDateFormatText': format_text('%A, %B %e, %Y'),           # NSDateFormatString
+    'timeFormatsList': ['default'] + numbered('timeFmt'),
+    'itemTimeFormatText': format_text('%H:%M'),                       # SOGoTimeFormat
+    'availableModules': ['Last', 'Contacts', 'Calendar', 'Mail'],
+    'itemModuleText': lambda sc: label(sc['item'], prefs, common),
+    'refreshViewList': ['manually', 'every_minute', 'every_2_minutes', 'every_5_minutes', 'every_10_minutes',
+                        'every_20_minutes', 'every_30_minutes', 'once_per_hour'],    # SOGoRefreshViewIntervals
+    'itemRefreshViewCheckText': item_label('refreshview_%s'),
+    'alternateAvatar': ['none', 'identicon', 'monsterid', 'wavatar', 'retro'],
+    'itemAlternateAvatarText': lambda sc: label(sc['item'], prefs, common),
+    'daysList': [str(d) for d in range(7)],
+    'itemWeekStartDay': lambda sc: DAYS[int(sc['item'])],
+    'hoursList': ['%02d:00' % h for h in range(24)],
+    'shortWeekDaysList': week_days,
+    'valueForWeekDay': lambda sc: ICAL_DAYS[week_days.index(sc['item'])],
+    'numberForWeekDay': lambda sc: week_days.index(sc['item']),
+    'firstWeekList': ['January1', 'First4DayWeek', 'FirstFullWeek'],
+    'itemFirstWeekText': item_label('firstWeekOfYear_%s'),
+    'defaultCalendarList': ['selected', 'personal', 'first'],
+    'itemCalendarText': item_label('%sCalendar'),
+    'calendarClassificationsList': ['PUBLIC', 'CONFIDENTIAL', 'PRIVATE'],
+    'itemClassificationText': item_label('%s_item'),
+    'reminderValues': [v for _, v in REMINDERS],
+    'itemReminderText': lambda sc: label('reminder_' + dict((v, k) for k, v in REMINDERS)[sc['item']], prefs),
+    # The user's own address books (GCS folders; the global one is LDAP)
+    'addressBookList': [{'id': b['id'], 'name': b['name']} for b in address_books if not b['isRemote']],
+    'messageForwardingList': ['inline', 'attached'],
+    'itemMessageForwardingText': item_label('messageforward_%s'),
+    'replyPlacementList': ['above', 'below'],
+    'itemReplyPlacementText': item_label('replyplacement_%s'),
+    'signaturePlacementList': ['above', 'below'],
+    'itemSignaturePlacementText': item_label('signatureplacement_%s'),
+    'composeMessagesType': ['text', 'html'],
+    'itemComposeMessagesText': item_label('composemessagestype_%s'),
+    'fontSizesList': ['8', '9', '10', '11', '12', '13', '14', '16', '18', '20', '22', '24', '26', '28', '36', '48', '72'],
+    'itemFontSizeText': lambda sc: '%s px' % sc['item'],
+    'displayRemoteInlineImages': ['never', 'always'],
+    'itemDisplayRemoteInlineImagesText': item_label('displayremoteinlineimages_%s'),
+    'daysBetweenResponsesList': ['1', '2', '3', '5', '7', '14', '21', '30'],  # no SOGoVacationAllowZeroDays
+})
+prefs_bindings['modulePath'] = FOLDER_URL + 'Preferences'
+prefs_tables = [prefs, common]
+# The dialogs Settings loads with templateUrl: editAccount?account=N|new (UIxAccountEditor) and
+# editFilter?filter=N|new (UIxFilterEditor; the backend fills in @@FILTER@@). Only UIxPageFrame
+# defines doctype, so these fragments start with nothing (with <!DOCTYPE html, SOGo's
+# AuthInterceptor would take them for the login page).
+dialog_bindings = dict(prefs_bindings, doctype=None, ownPath=FOLDER_URL + 'editAccount', showSecurityOptions=True,
+                       hideCreateIdentity=False, filterId='@@FILTER@@',
+                       labels=sogo_json({k: v for k, v in mail_labels.items()}))
+
+
+def prefs_page(name, component, extra=None):
+    write('prefs/' + name, render(component, extra, prefs_tables, prefs_bindings if component == 'UIxPreferences' else dialog_bindings))
+
+
+prefs_page('view.html', 'UIxPreferences')
+prefs_page('view-plain.html', 'UIxPreferences', {'systemAdditionalJSFiles': []})
+prefs_page('UIxAccountEditor.html', 'UIxAccountEditor')
+prefs_page('UIxFilterEditor.html', 'UIxFilterEditor')
 
 if problems:
     sys.exit('live.py: ' + '; '.join(problems))

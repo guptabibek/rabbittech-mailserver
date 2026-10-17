@@ -1,9 +1,12 @@
-// The Calendar and Contacts part of the fake SOGo server (backend.mjs routes /Calendar/ and
-// /Contacts/ requests here). Answers with the JSON shapes SOGo 5.12 sends:
+// The Calendar, Contacts and Settings part of the fake SOGo server (backend.mjs routes
+// /Calendar/, /Contacts/ and the Settings requests here). Answers with the JSON shapes SOGo 5.12
+// sends:
 //   Calendar: UI/Scheduler/UIxCalListingActions.m (eventslist, eventsblocks, taskslist),
 //             UIxCalMainActions.m, UIxAppointmentEditor.m / UIxTaskEditor.m (view, save)
 //   Contacts: UI/Contacts/UIxContactFoldersView.m, UIxContactsListActions.m (view, headers),
 //             UIxContactView.m / UIxContactEditor.m (card view, save)
+//   Settings: UI/PreferencesUI/product.plist, the user folder's Preferences, save,
+//             activeExternalSieveScripts (UIxJSONPreferences.m), editAccount and editFilter
 // backed by an in-memory store of calendars, events, tasks, address books and cards. The day,
 // week and month views are rendered by live.py for the weeks around TODAY (apps.json), the date
 // the tests pin the browser's clock to; the store's events sit in that week.
@@ -480,10 +483,37 @@ export function appsBackend({ apps, files, json, text, empty, html, login, pageF
     return null;
   }
 
+  // ---------------------------------------------------------------- Settings
+  // Pages of the user folder: /SOGo/so/<user>/Preferences, Preferences/save,
+  // activeExternalSieveScripts, editAccount?account=N|new and editFilter?filter=N|new
+  const prefsFile = name => files('prefs/' + name);
+  const saved = [];
+  const validId = id => id === 'new' || /^[0-9]*$/.test(id);            // UIxFilterEditor _validateFilterId
+
+  function preferences(entry, module, rest) {
+    const q = entry.query;
+    switch (module) {
+      case 'Preferences':
+        if (rest.length === 0) return html(pageFilter(prefsFile(custom ? 'view.html' : 'view-plain.html')).replace('@@CURRENT_DAY@@', currentDayJSON()));
+        // UIxPreferences saveAction: stores the user's defaults and settings, then Sieve
+        if (rest.length === 1 && rest[0] === 'save' && entry.method === 'POST') { saved.push(entry.body); return empty(200); }
+        return null;
+      // No other Sieve script is active: 404 (204 when one is)
+      case 'activeExternalSieveScripts': return empty(404);
+      case 'editAccount':
+        if (q.account === undefined) return text(403, "Missing 'account' parameter");
+        return validId(q.account) ? html(prefsFile('UIxAccountEditor.html')) : text(403, "Bad value for 'account'");
+      case 'editFilter':
+        if (q.filter === undefined) return text(403, "Missing 'filter' parameter");
+        return validId(q.filter) ? html(prefsFile('UIxFilterEditor.html').replace('@@FILTER@@', q.filter)) : text(403, "Bad value for 'filter'");
+    }
+    return null;
+  }
+
   return {
-    calendar, contacts,
+    calendar, contacts, preferences,
     labels: apps.labels,
-    store: { calendar: cal, contacts: con },
+    store: { calendar: cal, contacts: con, preferences: { saved } },
     event: summary => cal.events.find(e => e.summary === summary),
     card: name => Object.values(con.cards).flat().find(c => fullName(c) === name),
   };
