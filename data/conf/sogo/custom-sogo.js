@@ -898,6 +898,8 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
 //   compose  a Compose button at the top of the folder list, and one compose button on phones
 //   rows     a star on every message and Archive, Delete and Read/Unread when the pointer is on it
 //   back     the open message gets a back arrow and Archive; the list hides while one is open
+//   sort     the line above the list says the order in words ("Newest first"), and the sort
+//            menu says Date received and Date sent (in English; other languages keep SOGo's)
 // Calendar and Contacts:
 //   create   a Create button at the top of the sidebar: Event or Task, Contact or List
 //   colors   (Calendar) each calendar's colour as --rt-folder, for dots instead of filled cards
@@ -1036,6 +1038,24 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
         '<div class="rt-compose-bar" flex-none="flex-none">' +
         '<button type="button" class="rt-compose" ng-click="rtCompose($event)">' +
         '<md-icon>edit</md-icon><span>' + esc(composeLabel) + '</span></button></div>'), header.nextSibling);
+      return true;
+    };
+    // ---- message list: the order in words. SOGo's own label stays as the fallback, for other
+    // languages and sort keys rtSortText doesn't know.
+    var sortLine = function (box) {
+      var label = box.querySelector('#messagesList md-subheader span[ng-bind="mailbox.sort() | loc"]');
+      if (!label) return false;
+      label.setAttribute('ng-bind', 'rtSortText(mailbox.service.$query.sort, mailbox.ascending()) || (mailbox.sort() | loc)');
+      if (window.UserLanguage === 'English') {
+        [['arrival', 'Date received'], ['date', 'Date sent']].forEach(function (item) {
+          var button = box.querySelector('md-menu-item > md-button[ng-click="mailbox.sort(\'' + item[0] + '\')"]');
+          var icon = button && button.querySelector(':scope > md-icon');
+          var text = icon && icon.nextSibling;
+          if (!text || text.nodeType !== 3) return;
+          text.nodeValue = ' ' + item[1] + ' ';
+          icon.setAttribute('aria-label', item[1]);
+        });
+      }
       return true;
     };
     // One compose button on phones instead of SOGo's two-button menu
@@ -1402,6 +1422,19 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
               say('%{0} message(s) moved').replace('%{0}', '1'));
           }
         };
+        // The order of the message list in words (English); '' leaves SOGo's own label
+        var sortWords = {
+          arrival: ['Oldest first', 'Newest first'],
+          date: ['Oldest first, by date sent', 'Newest first, by date sent'],
+          subject: ['Subject A\u2013Z', 'Subject Z\u2013A'],
+          from: ['Sender A\u2013Z', 'Sender Z\u2013A'],
+          to: ['Recipient A\u2013Z', 'Recipient Z\u2013A'],
+          size: ['Smallest first', 'Largest first']
+        };
+        $rootScope.rtSortText = function (key, asc) {
+          var words = window.UserLanguage === 'English' && sortWords[key];
+          return words ? words[Number(asc) === 1 ? 0 : 1] : '';
+        };
         $rootScope.rtCompose = function ($event) {
           var list = window.$mailboxController;
           if (list && list.newMessage) list.newMessage($event);
@@ -1413,7 +1446,7 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
       }]);
 
       rewrite('UIxMailMainFrame', [layout, ['brand', brand], ['compose', compose]]);
-      rewrite('UIxMailFolderTemplate', [layout, ['brand', brand], ['search', search], ['rows', rows], ['fab', fab]]);
+      rewrite('UIxMailFolderTemplate', [layout, ['brand', brand], ['search', search], ['rows', rows], ['fab', fab], ['sort', sortLine]]);
       rewrite('UIxMailViewTemplate', [['back', back]]);
     }
     root.classList.add('rt-gmail', 'rt-app-' + app);

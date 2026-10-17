@@ -459,7 +459,26 @@ if (webmail) {
   };
   const openMail = (options = {}) => openApp(PAGE, 'md-list-item.sg-message-list-item .sg-tile-subject', options);
   const classes = page => page.evaluate(() => document.documentElement.className.split(/\s+/));
-  const changes = ['layout', 'brand', 'compose', 'search', 'rows', 'fab', 'back'].map(c => 'rt-gmail-' + c);
+  const changes = ['layout', 'brand', 'compose', 'search', 'rows', 'fab', 'sort', 'back'].map(c => 'rt-gmail-' + c);
+  // The order above the message list, in words, and a choice from the list's Sort menu
+  const sortLine = page => page.evaluate(() => {
+    const line = document.querySelector('#messagesList .md-subheader span[ng-bind^="rtSortText"]');
+    return line ? line.innerText.trim() : null;
+  });
+  // A menu that stays open (a checkmark) closes on a click outside it, as for a person
+  const closeMenu = async page => {
+    for (let i = 0; i < 3 && await page.locator('.md-open-menu-container.md-active').count(); i++) {
+      await page.locator('md-backdrop.md-menu-backdrop').first().click({ force: true }).catch(() => {});
+      await page.waitForTimeout(300);
+    }
+  };
+  const sortBy = async (page, item) => {
+    await page.click('.view-list .md-button[aria-label="Sort"]');
+    // A missing item fails the checks that follow, not the whole run
+    await page.locator('.md-open-menu-container.md-active md-menu-item', { hasText: item }).first().click({ timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    await closeMenu(page);
+  };
   const rows = page => page.locator('md-list-item.sg-message-list-item');
   // The message a list row shows (its directive's controller; Angular's scope() is off in SOGo)
   const messageOf = row => row.evaluate(el => {
@@ -532,6 +551,28 @@ if (webmail) {
     await box.fill('');
     const restored = await until(async () => (await rows(page).count()) === all);
     check('mail app: emptying the search box shows the whole folder again', restored, String(await rows(page).count()));
+
+    // The order in words instead of SOGo's "Order Received"
+    check('mail app: the line above the list says the order in words', (await sortLine(page)) === 'Newest first', await sortLine(page));
+    await page.click('.view-list .md-button[aria-label="Sort"]');
+    await page.locator('.md-open-menu-container.md-active md-menu-item').first().waitFor({ state: 'visible' });
+    const sortMenu = await page.locator('.md-open-menu-container.md-active md-menu-item').allInnerTexts();
+    await closeMenu(page);
+    const items = sortMenu.map(t => t.replace(/^check\s*/, '').trim());
+    check('mail app: the Sort menu says Date received and Date sent', items.includes('Date received') && items.includes('Date sent') &&
+      !items.includes('Order Received'), items.join(' | '));
+    await sortBy(page, 'Subject');
+    const bySubject = await until(async () => (await sortLine(page)) === 'Subject Z\u2013A');
+    const subjects = (await rows(page).locator('.sg-tile-subject').allInnerTexts()).slice(0, 3);
+    check('mail app: sorting by subject says "Subject Z\u2013A" and the server sorts the folder', bySubject &&
+      backend.calls('view').some(c => JSON.stringify(c.body || '').includes('"sort":"subject"')) && subjects[0].startsWith('W'),
+      (await sortLine(page)) + ' ' + JSON.stringify(subjects));
+    await sortBy(page, 'Descending Order');
+    check('mail app: ascending, the line says "Subject A\u2013Z"', await until(async () => (await sortLine(page)) === 'Subject A\u2013Z'), await sortLine(page));
+    await sortBy(page, 'Date received');
+    check('mail app: by date received, ascending, the line says "Oldest first"', await until(async () => (await sortLine(page)) === 'Oldest first'), await sortLine(page));
+    await sortBy(page, 'Descending Order');
+    check('mail app: back to the usual order, newest first', await until(async () => (await sortLine(page)) === 'Newest first'), await sortLine(page));
 
     // Rows: one line, 56px apart (SOGo's scrolling relies on it)
     const geo = await rows(page).first().evaluate(el => {
@@ -660,6 +701,14 @@ if (webmail) {
     check('mail app fail-safe: without the back arrow the list stays beside the open message',
       await page.evaluate(() => getComputedStyle(document.querySelector('.view-list')).visibility === 'visible'));
     check('mail app fail-safe: no errors', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+  {
+    // In other languages the order keeps SOGo's own (translated) label
+    const pageFilter = html => html.replace("var UserLanguage = 'English';", "var UserLanguage = 'French';");
+    const { ctx, page } = await openMail({ pageFilter });
+    check('mail app: in other languages the order keeps SOGo\'s own label', (await classes(page)).includes('rt-gmail-sort') &&
+      (await sortLine(page)) === 'Order Received', await sortLine(page));
     await ctx.close();
   }
 
@@ -946,6 +995,12 @@ if (webmail) {
       enabled: !document.querySelector('.rt-save-bar .rt-save').disabled, text: bar.textContent.trim().replace(/\s+/g, ' ') } : null;
   });
   const saved = backend => backend.apps.store.preferences.saved;
+  // Save, once SOGo turns it on (an invalid form keeps it off: then the check that follows fails)
+  const clickSave = async page => {
+    const on = await until(() => page.locator('.rt-save-bar .rt-save:not([disabled])').count().then(n => n === 1));
+    if (on) await page.click('.rt-save-bar .rt-save');
+    return on;
+  };
   {
     const { ctx, page, errors } = await openPrefs('#!/general', { custom: false });
     check('settings: stock SOGo runs against the fake server without errors', errors.length === 0, errors.join(' | '));
@@ -993,7 +1048,7 @@ if (webmail) {
     const dirty = await saveBar(page);
     check('settings: a change shows the Save bar, with Save on', !!dirty && dirty.enabled && /Unsaved changes/.test(dirty.text), JSON.stringify(dirty));
     await page.screenshot({ path: join(output, 'webmail-prefs-vacation.png') });
-    await page.click('.rt-save-bar .rt-save');
+    await clickSave(page);
     check('settings: Save sends the vacation reply to the server', await until(() => saved(backend).length === 1) &&
       saved(backend)[0].defaults.Vacation.enabled === 1 && saved(backend)[0].defaults.Vacation.autoReplyText === 'I am away until Monday.',
       JSON.stringify(saved(backend)[0] && saved(backend)[0].defaults.Vacation));
@@ -1003,11 +1058,14 @@ if (webmail) {
     // Forward: an address, Save
     await openTab(page, 'Forward');
     await page.click('md-checkbox[ng-model="app.preferences.defaults.Forward.enabled"]');
-    // SOGo makes the typed address a chip on a comma (Enter is ignored there)
-    await page.locator('#forwardAddress input').pressSequentially('backup@example.com');
+    // SOGo makes the typed address a chip on a comma (Enter is ignored there). The field shows
+    // on an animation frame after the box is ticked: typing before that goes nowhere.
+    const field = page.locator('#forwardAddress input');
+    await field.waitFor({ state: 'visible' });
+    await field.pressSequentially('backup@example.com');
     await page.keyboard.press(',');
     const chip = await until(() => page.locator('#forwardAddress md-chip', { hasText: 'backup@example.com' }).count().then(n => n === 1));
-    if (chip) await page.click('.rt-save-bar .rt-save');
+    if (chip) await clickSave(page);
     check('settings: Save sends the forwarding address', chip && await until(() => saved(backend).length === 2) &&
       saved(backend)[1].defaults.Forward.enabled === 1 && (saved(backend)[1].defaults.Forward.forwardAddress || []).includes('backup@example.com'),
       chip ? JSON.stringify(saved(backend)[1] && saved(backend)[1].defaults.Forward) : 'the address did not become a chip');
@@ -1041,10 +1099,10 @@ if (webmail) {
     await page.waitForTimeout(300);
     await page.click('#accountForm md-dialog-actions .md-button.md-primary');
     await page.waitForSelector('md-dialog', { state: 'detached' });
-    await page.click('.rt-save-bar .rt-save');
-    check('settings: a signature written in the account dialog is saved', await until(() => saved(backend).length === 3) &&
-      saved(backend)[2].defaults.AuxiliaryMailAccounts[0].identities[0].signature === '<p>Bibek, RabbitTech</p>',
-      JSON.stringify(saved(backend)[2] && saved(backend)[2].defaults.AuxiliaryMailAccounts[0].identities[0]));
+    const signature = body => body.defaults.AuxiliaryMailAccounts[0].identities[0].signature;
+    check('settings: a signature written in the account dialog is saved', await clickSave(page) &&
+      await until(() => saved(backend).some(body => signature(body) === '<p>Bibek, RabbitTech</p>')),
+      JSON.stringify(saved(backend).map(signature)));
     // SOGo's signature editor logs this for an identity without a signature yet (mailcow's
     // default identity has none); stock SOGo does the same, and the signature saves (above)
     const ours = errors.filter(e => !/CKEditorError: Cannot convert undefined or null to object/.test(e));
