@@ -555,6 +555,7 @@ if (webmail) {
     // The order in words instead of SOGo's "Order Received"
     check('mail app: the line above the list says the order in words', (await sortLine(page)) === 'Newest first', await sortLine(page));
     await page.click('.view-list .md-button[aria-label="Sort"]');
+    await page.locator('.md-open-menu-container.md-active md-menu-item').first().waitFor({ state: 'visible' });
     const sortMenu = await page.locator('.md-open-menu-container.md-active md-menu-item').allInnerTexts();
     await closeMenu(page);
     const items = sortMenu.map(t => t.replace(/^check\s*/, '').trim());
@@ -994,6 +995,12 @@ if (webmail) {
       enabled: !document.querySelector('.rt-save-bar .rt-save').disabled, text: bar.textContent.trim().replace(/\s+/g, ' ') } : null;
   });
   const saved = backend => backend.apps.store.preferences.saved;
+  // Save, once SOGo turns it on (an invalid form keeps it off: then the check that follows fails)
+  const clickSave = async page => {
+    const on = await until(() => page.locator('.rt-save-bar .rt-save:not([disabled])').count().then(n => n === 1));
+    if (on) await page.click('.rt-save-bar .rt-save');
+    return on;
+  };
   {
     const { ctx, page, errors } = await openPrefs('#!/general', { custom: false });
     check('settings: stock SOGo runs against the fake server without errors', errors.length === 0, errors.join(' | '));
@@ -1041,7 +1048,7 @@ if (webmail) {
     const dirty = await saveBar(page);
     check('settings: a change shows the Save bar, with Save on', !!dirty && dirty.enabled && /Unsaved changes/.test(dirty.text), JSON.stringify(dirty));
     await page.screenshot({ path: join(output, 'webmail-prefs-vacation.png') });
-    await page.click('.rt-save-bar .rt-save');
+    await clickSave(page);
     check('settings: Save sends the vacation reply to the server', await until(() => saved(backend).length === 1) &&
       saved(backend)[0].defaults.Vacation.enabled === 1 && saved(backend)[0].defaults.Vacation.autoReplyText === 'I am away until Monday.',
       JSON.stringify(saved(backend)[0] && saved(backend)[0].defaults.Vacation));
@@ -1051,11 +1058,14 @@ if (webmail) {
     // Forward: an address, Save
     await openTab(page, 'Forward');
     await page.click('md-checkbox[ng-model="app.preferences.defaults.Forward.enabled"]');
-    // SOGo makes the typed address a chip on a comma (Enter is ignored there)
-    await page.locator('#forwardAddress input').pressSequentially('backup@example.com');
+    // SOGo makes the typed address a chip on a comma (Enter is ignored there). The field shows
+    // on an animation frame after the box is ticked: typing before that goes nowhere.
+    const field = page.locator('#forwardAddress input');
+    await field.waitFor({ state: 'visible' });
+    await field.pressSequentially('backup@example.com');
     await page.keyboard.press(',');
     const chip = await until(() => page.locator('#forwardAddress md-chip', { hasText: 'backup@example.com' }).count().then(n => n === 1));
-    if (chip) await page.click('.rt-save-bar .rt-save');
+    if (chip) await clickSave(page);
     check('settings: Save sends the forwarding address', chip && await until(() => saved(backend).length === 2) &&
       saved(backend)[1].defaults.Forward.enabled === 1 && (saved(backend)[1].defaults.Forward.forwardAddress || []).includes('backup@example.com'),
       chip ? JSON.stringify(saved(backend)[1] && saved(backend)[1].defaults.Forward) : 'the address did not become a chip');
@@ -1089,10 +1099,10 @@ if (webmail) {
     await page.waitForTimeout(300);
     await page.click('#accountForm md-dialog-actions .md-button.md-primary');
     await page.waitForSelector('md-dialog', { state: 'detached' });
-    await page.click('.rt-save-bar .rt-save');
-    check('settings: a signature written in the account dialog is saved', await until(() => saved(backend).length === 3) &&
-      saved(backend)[2].defaults.AuxiliaryMailAccounts[0].identities[0].signature === '<p>Bibek, RabbitTech</p>',
-      JSON.stringify(saved(backend)[2] && saved(backend)[2].defaults.AuxiliaryMailAccounts[0].identities[0]));
+    const signature = body => body.defaults.AuxiliaryMailAccounts[0].identities[0].signature;
+    check('settings: a signature written in the account dialog is saved', await clickSave(page) &&
+      await until(() => saved(backend).some(body => signature(body) === '<p>Bibek, RabbitTech</p>')),
+      JSON.stringify(saved(backend).map(signature)));
     // SOGo's signature editor logs this for an identity without a signature yet (mailcow's
     // default identity has none); stock SOGo does the same, and the signature saves (above)
     const ours = errors.filter(e => !/CKEditorError: Cannot convert undefined or null to object/.test(e));
