@@ -900,6 +900,13 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
 //   back     the open message gets a back arrow and Archive; the list hides while one is open
 //   sort     the line above the list says the order in words ("Newest first"), and the sort
 //            menu says Date received and Date sent (in English; other languages keep SOGo's)
+// Mail's compose window (UIxMailEditor, which SOGo fetches over HTTP; an $http interceptor
+// changes its markup on the way in, before $templateCache keeps it):
+//   composer a slim bar (the subject or "New Message", minimise, full screen, close), then From
+//            (only with more than one identity), To with Cc and Bcc on its line, and Subject
+//   actions  a bottom bar: Send as a pill, Aa to show or hide the formatting bar (CKEditor's
+//            toolbar, moved above it), attach, CKEditor's link, emoji and image buttons, and
+//            SOGo's options with Save draft
 // Calendar and Contacts:
 //   create   a Create button at the top of the sidebar: Event or Task, Contact or List
 //   colors   (Calendar) each calendar's colour as --rt-folder, for dots instead of filled cards
@@ -917,9 +924,9 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
 // all the markup it needs and is skipped (with a console warning) if a SOGo upgrade changed it;
 // the html element carries an rt-gmail-<change> class for each change that was made, and the
 // styles that depend on a change only apply with its class, so a mismatch leaves SOGo's own
-// behaviour. Templates SOGo fetches
-// over HTTP (the calendar's views, the event and contact editors, the account and filter
-// dialogs of Settings) are only styled.
+// behaviour. Other templates SOGo
+// fetches over HTTP (the calendar's views, the event and contact editors, the account and
+// filter dialogs of Settings) are only styled.
 // localStorage rt_webmail_layout = "classic" turns all of it off, in all four apps, except the
 // switch back.
 (function () {
@@ -971,22 +978,30 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
       return t.content;
     };
     var done = [];
-    var rewrite = function (id, changes) {
-      var script = document.getElementById(id), box, changed = false;
-      if (!script) return warn(id + ' not found');
-      box = inert.createElement('div');
-      box.innerHTML = script.text;
+    // The changes to one template's markup; returns the new markup, or null if none was made.
+    // applied(name) runs for each change that was made.
+    var change = function (id, markup, changes, applied) {
+      var box = inert.createElement('div'), changed = false;
+      box.innerHTML = markup;
       changes.forEach(function (change) {
         var ok = false;
         try { ok = change[1](box) === true; } catch (e) { warn(id + ': ' + change[0] + ': ' + e); }
         if (ok) {
           changed = true;
-          if (done.indexOf(change[0]) < 0) done.push(change[0]);
+          applied(change[0]);
         } else {
           warn(id + ': "' + change[0] + '" skipped, the template is not as expected');
         }
       });
-      if (changed) script.text = box.innerHTML;
+      return changed ? box.innerHTML : null;
+    };
+    var rewrite = function (id, changes) {
+      var script = document.getElementById(id);
+      if (!script) return warn(id + ' not found');
+      var markup = change(id, script.text, changes, function (name) {
+        if (done.indexOf(name) < 0) done.push(name);
+      });
+      if (markup !== null) script.text = markup;
     };
 
     // ---- top bar (every screen of the app). Settings' bar is found by its place, so the
@@ -1151,10 +1166,116 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
       return true;
     };
 
+    // ---- compose, like Gmail's. SOGo fetches its window (UIxMailEditor) over HTTP; an $http
+    // interceptor (mail.config below) runs these on it. actions runs first, so that if
+    // composer can't apply, Send and Save stay where SOGo put them.
+    var english = window.UserLanguage === 'English';
+    // The bottom bar: Send, formatting on and off, attach, the editor's link, emoji and image
+    // buttons (rtComposer.ready puts them in .rt-compose-tools), and SOGo's options with Save draft
+    var actions = function (box) {
+      var form = box.querySelector('md-dialog.sg-mail-editor > form');
+      var top = form && form.querySelector(':scope > md-toolbar');
+      var send = top && top.querySelector('md-button[ng-click="editor.send()"]');
+      var save = top && top.querySelector('md-button[ng-click="editor.save()"]');
+      var attachments = form && form.querySelector(':scope > md-dialog-actions.sg-mail-editor-attachments');
+      var attach = attachments && attachments.querySelector('label[for="fileInput"]');
+      var file = attachments && attachments.querySelector('input#fileInput[type="file"]');
+      var menu = form && form.querySelector('md-dialog-content > header > .msg-header-buttons > md-menu');
+      var options = menu && menu.querySelector(':scope > md-menu-content');
+      if (!send || !save || !attach || !file || !options) return false;
+      var formatting = english ? 'Formatting options' : say('Options');
+      var bar = html(
+        '<div class="rt-compose-format" ng-show="editor.composeType == \'html\' && !editor.rtNoFormat"></div>' +
+        '<div class="rt-compose-actions" ng-init="editor.rtNoFormat = rtComposer.formatOff()">' +
+        '<md-button class="md-icon-button rt-format-toggle" ng-if="editor.composeType == \'html\'" ng-class="{ \'rt-on\': !editor.rtNoFormat }"' +
+        ' ng-click="rtComposer.toggleFormat(editor)" aria-label="' + esc(formatting) + '"><md-icon>text_format</md-icon>' +
+        '<md-tooltip md-direction="top">' + esc(formatting) + '</md-tooltip></md-button>' +
+        '<span class="rt-compose-tools"></span></div>');
+      var row = bar.lastChild;
+      // Send: SOGo's own button, with its conditions and sending animation, as a pill
+      send.classList.remove('sg-icon-button');
+      send.classList.add('md-raised', 'md-primary', 'rt-send');
+      send.textContent = say('Send');
+      row.insertBefore(send, row.firstChild);
+      row.insertBefore(attach, row.querySelector('.rt-compose-tools'));
+      row.insertBefore(file, row.querySelector('.rt-compose-tools'));
+      // Save draft leads SOGo's options menu; the menu goes to the end of the bar
+      save.parentNode.removeChild(save);
+      options.insertBefore(html('<md-menu-item><md-button ng-click="editor.save()"><md-icon>drafts</md-icon> ' +
+        esc(english ? 'Save draft' : say('Save')) + '</md-button></md-menu-item><md-menu-divider></md-menu-divider>'), options.firstChild);
+      menu.setAttribute('md-position-mode', 'target-right bottom');
+      row.appendChild(menu);
+      var emptied = attachments.querySelector('.msg-header-buttons');
+      if (emptied && !emptied.querySelector('*:not(md-icon)')) emptied.parentNode.removeChild(emptied);
+      attachments.parentNode.insertBefore(bar, attachments.nextSibling);
+      // The editor's own toolbar and buttons move into the bar once CKEditor has started
+      var editor = form.querySelector('sg-ckeditor[on-instance-ready]');
+      if (editor) editor.setAttribute('on-instance-ready', editor.getAttribute('on-instance-ready') + '; rtComposer.ready($editor)');
+      return true;
+    };
+    // A slim bar (the subject or "New Message", minimise, full screen, close), then From (when
+    // there is a choice), To with Cc and Bcc on its line, and Subject as plain lines
+    var composer = function (box) {
+      var dialog = box.querySelector('md-dialog.sg-mail-editor');
+      var top = dialog && dialog.querySelector(':scope > form > md-toolbar');
+      var tools = top && top.querySelector(':scope > .md-toolbar-tools');
+      var full = tools && tools.querySelector('md-button[ng-click^="editor.toggleFullscreen"]');
+      var close = tools && tools.querySelector('md-button[ng-click="editor.cancel()"]');
+      var from = tools && tools.querySelector('md-autocomplete[md-input-name="from"]');
+      var lines = dialog && dialog.querySelector('md-dialog-content > header > .msg-header-content');
+      var to = lines && lines.querySelector(':scope > .pseudo-input-container > md-chips[ng-model="editor.message.editable.to"]');
+      var header = lines && lines.parentNode;
+      var cc = header && header.querySelector('.msg-header-buttons > md-button[ng-click="editor.hideCc = false"]');
+      var bcc = header && header.querySelector('.msg-header-buttons > md-button[ng-click="editor.hideBcc = false"]');
+      var subject = lines && lines.querySelector('md-input-container > input[name="subject"]');
+      var fullIcon = full && full.querySelector('md-icon');
+      if (!close || !fullIcon || !from || !to || !cc || !bcc || !subject) return false;
+      // The bar: whatever actions left in it (Send and Save if it couldn't move them) stays
+      var kept = [].slice.call(tools.querySelectorAll(':scope > md-button[ng-click="editor.send()"], :scope > md-button[ng-click="editor.save()"]'));
+      tools.textContent = '';
+      tools.appendChild(html('<span class="rt-compose-title" flex="flex">{{ editor.message.editable.subject || rtText.newMessage }}</span>'));
+      kept.forEach(function (button) { tools.appendChild(button); });
+      tools.appendChild(html('<md-button class="md-icon-button rt-compose-min" ng-click="editor.rtMin = !editor.rtMin; $event.stopPropagation()"' +
+        ' aria-label="{{ editor.rtMin ? rtText.restore : rtText.minimise }}"><md-icon>{{ editor.rtMin ? \'expand_less\' : \'minimize\' }}</md-icon>' +
+        '<md-tooltip md-direction="top">{{ editor.rtMin ? rtText.restore : rtText.minimise }}</md-tooltip></md-button>'));
+      fullIcon.textContent = "{{ editor.isFullscreen ? 'close_fullscreen' : 'open_in_full' }}";
+      [].slice.call(full.querySelectorAll(':scope > md-tooltip')).forEach(function (tip) { full.removeChild(tip); });
+      full.removeAttribute('aria-hidden');
+      full.setAttribute('aria-label', '{{ editor.isFullscreen ? rtText.exitFull : rtText.fullScreen }}');
+      full.insertBefore(html('<md-tooltip md-direction="top">{{ editor.isFullscreen ? rtText.exitFull : rtText.fullScreen }}</md-tooltip>'), full.firstChild);
+      close.setAttribute('aria-label', say('Close'));
+      close.insertBefore(html('<md-tooltip md-direction="top">' + esc(say('Close')) + '</md-tooltip>'), close.firstChild);
+      tools.appendChild(full);
+      tools.appendChild(close);
+      // A minimised window is only its bar; clicking the bar opens it again
+      top.setAttribute('ng-click', 'editor.rtMin && (editor.rtMin = false)');
+      dialog.setAttribute('ng-class', "{ 'rt-min': editor.rtMin }");
+      // From, as a line, when the account has more than one identity
+      var fromLine = html('<div class="pseudo-input-container rt-from-line" ng-show="editor.identities.length > 1">' +
+        '<label class="pseudo-input-label">' + esc(say('From')) + '</label></div>').firstChild;
+      fromLine.appendChild(from);
+      lines.insertBefore(fromLine, lines.firstChild);
+      // Cc and Bcc at the end of the To line
+      var links = html('<span class="rt-cc-bcc"></span>').firstChild;
+      links.appendChild(cc);
+      links.appendChild(bcc);
+      to.parentNode.appendChild(links);
+      // Subject: a plain line with a placeholder instead of a floating label
+      var container = subject.parentNode;
+      var label = container.querySelector(':scope > label');
+      if (label) container.removeChild(label);
+      container.classList.add('rt-subject');
+      container.setAttribute('md-no-float', '');
+      subject.setAttribute('placeholder', say('Subject'));
+      // SOGo's column of buttons beside the lines goes once it is empty
+      var rest = header.querySelector(':scope > .msg-header-buttons');
+      if (rest && !rest.querySelector('md-button, md-menu')) header.removeChild(rest);
+      return true;
+    };
+
     // ---- Calendar and Contacts: Create at the top of the sidebar, a menu of what to create.
     // The sidebar and the list are in different scopes; rt-list-ref on the top bar (in the
     // list's scope) hands the list's controller to the sidebar as rtList.
-    var english = window.UserLanguage === 'English';
     var createItems = {
       calendar: [['appointment', 'event', say('Event')], ['task', 'assignment_turned_in', say('Task')]],
       contacts: [['card', 'person', say('Contact')], ['list', 'group', english ? 'Contact list' : say('New List'), 'rtList.selectedFolder.isRemote']]
@@ -1317,12 +1438,38 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
         };
       });
 
+      // The compose window's template, changed on its way in (once: $templateCache keeps the result)
+      mail.config(['$httpProvider', function ($httpProvider) {
+        $httpProvider.interceptors.push(function () {
+          return {
+            response: function (response) {
+              var url = response && response.config && response.config.url;
+              if (typeof url === 'string' && /(^|\/)UIxMailEditor(\?|$)/.test(url) &&
+                  typeof response.data === 'string' && response.data.indexOf('rt-compose-done') < 0) {
+                var markup = change('UIxMailEditor', response.data, [['actions', actions], ['composer', composer]], function (name) {
+                  root.classList.add('rt-gmail-' + name);
+                });
+                if (markup !== null) response.data = markup.replace('<md-dialog ', '<md-dialog rt-compose-done="" ');
+              }
+              return response;
+            }
+          };
+        });
+      }]);
+
       mail.config(['$provide', function ($provide) {
         $provide.decorator('$mdDialog', ['$delegate', '$injector', function ($delegate, $injector) {
           var show = $delegate.show, open = 0;
           $delegate.show = function (options) {
             var o = options && options._options ? options._options : options;
             try {
+              // SOGo's dialogs have an isolated scope; this one gets the helpers its new markup calls
+              var $rootScope = $injector.get('$rootScope');
+              if (o && o.templateUrl === 'UIxMailEditor' && !o.scope && $rootScope.rtComposer) {
+                o.scope = $rootScope.$new(true);
+                o.scope.rtText = $rootScope.rtText;
+                o.scope.rtComposer = $rootScope.rtComposer;
+              }
               if (o && o.templateUrl === 'UIxMailEditor' && $injector.get('$mdMedia')('gt-sm')) {
                 // A window at the bottom right; the mail behind it stays usable
                 var index = open, showing = o.onShowing;
@@ -1360,7 +1507,92 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
           read: say('Mark as Read'),
           unread: say('Mark as Unread'),
           flag: say('Flag'),
-          unflag: say('Unflag')
+          unflag: say('Unflag'),
+          newMessage: english ? 'New Message' : say('Write'),
+          minimise: english ? 'Minimise' : say('Reduce'),
+          restore: english ? 'Restore' : say('Expand'),
+          fullScreen: english ? 'Full screen' : say('Expand'),
+          exitFull: english ? 'Exit full screen' : say('Reduce')
+        };
+
+        // ---- compose: the editor's toolbar in Gmail's order, unless SOGo set one
+        var ckConfig = get('sgCkeditorConfig');
+        if (ckConfig && ckConfig.config && !ckConfig.config.toolbar) {
+          ckConfig.config.toolbar = {
+            items: ['undo', 'redo', '|', 'fontFamily', 'fontSize', '|', 'bold', 'italic', 'underline', 'fontColor', '|',
+              'alignment', '|', 'numberedList', 'bulletedList', '|', 'outdent', 'indent', '|',
+              { label: english ? 'More formatting' : say('Options'), icon: 'threeVerticalDots', withText: false,
+                items: ['blockQuote', 'removeFormat', 'insertTable', 'sourceEditing', 'htmlEmbed'] }],
+            shouldNotGroupWhenFull: false
+          };
+        }
+        $rootScope.rtComposer = {
+          // Formatting on or off, as the user last left it
+          formatOff: function () {
+            try { return localStorage.getItem('rt_compose_format') === 'off'; } catch (e) { return false; }
+          },
+          toggleFormat: function (editor) {
+            editor.rtNoFormat = !editor.rtNoFormat;
+            try {
+              if (editor.rtNoFormat) localStorage.setItem('rt_compose_format', 'off');
+              else localStorage.removeItem('rt_compose_format');
+            } catch (e) {}
+          }
+        };
+        // Once CKEditor has started: its toolbar goes into the formatting bar above the bottom
+        // bar, and its link, emoji and image buttons into the bottom bar. They are CKEditor's own
+        // buttons, so the link balloon, the emoji panel and image upload work as usual.
+        // Material's "mood" icon, for the emoji button
+        var smiley = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10' +
+          'C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5' +
+          'S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5' +
+          'c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/></svg>';
+        $rootScope.rtComposer.ready = function (ck) {
+          try {
+            var source = ck && ck.sourceElement;
+            var dialog = source && source.closest && source.closest('md-dialog.sg-mail-editor');
+            var pill = dialog && dialog.querySelector('.rt-compose-format');
+            var slot = dialog && dialog.querySelector('.rt-compose-tools');
+            if (!pill || !slot || !ck.ui || !ck.ui.view || !ck.ui.view.toolbar) return warn('compose: the editor is not as expected');
+            var toolbar = ck.ui.view.toolbar.element;
+            pill.appendChild(toolbar);
+            dialog.classList.add('rt-toolbar-moved');
+            // The window opens with a zoom, and CKEditor measures its toolbar while it is scaled
+            // down, folding every button into "more". A 1px change in width after each of the
+            // window's transitions makes it measure again.
+            var remeasure = function () {
+              toolbar.style.width = 'calc(100% - 1px)';
+              setTimeout(function () { toolbar.style.width = ''; }, 50);
+            };
+            dialog.addEventListener('transitionend', function (event) { if (event.target === dialog) remeasure(); });
+            remeasure();
+            var views = [];
+            ['link', 'specialCharacters', 'imageUpload'].forEach(function (name) {
+              if (!ck.ui.componentFactory.has(name)) return;
+              var view = ck.ui.componentFactory.create(name);
+              if (!view.isRendered) view.render();
+              slot.appendChild(view.element);
+              ck.ui.focusTracker.add(view.element);
+              if (name === 'specialCharacters') view.set({ icon: smiley, label: english ? 'Insert emoji' : view.label });
+              views.push(view);
+            });
+            ck.on('destroy', function () { views.forEach(function (view) { view.destroy(); }); });
+            var panels = ck.plugins.has('Dialog') ? ck.plugins.get('Dialog') : null;
+            var characters = ck.plugins.has('SpecialCharacters') ? ck.plugins.get('SpecialCharacters') : null;
+            if (panels) {
+              // The emoji button opens CKEditor's characters on SOGo's emoticons; other groups stay a choice away
+              panels.on('show:specialCharacters', function (event, definition) {
+                var categories = definition && definition.content && definition.content.categoriesView;
+                if (categories && characters && characters.getGroups().has('Emoji')) categories.currentGroupName = 'Emoji';
+              }, { priority: 'low' });
+              // A minimised window takes its open panel (link, characters) with it
+              new MutationObserver(function () {
+                if (panels.id && dialog.classList.contains('rt-min')) panels.hide();
+              }).observe(dialog, { attributes: true, attributeFilter: ['class'] });
+            }
+          } catch (e) {
+            warn('compose: ' + e);
+          }
         };
         var stop = function ($event) {
           if ($event) {
@@ -1969,6 +2201,310 @@ html.rt-gmail md-dialog-actions .md-button.md-warn[ng-click*="closeDialog"] { co
   margin: 0;
   border-radius: 14px;
   border-bottom: 1px solid var(--rt-border);
+}
+
+/* ------------------------------------------------- compose, like Gmail (composer) */
+/* The bar: title, minimise, full screen, close */
+html.rt-gmail-composer md-dialog.sg-mail-editor { overflow: hidden; }
+html.rt-gmail-composer md-dialog#mailEditor.sg-mail-editor > form > md-toolbar:not(.md-menu-toolbar) {
+  flex: none;
+  min-height: 40px;
+  height: 40px;
+  background-color: var(--rt-surface-3);
+  color: var(--rt-text);
+}
+html.rt-gmail-composer md-dialog.sg-mail-editor > form > md-toolbar > .md-toolbar-tools {
+  height: 40px;
+  min-height: 40px;
+  max-height: 40px;
+  padding: 0 4px 0 16px;
+}
+html.rt-gmail-composer .rt-compose-title {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 14px;
+  font-weight: 600;
+}
+html.rt-gmail-composer md-dialog.sg-mail-editor > form > md-toolbar .md-button {
+  flex: none;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  margin: 0;
+  padding: 0;
+  border-radius: 8px;
+  color: var(--rt-text-2);
+}
+html.rt-gmail-composer md-dialog.sg-mail-editor > form > md-toolbar .md-button:hover { background-color: var(--rt-hover); }
+html.rt-gmail-composer md-dialog.sg-mail-editor > form > md-toolbar .md-button md-icon {
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  min-height: 18px;
+  font-size: 18px;
+  line-height: 18px;
+  color: inherit;
+}
+/* Minimised: only the bar, at the bottom right; a click on it opens the window again */
+html.rt-gmail-composer md-dialog.sg-mail-editor.rt-min > form > md-toolbar { cursor: pointer; }
+html.rt-gmail-composer md-dialog.sg-mail-editor.rt-min > form > :not(md-toolbar) { display: none !important; }
+html.rt-gmail-composer .md-dialog-container.rt-float:has(> md-dialog.sg-mail-editor.rt-min) {
+  justify-content: flex-end;
+  align-items: flex-end;
+  padding-right: 24px;
+}
+html.rt-gmail-composer .md-dialog-container.rt-float > md-dialog.sg-mail-editor.rt-min {
+  width: 320px;
+  height: 40px;
+  margin: 0 calc(var(--rt-float-index, 0) * 336px) 0 0;
+  border-radius: 14px 14px 0 0;
+  border-bottom: 0;
+}
+/* From, To, Cc, Bcc and Subject as quiet lines */
+html.rt-gmail-composer md-dialog.sg-mail-editor md-dialog-content > header.sg-padded {
+  flex: none;
+  padding: 0 16px;
+}
+html.rt-gmail-composer md-dialog.sg-mail-editor .msg-header-content > .pseudo-input-container,
+html.rt-gmail-composer md-dialog.sg-mail-editor .msg-header-content > md-input-container.rt-subject {
+  display: flex;
+  align-items: flex-start;
+  min-height: 40px;
+  margin: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--rt-border);
+}
+html.rt-gmail-composer md-dialog.sg-mail-editor .msg-header-content > .pseudo-input-container.ng-hide { display: none; }
+html.rt-gmail-composer md-dialog.sg-mail-editor .msg-header-content .pseudo-input-label {
+  position: static;
+  flex: none;
+  margin: 0 8px 0 0;
+  transform: none;
+  font-size: 14px;
+  line-height: 40px;
+  color: var(--rt-muted);
+}
+html.rt-gmail-composer md-dialog.sg-mail-editor .msg-header-content > .pseudo-input-container > md-chips,
+html.rt-gmail-composer md-dialog.sg-mail-editor .rt-from-line > md-autocomplete { flex: 1 1 auto; min-width: 0; }
+html.rt-gmail-composer md-dialog.sg-mail-editor .msg-header-content md-chips .md-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-height: 40px;
+  padding: 0;
+  box-shadow: none !important;
+}
+html.rt-gmail-composer md-dialog.sg-mail-editor .msg-header-content md-chips md-chip {
+  height: 28px;
+  margin: 6px 6px 6px 0;
+  line-height: 28px;
+  font-size: 13px;
+}
+html.rt-gmail-composer md-dialog.sg-mail-editor .msg-header-content md-chips .md-chip-input-container {
+  flex: 1 1 120px;
+  margin: 0;
+}
+html.rt-gmail-composer md-dialog.sg-mail-editor .msg-header-content md-chips .md-chip-input-container input,
+html.rt-gmail-composer md-dialog.sg-mail-editor .rt-from-line md-autocomplete input {
+  height: 38px;
+  line-height: 38px;
+  padding: 0;
+  font-size: 14px;
+  color: var(--rt-text);
+}
+html.rt-gmail-composer md-dialog.sg-mail-editor .rt-from-line > md-autocomplete,
+html.rt-gmail-composer md-dialog.sg-mail-editor .rt-from-line > md-autocomplete md-autocomplete-wrap {
+  height: 40px;
+  margin: 0;
+  background-color: transparent !important;
+  box-shadow: none;
+}
+html.rt-gmail-composer md-dialog.sg-mail-editor .rt-cc-bcc {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  margin-top: 6px;
+}
+html.rt-gmail-composer md-dialog.sg-mail-editor .rt-cc-bcc .md-button {
+  width: auto;
+  min-width: 0;
+  height: 28px;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 28px;
+  text-transform: none;
+  color: var(--rt-text-2);
+}
+html.rt-gmail-composer md-dialog.sg-mail-editor .rt-cc-bcc .md-button:hover { background-color: var(--rt-hover); color: var(--rt-text); }
+html.rt-gmail-composer md-dialog.sg-mail-editor md-input-container.rt-subject .md-input {
+  height: 40px;
+  padding: 0;
+  border-width: 0;
+  font-size: 14px;
+  line-height: 40px;
+  color: var(--rt-text);
+}
+html.rt-gmail-composer md-dialog.sg-mail-editor md-input-container.rt-subject .md-input::placeholder { color: var(--rt-muted); }
+html.rt-gmail-composer md-dialog.sg-mail-editor md-input-container.rt-subject .md-errors-spacer,
+html.rt-gmail-composer md-dialog.sg-mail-editor md-input-container.rt-subject [ng-messages] { display: none; }
+
+/* -------------------------------------------------- compose, like Gmail (actions) */
+/* The writing area fills the window and scrolls on its own; the bars stay below it */
+html.rt-gmail-actions md-dialog.sg-mail-editor > form { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+html.rt-gmail-actions md-dialog.sg-mail-editor > form > md-dialog-content {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+html.rt-gmail-actions md-dialog.sg-mail-editor md-input-container.sg-mail-editor-content {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+}
+/* The editor fills the area, so a click anywhere in it starts writing */
+html.rt-gmail-actions md-dialog.sg-mail-editor .sg-mail-editor-content > sg-ckeditor,
+html.rt-gmail-actions md-dialog.sg-mail-editor .sg-mail-editor-content .ck.ck-editor,
+html.rt-gmail-actions md-dialog.sg-mail-editor .sg-mail-editor-content .ck.ck-editor__main {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+}
+html.rt-gmail-actions md-dialog.sg-mail-editor .sg-mail-editor-content .ck.ck-editor__main > .ck-editor__editable,
+html.rt-gmail-actions md-dialog.sg-mail-editor .sg-mail-editor-content > textarea { flex: 1 0 auto; }
+html.rt-gmail-actions md-dialog.sg-mail-editor.rt-toolbar-moved .ck.ck-editor__top { display: none; }
+html.rt-gmail-actions md-dialog.sg-mail-editor .sg-mail-editor-content .ck.ck-editor__main > .ck-editor__editable {
+  min-height: 160px;
+  padding: 4px 16px 12px;
+  border: 0 !important;
+  border-radius: 0;
+  box-shadow: none !important;
+}
+/* Dark: the HTML editor stays white (see the dark rules above), as a sheet of paper */
+html.rt-gmail-actions[data-theme="dark"] md-dialog.sg-mail-editor md-input-container.sg-mail-editor-content:has(sg-ckeditor) {
+  margin: 8px 12px 0;
+  border-radius: 10px;
+  background-color: #ffffff;
+}
+html.rt-gmail-actions md-dialog.sg-mail-editor .sg-mail-editor-content textarea {
+  min-height: 160px;
+  padding: 12px 16px;
+  border: 0;
+  font-size: 15px;
+  line-height: 1.6;
+}
+/* Attachments under the writing area, only when there are some */
+html.rt-gmail-actions md-dialog.sg-mail-editor md-dialog-actions.sg-mail-editor-attachments {
+  flex: none;
+  min-height: 0;
+  padding: 4px 16px 0;
+  border-top: 0;
+}
+html.rt-gmail-actions md-dialog.sg-mail-editor md-dialog-actions.sg-mail-editor-attachments:not(:has(md-chip)) { display: none; }
+/* The formatting bar: CKEditor's toolbar as a pill */
+html.rt-gmail-actions md-dialog.sg-mail-editor .rt-compose-format {
+  order: 3;
+  flex: none;
+  padding: 6px 12px 0;
+}
+html.rt-gmail-actions md-dialog.sg-mail-editor .rt-compose-format > .ck.ck-toolbar {
+  --ck-ui-component-min-height: 30px;
+  --ck-icon-size: 18px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 999px;
+  background-color: var(--rt-surface-3);
+}
+html.rt-gmail-actions md-dialog.sg-mail-editor .rt-compose-format > .ck.ck-toolbar .ck.ck-toolbar__separator {
+  margin: 8px 4px;
+  background-color: var(--rt-border-strong);
+}
+html.rt-gmail-actions md-dialog.sg-mail-editor .rt-compose-format > .ck.ck-toolbar .ck.ck-button {
+  min-width: 30px;
+  padding: 0 4px;
+  border-radius: 8px;
+}
+/* The bottom bar: Send, Aa, attach, link, emoji, image, then more options */
+html.rt-gmail-actions md-dialog.sg-mail-editor .rt-compose-actions {
+  display: flex;
+  order: 4;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 8px 10px 16px;
+}
+html.rt-gmail-actions md-dialog.sg-mail-editor .rt-compose-tools {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+html.rt-gmail-actions md-dialog.sg-mail-editor .rt-compose-actions .md-button.rt-send {
+  min-width: 0;
+  height: 36px;
+  min-height: 36px;
+  margin: 0 8px 0 0;
+  padding: 0 24px;
+  border-radius: 999px;
+  background-color: var(--rt-primary);
+  box-shadow: none;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 36px;
+  text-transform: none;
+  color: #fff;
+}
+html.rt-gmail-actions md-dialog.sg-mail-editor .rt-compose-actions .md-button.rt-send:not([disabled]):hover { background-color: var(--rt-primary-hover); }
+html.rt-gmail-actions md-dialog.sg-mail-editor .rt-compose-actions .md-button.rt-send[disabled] { opacity: .55; }
+html.rt-gmail-actions md-dialog.sg-mail-editor .rt-compose-actions .md-button:not(.rt-send),
+html.rt-gmail-actions md-dialog.sg-mail-editor .rt-compose-tools .ck.ck-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  margin: 0;
+  padding: 0;
+  border-radius: 8px;
+  color: var(--rt-text-2);
+}
+html.rt-gmail-actions md-dialog.sg-mail-editor .rt-compose-actions .md-button:not(.rt-send):hover { background-color: var(--rt-hover); color: var(--rt-text); }
+html.rt-gmail-actions md-dialog.sg-mail-editor .rt-compose-actions .md-button md-icon {
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  min-height: 20px;
+  font-size: 20px;
+  line-height: 20px;
+  color: inherit;
+}
+html.rt-gmail-actions md-dialog.sg-mail-editor .rt-compose-tools .ck.ck-button .ck-icon { width: 20px; height: 20px; color: inherit; }
+html.rt-gmail-actions md-dialog.sg-mail-editor .rt-compose-tools .ck.ck-dropdown__arrow { display: none; }
+html.rt-gmail-actions md-dialog.sg-mail-editor .rt-compose-actions .md-button.rt-format-toggle.rt-on {
+  background-color: var(--rt-surface-3);
+  color: var(--rt-text);
+}
+html.rt-gmail-actions md-dialog.sg-mail-editor .rt-compose-actions > md-menu { margin-left: auto; }
+@media (max-width: 599px) {
+  html.rt-gmail-composer md-dialog.sg-mail-editor .rt-compose-min { display: none; }
+  html.rt-gmail-actions md-dialog.sg-mail-editor .rt-compose-actions { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
 }
 `);
     if (app === 'contacts') sheet('rabbittech-sogo-contacts', String.raw`

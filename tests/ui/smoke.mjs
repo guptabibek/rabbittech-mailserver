@@ -437,7 +437,7 @@ if (webmail) {
   // 2026, 10:20 in Kathmandu), the date their seeded events and views are built around.
   // allow404: requests whose 404 is SOGo's normal answer, not an error.
   const CLOCK = '2026-10-15T10:20:00+05:45';
-  const openApp = async (path, ready, { theme = 'light', width = 1366, height = 900, custom = true, pageFilter, clock, allow404 } = {}) => {
+  const openApp = async (path, ready, { theme = 'light', width = 1366, height = 900, custom = true, pageFilter, editorFilter, clock, allow404 } = {}) => {
     const ctx = await browser.newContext({ viewport: { width, height }, timezoneId: 'Asia/Kathmandu' });
     const page = await ctx.newPage();
     if (clock) await page.clock.setFixedTime(new Date(clock));
@@ -451,7 +451,7 @@ if (webmail) {
       if (r.status() >= 400 && !fonts.test(r.url()) && !(r.status() === 404 && allow404 && allow404.test(r.url()))) errors.push(r.status() + ' ' + r.url());
     });
     await page.addInitScript(t => { try { localStorage.setItem('mailcow_theme', t); } catch (e) {} }, theme);
-    const backend = await mailBackend(ctx, { custom, pageFilter, clock });
+    const backend = await mailBackend(ctx, { custom, pageFilter, editorFilter, clock });
     await page.goto(webmail + path, { waitUntil: 'load' });
     await page.waitForSelector(ready, { timeout: 20000 });
     await page.waitForTimeout(500);
@@ -460,6 +460,42 @@ if (webmail) {
   const openMail = (options = {}) => openApp(PAGE, 'md-list-item.sg-message-list-item .sg-tile-subject', options);
   const classes = page => page.evaluate(() => document.documentElement.className.split(/\s+/));
   const changes = ['layout', 'brand', 'compose', 'search', 'rows', 'fab', 'sort', 'back'].map(c => 'rt-gmail-' + c);
+  // The compose window's changes, made when SOGo first fetches its template
+  const composeChanges = ['actions', 'composer'].map(c => 'rt-gmail-' + c);
+  // The open compose window's parts, as a person sees them
+  const composeParts = page => page.evaluate(() => { try {
+    const d = document.querySelector('md-dialog.sg-mail-editor');
+    const bar = d.querySelector(':scope > form > md-toolbar');
+    const shown = el => !!el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+    const rect = selector => d.querySelector(selector).getBoundingClientRect();
+    const to = d.querySelector('md-chips[ng-model="editor.message.editable.to"]').parentNode;
+    const area = rect('md-input-container.sg-mail-editor-content'), pill = rect('.rt-compose-format'), actions = rect('.rt-compose-actions');
+    const barButton = b => b.classList.contains('rt-compose-min') ? 'rt-compose-min'
+      : /toggleFullscreen/.test(b.getAttribute('ng-click')) ? 'full' : b.getAttribute('ng-click') === 'editor.cancel()' ? 'close' : b.getAttribute('ng-click');
+    const action = b => b.classList.contains('rt-send') ? b.textContent.trim() : b.classList.contains('rt-format-toggle') ? 'Aa'
+      : b.matches('label') ? 'attach' : b.matches('md-menu > .md-button') ? 'more' : b.getAttribute('data-cke-tooltip-text');
+    return {
+      title: bar.querySelector('.rt-compose-title').textContent.trim(),
+      barHeight: Math.round(bar.getBoundingClientRect().height),
+      barButtons: [...bar.querySelectorAll('.md-button')].filter(shown).map(barButton),
+      sendInBar: !!bar.querySelector('[ng-click="editor.send()"], [ng-click="editor.save()"]'),
+      ccBccOnTo: !!to.querySelector('.rt-cc-bcc [ng-click="editor.hideCc = false"]') && !!to.querySelector('.rt-cc-bcc [ng-click="editor.hideBcc = false"]'),
+      fromHidden: !shown(d.querySelector('.rt-from-line')),
+      order: area.bottom <= pill.top + 1 && pill.bottom <= actions.top + 1,
+      pillHeight: Math.round(d.querySelector('.rt-compose-format > .ck-toolbar').getBoundingClientRect().height),
+      pill: [...d.querySelectorAll('.rt-compose-format .ck-toolbar__items [data-cke-tooltip-text]')].filter(shown).map(b => b.getAttribute('data-cke-tooltip-text')),
+      actions: [...d.querySelectorAll('.rt-compose-actions :is(.rt-send, .rt-format-toggle, label[for="fileInput"], .rt-compose-tools > .ck-button, md-menu > .md-button)')]
+        .filter(shown).map(action),
+    };
+  } catch (e) {
+    // A part that isn't there fails the checks that use it, not the whole run
+    return { error: String(e), barButtons: [], pill: [], actions: [] };
+  } });
+  const openCompose = async (page, button = '.rt-compose') => {
+    await page.click(button);
+    await page.waitForSelector('md-dialog.sg-mail-editor', { state: 'visible' });
+    await page.waitForTimeout(800);
+  };
   // The order above the message list, in words, and a choice from the list's Sort menu
   const sortLine = page => page.evaluate(() => {
     const line = document.querySelector('#messagesList .md-subheader span[ng-bind^="rtSortText"]');
@@ -632,11 +668,88 @@ if (webmail) {
     });
     check('mail app: Compose opens a window at the bottom right with no backdrop', win.float && !win.backdrop && win.right <= 30 && win.bottom <= 2 && win.width < 700, JSON.stringify(win));
     check('mail app: compose asked the server for a new draft', backend.calls('compose').length > 0);
-    await page.screenshot({ path: join(output, 'webmail-app-compose.png') });
     // Left part of the row: the compose window covers the right
     await rows(page).nth(2).click({ position: { x: 300, y: 28 } });
     check('mail app: a message opens while the compose window stays open', await until(() => page.evaluate(() =>
       !!document.querySelector('#detailView:not(.sg-close) .msg-body') && !!document.querySelector('md-dialog.sg-mail-editor'))));
+
+    // The compose window like Gmail's: SOGo's window, changed as it is fetched
+    // A control that isn't there fails the checks that follow, not the whole run
+    const tap = target => (typeof target === 'string' ? page.locator(target) : target).click({ timeout: 5000 }).catch(() => {});
+    const composeCls = await classes(page);
+    check('mail compose: both compose changes applied, no warnings', composeChanges.every(c => composeCls.includes(c)) && warnings.length === 0,
+      composeCls.join(' ') + ' ' + warnings.join(' | '));
+    const parts = await composeParts(page);
+    check('mail compose: a 40px bar with "New Message", minimise, full screen and close, and no Send or Save',
+      parts.title === 'New Message' && parts.barHeight === 40 && parts.barButtons.join() === 'rt-compose-min,full,close' && !parts.sendInBar, JSON.stringify(parts));
+    check('mail compose: Cc and Bcc on the To line, no From line for one identity', parts.ccBccOnTo && parts.fromHidden, JSON.stringify(parts));
+    check('mail compose: the formatting bar sits in one row between the writing area and the bottom bar',
+      parts.order && parts.pillHeight <= 44 && /^Undo/.test(parts.pill[0]) && parts.pill.some(t => /^Bold/.test(t)), JSON.stringify(parts));
+    check('mail compose: the bottom bar has Send, Aa, attach, link, emoji and image, then more options',
+      parts.actions.join() === 'Send,Aa,attach,Link (Ctrl+K),Insert emoji,Upload image from computer,more', JSON.stringify(parts.actions));
+    check('mail compose: Send is off without a recipient', await page.locator('.rt-send').isDisabled());
+    const pill = page.locator('.rt-compose-format');
+    await tap('.rt-format-toggle');
+    const formatOff = await until(async () => !(await pill.isVisible()));
+    await tap('.rt-format-toggle');
+    check('mail compose: Aa hides and shows the formatting bar', formatOff && await until(() => pill.isVisible()));
+    // Emoji: CKEditor's characters, opened on SOGo's emoticons
+    await page.locator('.sg-mail-editor .ck-editor__editable').click({ timeout: 5000 }).catch(() => {});
+    await page.click('.rt-compose-tools > .ck-button[data-cke-tooltip-text="Insert emoji"]', { timeout: 5000 }).catch(() => {});
+    const emoji = page.locator('.ck-special-characters .ck-character-grid__tile').first();
+    await emoji.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+    const category = await page.locator('.ck-special-characters .ck-character-categories').innerText().catch(() => '');
+    await emoji.click({ timeout: 5000 }).catch(() => {});
+    check('mail compose: the emoji button opens the emoticons and puts one in the message', /Emoticons/.test(category) &&
+      await until(() => page.evaluate(() => /\p{Extended_Pictographic}/u.test(document.querySelector('.sg-mail-editor .ck-editor__editable').innerText))), category);
+    // The panel stays open for more, like Gmail's; its close button closes it
+    await page.locator('.ck-dialog .ck-form__header .ck-button').click({ timeout: 5000 }).catch(() => {});
+    check('mail compose: the emoji panel closes', await until(async () => !(await page.locator('.ck-special-characters').isVisible())));
+    // A recipient, a subject and some text
+    const to = page.locator('md-dialog.sg-mail-editor md-chips[ng-model="editor.message.editable.to"] input');
+    await to.waitFor({ state: 'visible' });
+    await tap(to);
+    await to.pressSequentially('nisha.gurung@everestlogistics.example');
+    await page.keyboard.press('Enter');
+    await page.locator('md-dialog.sg-mail-editor input[name="subject"]').fill('Go-live on the 25th');
+    await page.locator('.sg-mail-editor .ck-editor__editable').click({ timeout: 5000 }).catch(() => {});
+    await page.keyboard.type(' The 25th works for us. See you then!');
+    check('mail compose: the bar shows the subject once there is one', await until(async () => (await composeParts(page)).title === 'Go-live on the 25th'));
+    check('mail compose: Send is on with a recipient', await until(async () => !(await page.locator('.rt-send').isDisabled())));
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: join(output, 'webmail-app-compose.png') });
+    // More options: Save draft, then SOGo's own options
+    await tap('.rt-compose-actions > md-menu > .md-button');
+    const saveItem = page.locator('.md-open-menu-container.md-active md-menu-item', { hasText: 'Save draft' });
+    await saveItem.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+    const optionItems = await page.locator('.md-open-menu-container.md-active md-menu-item').allInnerTexts();
+    await saveItem.click({ timeout: 5000 }).catch(() => {});
+    await closeMenu(page);
+    check('mail compose: more options has Save draft, and it saves the draft on the server',
+      /Save draft/.test(optionItems[0] || '') && optionItems.some(t => /Return Receipt/.test(t)) && await until(() => backend.calls('save').length > 0), optionItems.join(' | '));
+    // Minimise: only the bar, at the bottom right; a click on the bar opens it again
+    await tap('.rt-compose-min');
+    const minimised = await until(async () => { const b = await page.locator('md-dialog.sg-mail-editor').boundingBox(); return b && b.height <= 41 && b.width <= 330; });
+    const minBox = await page.locator('md-dialog.sg-mail-editor').boundingBox();
+    check('mail compose: minimise leaves only the bar at the bottom right', minimised && !(await page.locator('.rt-compose-actions').isVisible()) &&
+      !!minBox && minBox.y + minBox.height >= 898 && minBox.x + minBox.width >= 1300, JSON.stringify(minBox));
+    await page.screenshot({ path: join(output, 'webmail-app-compose-min.png') });
+    await tap('md-dialog.sg-mail-editor .rt-compose-title');
+    check('mail compose: a click on the bar opens it again', await until(async () => (await page.locator('md-dialog.sg-mail-editor').boundingBox())?.height > 500 &&
+      await page.locator('.rt-send').isVisible()));
+    // Full screen: large and centred, and back
+    const fullButton = page.locator('md-dialog.sg-mail-editor .md-button[ng-click^="editor.toggleFullscreen"]');
+    await tap(fullButton);
+    const centred = async () => { const b = await page.locator('md-dialog.sg-mail-editor').boundingBox(); return b && b.width > 1000 && Math.abs(b.x - (1366 - b.x - b.width)) < 4; };
+    check('mail compose: full screen is large and centred, with the same bars', await until(centred) && await page.locator('.rt-send').isVisible() &&
+      await pill.isVisible(), JSON.stringify(await page.locator('md-dialog.sg-mail-editor').boundingBox()));
+    await tap(fullButton);
+    await until(async () => (await page.locator('md-dialog.sg-mail-editor').boundingBox())?.width < 600);
+    // Send: SOGo sends it and the window closes
+    await tap('.rt-send');
+    check('mail compose: Send sends the message and the window closes', await until(() => backend.calls('send').some(c => c.status === 200), 8000) &&
+      await until(async () => !(await page.locator('md-dialog.sg-mail-editor').count()), 8000) &&
+      backend.store.sent.some(m => m.subject === 'Go-live on the 25th'), JSON.stringify(backend.calls('send').map(c => c.status)));
     check('mail app light: no errors', errors.length === 0, errors.join(' | '));
 
     // Classic layout and back
@@ -661,6 +774,15 @@ if (webmail) {
     check('mail app dark: dark list, no errors', bg === 'rgb(18, 21, 28)' && errors.length === 0, bg + ' ' + errors.join(' | '));
     const theme = await page.evaluate(() => document.querySelector('meta[name="theme-color"]').content);
     check('mail app dark: the window title bar is dark too', theme === '#0b0d12', theme);
+    await openCompose(page);
+    const look = await page.evaluate(() => {
+      const d = document.querySelector('md-dialog.sg-mail-editor');
+      const color = selector => getComputedStyle(d.querySelector(selector)).backgroundColor;
+      return { bar: color(':scope > form > md-toolbar'), pill: color('.rt-compose-format > .ck-toolbar'), paper: color('md-input-container.sg-mail-editor-content') };
+    });
+    await page.screenshot({ path: join(output, 'webmail-app-compose-dark.png') });
+    check('mail compose dark: dark bars around the white writing area, no errors', look.bar === 'rgb(28, 33, 44)' && look.pill === look.bar &&
+      look.paper === 'rgb(255, 255, 255)' && errors.length === 0, JSON.stringify(look) + ' ' + errors.join(' | '));
     await ctx.close();
   }
 
@@ -680,9 +802,19 @@ if (webmail) {
     check('mail app 390px: the back arrow is on screen', await until(onScreen, 3000), JSON.stringify(await page.locator('.rt-back').boundingBox()));
     await page.click('.rt-back');
     await page.waitForSelector('#detailView.sg-close', { state: 'attached' });
-    await page.click('.sg-fab-bottom-center');
-    await page.waitForSelector('md-dialog.sg-mail-editor', { state: 'visible' });
+    await openCompose(page, '.sg-fab-bottom-center');
     check('mail app 390px: compose is full screen, not a window', !(await page.locator('.md-dialog-container.rt-float').count()));
+    const small = await page.evaluate(() => {
+      const d = document.querySelector('md-dialog.sg-mail-editor').getBoundingClientRect();
+      const bar = document.querySelector('.rt-compose-actions').getBoundingClientRect();
+      const send = document.querySelector('.rt-send').getBoundingClientRect();
+      const min = document.querySelector('.rt-compose-min');
+      return { width: Math.round(d.width), barBottom: Math.round(bar.bottom), send: send.width > 0 && send.left >= 0, min: !!min && min.getClientRects().length > 0,
+        sideways: document.documentElement.scrollWidth > innerWidth };
+    });
+    check('mail compose 390px: the bottom bar with Send is on screen, without minimise', small.width === 390 && small.barBottom <= 844 && small.send &&
+      !small.min && !small.sideways, JSON.stringify(small));
+    await page.screenshot({ path: join(output, 'webmail-app-compose-phone.png') });
     check('mail app 390px: no errors', errors.length === 0, errors.join(' | '));
     await ctx.close();
   }
@@ -701,6 +833,46 @@ if (webmail) {
     check('mail app fail-safe: without the back arrow the list stays beside the open message',
       await page.evaluate(() => getComputedStyle(document.querySelector('.view-list')).visibility === 'visible'));
     check('mail app fail-safe: no errors', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+  {
+    // Plain-text compose (SOGo's "Compose messages in: Text"): no formatting, the text fills the window
+    const { ctx, page, errors } = await openMail();
+    await page.evaluate(() => { angular.element(document.body).injector().get('Preferences').defaults.SOGoMailComposeMessageType = 'text'; });
+    await openCompose(page);
+    const text = await page.evaluate(() => {
+      const d = document.querySelector('md-dialog.sg-mail-editor');
+      const shown = el => !!el && el.getClientRects().length > 0;
+      const area = d.querySelector('md-input-container.sg-mail-editor-content').getBoundingClientRect();
+      const box = d.querySelector('md-input-container.sg-mail-editor-content > textarea').getBoundingClientRect();
+      return { aa: shown(d.querySelector('.rt-format-toggle')), pill: shown(d.querySelector('.rt-compose-format')), tools: d.querySelectorAll('.rt-compose-tools > *').length,
+        send: shown(d.querySelector('.rt-send')), fills: box.height >= area.height - 2 };
+    });
+    check('mail compose plain text: Send and attach, no Aa, formatting or editor buttons, and the text fills the window',
+      !text.aa && !text.pill && text.tools === 0 && text.send && text.fills && errors.length === 0, JSON.stringify(text) + ' ' + errors.join(' | '));
+    await ctx.close();
+  }
+  for (const [name, anchor, broken, kept] of [
+    ['composer', 'ng-click="editor.cancel()"', 'ng-click="editor.cancel( )"', 'actions'],
+    ['actions', 'for="fileInput"', 'for="fileInput "', 'composer'],
+  ]) {
+    // Fail-safe for the compose window: an anchor that no longer matches skips that change only,
+    // and the window still sends
+    const { ctx, page, backend, errors, warnings } = await openMail({ editorFilter: html => html.replace(anchor, broken) });
+    await openCompose(page);
+    const cls = await classes(page);
+    check(`mail compose fail-safe: without its anchor "${name}" is skipped with a warning, "${kept}" applies`,
+      !cls.includes('rt-gmail-' + name) && cls.includes('rt-gmail-' + kept) && warnings.some(w => new RegExp(`UIxMailEditor: "${name}" skipped`).test(w)),
+      cls.filter(c => /^rt-gmail-(actions|composer)$/.test(c)).join(' ') + ' ' + warnings.join(' | '));
+    const to = page.locator('md-dialog.sg-mail-editor md-chips[ng-model="editor.message.editable.to"] input');
+    await to.waitFor({ state: 'visible' });
+    await to.click();
+    await to.pressSequentially('nisha.gurung@everestlogistics.example');
+    await page.keyboard.press('Enter');
+    await page.locator('md-dialog.sg-mail-editor input[name="subject"]').fill('Fail-safe');
+    await page.locator('md-dialog.sg-mail-editor .md-button[ng-click="editor.send()"]').click({ timeout: 5000 }).catch(e => warnings.push(e.message));
+    check(`mail compose fail-safe: without "${name}" the window still sends`, await until(() => backend.calls('send').some(c => c.status === 200), 8000) &&
+      errors.length === 0, errors.concat(warnings).join(' | '));
     await ctx.close();
   }
   {

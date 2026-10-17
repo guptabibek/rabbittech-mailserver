@@ -8,7 +8,7 @@
 // PREFS_PAGE).
 //
 //   import { mailBackend, PAGE } from './sogo/backend.mjs';
-//   const backend = await mailBackend(page, { custom: true });   // options: custom, now, olderMessages, pageFilter
+//   const backend = await mailBackend(page, { custom: true });   // options: custom, now, olderMessages, pageFilter, editorFilter
 //   await page.goto(origin + PAGE + '#!/Mail/0/INBOX');
 //   backend.calls('markMessageFlagged')  // → [{ method, path, action, folder, uid, query, body, status }]
 //   backend.folder('Trash').messages     // → messages, see seed() for their shape
@@ -40,9 +40,10 @@ export async function mailBackend(target, options = {}) {
   return backend;
 }
 
-// pageFilter(html) changes the page before it is served, e.g. to break a template on purpose.
+// pageFilter(html) changes the page before it is served, e.g. to break a template on purpose;
+// editorFilter(html) does the same for the compose window's template (UIxMailEditor).
 // clock: the date the pages show as today (the tests pin the browser's clock to the same date).
-export function createBackend({ custom = true, now = new Date(), olderMessages = 0, pageFilter = html => html, clock = null } = {}) {
+export function createBackend({ custom = true, now = new Date(), olderMessages = 0, pageFilter = html => html, editorFilter = html => html, clock = null } = {}) {
   const files = name => readFileSync(join(live, name), 'utf8');
   const data = JSON.parse(files('data.json'));
   const parts = JSON.parse(files('parts.json'));
@@ -123,7 +124,7 @@ export function createBackend({ custom = true, now = new Date(), olderMessages =
     if (more.length === 0) {
       switch (first) {
         case 'view': return html(pageFilter(pages[custom ? 'custom' : 'plain'].replace('@@CURRENT_DAY@@', sogoJSON(currentDay()))));
-        case 'UIxMailEditor': return html(templates.UIxMailEditor);
+        case 'UIxMailEditor': return html(editorFilter(templates.UIxMailEditor));
         case 'mailAccounts': return text(200, data.mailAccounts);
         case 'unseenCount': return unseenCountAction(entry.body);
         case 'foldersState': return json(200, store.settings.ExpandedFolders || null);
