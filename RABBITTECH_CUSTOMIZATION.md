@@ -267,8 +267,29 @@ two supported hooks, both loaded on every SOGo page (`SOGoUIAdditionalJSFiles` i
     (when the message reached the mailbox) and "Date sent" (the date in the message) instead of
     "Order Received" and "Date". In English only; other languages keep SOGo's translated words.
   - Compose opens as a window at the bottom right (960px and wider) and the mail behind it stays
-    usable; SOGo's expand button makes it large. Phones keep SOGo's full-screen editor, with one
-    compose button instead of SOGo's two-button menu.
+    usable. Phones keep SOGo's full-screen editor, with one compose button instead of SOGo's
+    two-button menu.
+  - The compose window is laid out like Gmail's:
+    - A slim bar with the subject (or "New Message") and minimise, full screen and close. A
+      minimised window is just that bar at the bottom right; a click on it opens it again.
+    - From shows only when the account has more than one identity. To is one line with Cc and
+      Bcc at its right, and Subject is a plain line.
+    - The writing area fills the window and scrolls on its own.
+    - CKEditor's toolbar is a rounded formatting bar under it, in Gmail's order: undo, redo,
+      font, size, bold, italic, underline, text colour, alignment, numbered and bulleted lists,
+      outdent, indent, then "more" (quote, clear formatting, table, source and HTML). In a
+      narrow window the tail folds into "more" rather than wrapping.
+    - A bottom bar has Send as a violet pill, Aa to hide or show the formatting bar (remembered
+      in the browser), attach, link, emoji and image. The last ⋮ holds Save draft and SOGo's
+      options (return receipt, priority, signing). Emoji opens CKEditor's characters on the
+      emoticons. Attachments show above the formatting bar once there are some.
+    - All of it is SOGo's and CKEditor's own controls, moved: sending, drafts, autosave,
+      attachments, recipients and signatures work as before. Plain-text compose gets the same
+      window without the formatting and editor buttons.
+    - SOGo fetches this window's template over HTTP, so it isn't in the page. An `$http`
+      interceptor changes its markup as it arrives, before Angular caches it, with the same
+      fail-safe as the page templates: each part checks for the markup it needs and is skipped
+      with a warning if SOGo's has changed.
   - `SOGoRefreshViewCheck = "every_minute"` in `sogo.conf`, so new mail shows up without
     reloading (users can change it in Preferences).
 - Calendar, like Google Calendar:
@@ -439,6 +460,18 @@ server:
   - Star, read/unread, Archive and Delete reach the server and the message really moves.
   - An open message replaces the list, and back returns to it.
   - Compose opens as a window, and the mail behind it stays usable.
+  - The compose window:
+    - Its bar has the title and the three buttons, with no Send or Save. Cc and Bcc are on the
+      To line, and From is hidden for one identity.
+    - The formatting bar is one row between the writing area and the bottom bar, and Aa hides
+      and shows it.
+    - The bottom bar's buttons come in order. Send is off without a recipient and on with one.
+    - Emoji inserts one; Save draft saves; minimise and full screen work.
+    - Send sends the message and closes the window.
+    - In dark mode the bars are dark around a white writing area. At phone width the bottom bar
+      is on screen. Plain text gets no formatting.
+    - With the compose template broken on purpose, that part is skipped with a warning and the
+      window still sends.
   - The classic layout switch works both ways.
   - Dark mode works; at phone width the search box wraps, back is reachable, and compose is full
     screen.
