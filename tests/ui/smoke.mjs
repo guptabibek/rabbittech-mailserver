@@ -459,7 +459,7 @@ if (webmail) {
   };
   const openMail = (options = {}) => openApp(PAGE, 'md-list-item.sg-message-list-item .sg-tile-subject', options);
   const classes = page => page.evaluate(() => document.documentElement.className.split(/\s+/));
-  const changes = ['layout', 'brand', 'compose', 'search', 'rows', 'fab', 'sort', 'back'].map(c => 'rt-gmail-' + c);
+  const changes = ['layout', 'brand', 'compose', 'search', 'rows', 'fab', 'sort', 'count', 'back'].map(c => 'rt-gmail-' + c);
   // The compose window's changes, made when SOGo first fetches its template
   const composeChanges = ['actions', 'composer'].map(c => 'rt-gmail-' + c);
   // The open compose window's parts, as a person sees them
@@ -496,10 +496,16 @@ if (webmail) {
     await page.waitForSelector('md-dialog.sg-mail-editor', { state: 'visible' });
     await page.waitForTimeout(800);
   };
-  // The order above the message list, in words, and a choice from the list's Sort menu
-  const sortLine = page => page.evaluate(() => {
-    const line = document.querySelector('#messagesList .md-subheader span[ng-bind^="rtSortText"]');
-    return line ? line.innerText.trim() : null;
+  // The list header's chips (a filter, an order other than newest first) and its count
+  const chips = page => page.evaluate(() => [...document.querySelectorAll('.view-list .rt-list-chips > .rt-chip')]
+    .filter(c => c.getClientRects().length).map(c => c.querySelector('span').innerText.trim()));
+  const orderChip = page => page.evaluate(() => {
+    const words = document.querySelector('.view-list .rt-chip span[ng-bind^="rtSortText"]');
+    return words && words.closest('.rt-chip').getClientRects().length ? words.innerText.trim() : null;
+  });
+  const listCount = page => page.evaluate(() => {
+    const count = document.querySelector('.view-list > md-toolbar:not(.advanced-search-clickable-toolbar) .rt-list-count');
+    return count ? count.innerText.trim() : null;
   });
   // A menu that stays open (a checkmark) closes on a click outside it, as for a person
   const closeMenu = async page => {
@@ -588,8 +594,10 @@ if (webmail) {
     const restored = await until(async () => (await rows(page).count()) === all);
     check('mail app: emptying the search box shows the whole folder again', restored, String(await rows(page).count()));
 
-    // The order in words instead of SOGo's "Order Received"
-    check('mail app: the line above the list says the order in words', (await sortLine(page)) === 'Newest first', await sortLine(page));
+    // No line above the list: the count is in the header, and the usual view has no chips
+    const inbox = backend.folder('INBOX').messages.length;
+    check('mail app: the count is in the list header, with no line above the list and no chips', (await listCount(page)) === inbox + ' messages' &&
+      !(await page.locator('#messagesList .md-subheader').count()) && (await chips(page)).length === 0, (await listCount(page)) + ' ' + JSON.stringify(await chips(page)));
     await page.click('.view-list .md-button[aria-label="Sort"]');
     await page.locator('.md-open-menu-container.md-active md-menu-item').first().waitFor({ state: 'visible' });
     const sortMenu = await page.locator('.md-open-menu-container.md-active md-menu-item').allInnerTexts();
@@ -598,17 +606,43 @@ if (webmail) {
     check('mail app: the Sort menu says Date received and Date sent', items.includes('Date received') && items.includes('Date sent') &&
       !items.includes('Order Received'), items.join(' | '));
     await sortBy(page, 'Subject');
-    const bySubject = await until(async () => (await sortLine(page)) === 'Subject Z\u2013A');
+    const bySubject = await until(async () => (await orderChip(page)) === 'Subject Z\u2013A');
     const subjects = (await rows(page).locator('.sg-tile-subject').allInnerTexts()).slice(0, 3);
-    check('mail app: sorting by subject says "Subject Z\u2013A" and the server sorts the folder', bySubject &&
+    check('mail app: sorting by subject shows a "Subject Z\u2013A" chip and the server sorts the folder', bySubject &&
       backend.calls('view').some(c => JSON.stringify(c.body || '').includes('"sort":"subject"')) && subjects[0].startsWith('W'),
-      (await sortLine(page)) + ' ' + JSON.stringify(subjects));
+      (await orderChip(page)) + ' ' + JSON.stringify(subjects));
     await sortBy(page, 'Descending Order');
-    check('mail app: ascending, the line says "Subject A\u2013Z"', await until(async () => (await sortLine(page)) === 'Subject A\u2013Z'), await sortLine(page));
+    check('mail app: ascending, the chip says "Subject A\u2013Z"', await until(async () => (await orderChip(page)) === 'Subject A\u2013Z'), await orderChip(page));
     await sortBy(page, 'Date received');
-    check('mail app: by date received, ascending, the line says "Oldest first"', await until(async () => (await sortLine(page)) === 'Oldest first'), await sortLine(page));
+    check('mail app: by date received, ascending, the chip says "Oldest first"', await until(async () => (await orderChip(page)) === 'Oldest first'), await orderChip(page));
     await sortBy(page, 'Descending Order');
-    check('mail app: back to the usual order, newest first', await until(async () => (await sortLine(page)) === 'Newest first'), await sortLine(page));
+    check('mail app: back to the usual order, newest first, the chip goes', await until(async () => (await orderChip(page)) === null), await orderChip(page));
+    // A chip's × undoes what it shows
+    await sortBy(page, 'Subject');
+    await until(async () => (await orderChip(page)) === 'Subject Z\u2013A');
+    const views = backend.calls('view').length;
+    await page.locator('.view-list .rt-chip', { has: page.locator('span[ng-bind^="rtSortText"]') }).click({ timeout: 5000 }).catch(() => {});
+    check('mail app: the order chip goes back to newest first', await until(async () => (await orderChip(page)) === null) &&
+      backend.calls('view').slice(views).some(c => /"sort":"arrival"/.test(JSON.stringify(c.body || '')) && /"asc":0/.test(JSON.stringify(c.body || ''))),
+      JSON.stringify(backend.calls('view').slice(views).map(c => c.body && c.body.sortingAttributes)));
+    await page.click('.view-list .md-button[aria-label="Filter"]');
+    await page.locator('.md-open-menu-container.md-active md-menu-item', { hasText: 'unread' }).first().click({ timeout: 5000 }).catch(() => {});
+    await closeMenu(page);
+    const unreadOnly = await until(async () => JSON.stringify(await chips(page)) === '["Unread"]' && /^\d+ messages$/.test(await listCount(page)) &&
+      (await listCount(page)) !== inbox + ' messages');
+    check('mail app: "unread only" shows an Unread chip and the unread count', unreadOnly, JSON.stringify(await chips(page)) + ' ' + await listCount(page));
+    await page.locator('.view-list .rt-chip:visible').first().click({ timeout: 5000 }).catch(() => {});
+    check('mail app: the Unread chip shows all messages again', await until(async () => (await chips(page)).length === 0 &&
+      (await listCount(page)) === inbox + ' messages'), JSON.stringify(await chips(page)) + ' ' + await listCount(page));
+    // A label: its name on the chip; one message is "1 message"
+    await page.click('.view-list .md-button[aria-label="Filter"]');
+    await page.locator('.md-open-menu-container.md-active md-menu-item', { hasText: 'Forwarded' }).first().click({ timeout: 5000 }).catch(() => {});
+    await closeMenu(page);
+    check('mail app: a label filter shows the label\'s name, and one message says "1 message"', await until(async () =>
+      JSON.stringify(await chips(page)) === '["Forwarded"]' && (await listCount(page)) === '1 message'), JSON.stringify(await chips(page)) + ' ' + await listCount(page));
+    await page.locator('.view-list .rt-chip:visible').first().click({ timeout: 5000 }).catch(() => {});
+    check('mail app: the label chip shows all messages again', await until(async () => (await chips(page)).length === 0 &&
+      (await listCount(page)) === inbox + ' messages'), JSON.stringify(await chips(page)) + ' ' + await listCount(page));
 
     // Rows: one line, 56px apart (SOGo's scrolling relies on it)
     const geo = await rows(page).first().evaluate(el => {
@@ -705,12 +739,23 @@ if (webmail) {
     // The panel stays open for more, like Gmail's; its close button closes it
     await page.locator('.ck-dialog .ck-form__header .ck-button').click({ timeout: 5000 }).catch(() => {});
     check('mail compose: the emoji panel closes', await until(async () => !(await page.locator('.ck-special-characters').isVisible())));
-    // A recipient, a subject and some text
+    // Recipients: Enter adds what was typed, or the highlighted suggestion instead
     const to = page.locator('md-dialog.sg-mail-editor md-chips[ng-model="editor.message.editable.to"] input');
+    const toChips = () => page.locator('md-dialog.sg-mail-editor md-chips[ng-model="editor.message.editable.to"] md-chip').allInnerTexts();
     await to.waitFor({ state: 'visible' });
     await tap(to);
-    await to.pressSequentially('nisha.gurung@everestlogistics.example');
+    await to.pressSequentially('someone@example.org');
     await page.keyboard.press('Enter');
+    check('mail compose: Enter adds the address being typed', await until(async () => JSON.stringify(await toChips()) === '["someone@example.org"]'),
+      JSON.stringify(await toChips()));
+    await to.pressSequentially('nisha');
+    await page.locator('.md-autocomplete-suggestions-container li').first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
+    check('mail compose: Enter on a highlighted suggestion adds that contact only', await until(async () => {
+      const chips = await toChips();
+      return chips.length === 2 && /^Nisha Gurung <nisha\.gurung@everestlogistics\.example>$/.test(chips[1]);
+    }), JSON.stringify(await toChips()));
     await page.locator('md-dialog.sg-mail-editor input[name="subject"]').fill('Go-live on the 25th');
     await page.locator('.sg-mail-editor .ck-editor__editable').click({ timeout: 5000 }).catch(() => {});
     await page.keyboard.type(' The 25th works for us. See you then!');
@@ -821,12 +866,15 @@ if (webmail) {
 
   {
     // Fail-safe: templates that no longer match leave those parts as SOGo has them
-    const pageFilter = html => html.replace('type="search" name="folderSearch"', 'type="text" name="folderSearch"').replace('ng-click="viewer.close()"', 'ng-click="viewer.close( )"');
+    const pageFilter = html => html.replace('type="search" name="folderSearch"', 'type="text" name="folderSearch"').replace('ng-click="viewer.close()"', 'ng-click="viewer.close( )"')
+      .replace('ng-switch="mailbox.service.selectedFolder.getLength()"', 'ng-switch="mailbox.service.selectedFolder.getLength( )"');
     const { ctx, page, errors, warnings } = await openMail({ pageFilter });
     const cls = await classes(page);
     check('mail app fail-safe: unmatched changes are skipped with a warning, the rest apply',
-      !cls.includes('rt-gmail-search') && !cls.includes('rt-gmail-back') && cls.includes('rt-gmail-rows') &&
-      warnings.some(w => /"search" skipped/.test(w)) && warnings.some(w => /"back" skipped/.test(w)), cls.join(' ') + ' ' + warnings.join(' | '));
+      !cls.includes('rt-gmail-search') && !cls.includes('rt-gmail-back') && !cls.includes('rt-gmail-count') && cls.includes('rt-gmail-rows') &&
+      warnings.some(w => /"search" skipped/.test(w)) && warnings.some(w => /"back" skipped/.test(w)) && warnings.some(w => /"count" skipped/.test(w)),
+      cls.join(' ') + ' ' + warnings.join(' | '));
+    check('mail app fail-safe: without "count" the line above the list stays, with the count', await page.locator('#messagesList .md-subheader', { hasText: 'messages' }).isVisible());
     check('mail app fail-safe: search stays in the list toolbar', await page.locator('.view-list form[sg-search]').count() === 1);
     await rows(page).nth(0).click();
     await page.waitForSelector('#detailView:not(.sg-close) .msg-body');
@@ -876,11 +924,17 @@ if (webmail) {
     await ctx.close();
   }
   {
-    // In other languages the order keeps SOGo's own (translated) label
+    // In other languages the order chip keeps SOGo's own (translated) label, with an arrow
     const pageFilter = html => html.replace("var UserLanguage = 'English';", "var UserLanguage = 'French';");
     const { ctx, page } = await openMail({ pageFilter });
-    check('mail app: in other languages the order keeps SOGo\'s own label', (await classes(page)).includes('rt-gmail-sort') &&
-      (await sortLine(page)) === 'Order Received', await sortLine(page));
+    await sortBy(page, 'Subject');
+    const french = () => page.evaluate(() => {
+      const chip = [...document.querySelectorAll('.view-list .rt-chip')].find(c => c.querySelector('span[ng-bind^="rtSortText"]') && c.getClientRects().length);
+      const arrow = chip && chip.querySelector('md-icon:not(.rt-chip-x)');
+      return chip ? chip.querySelector('span').innerText.trim() + ' ' + (arrow ? arrow.textContent.trim() : '') : null;
+    });
+    check('mail app: in other languages the order chip keeps SOGo\'s own label, with an arrow', (await classes(page)).includes('rt-gmail-count') &&
+      await until(async () => (await french()) === 'Subject arrow_downward'), await french());
     await ctx.close();
   }
 
