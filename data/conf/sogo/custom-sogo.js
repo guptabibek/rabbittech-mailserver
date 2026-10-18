@@ -898,8 +898,10 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
 //   compose  a Compose button at the top of the folder list, and one compose button on phones
 //   rows     a star on every message and Archive, Delete and Read/Unread when the pointer is on it
 //   back     the open message gets a back arrow and Archive; the list hides while one is open
-//   sort     the line above the list says the order in words ("Newest first"), and the sort
-//            menu says Date received and Date sent (in English; other languages keep SOGo's)
+//   sort     the order in words ("Subject A–Z"), and the sort menu says Date received and Date
+//            sent (in English; other languages keep SOGo's)
+//   count    no line above the list: the count goes into the list's header, and a filter or an
+//            order other than newest first shows there as a chip whose × undoes it
 // Mail's compose window (UIxMailEditor, which SOGo fetches over HTTP; an $http interceptor
 // changes its markup on the way in, before $templateCache keeps it):
 //   composer a slim bar (the subject or "New Message", minimise, full screen, close), then From
@@ -960,6 +962,7 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
     var esc = function (text) {
       return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     };
+    var english = window.UserLanguage === 'English';
 
     window.rtSetWebmailLayout = function (layout) {
       try {
@@ -1073,6 +1076,45 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
       }
       return true;
     };
+    // ---- message list: no line above it. The count moves into the list's header, like Gmail's,
+    // and what changes the view (Unread or Flagged only, labels, an order other than newest
+    // first) shows there as a chip that undoes it. Runs after sort, whose words it reuses.
+    var count = function (box) {
+      var line = box.querySelector('#messagesList > md-subheader');
+      var total = line && line.querySelector('div[ng-switch="mailbox.service.selectedFolder.getLength()"]');
+      var number = total && total.querySelector('span[ng-bind="mailbox.service.selectedFolder.getLength()"]');
+      var unread = line && line.querySelector('span[ng-show="mailbox.selectedFolder.$unseenOnly"]');
+      var flagged = line && line.querySelector('span[ng-show="mailbox.selectedFolder.$flaggedOnly"]');
+      var order = line && line.querySelector('span[ng-bind^="rtSortText("], span[ng-bind="mailbox.sort() | loc"]');
+      var name = box.querySelector('.view-list md-toolbar > .md-toolbar-tools > a.sg-folder-name');
+      var advanced = box.querySelector('.view-list md-toolbar.advanced-search-clickable-toolbar form > a.show-advanced-search');
+      if (!number || !unread || !flagged || !order || !name || !advanced) return false;
+      var f = 'mailbox.selectedFolder';
+      var chip = function (show, click, inside, title) {
+        return '<button type="button" class="rt-chip" ng-show="' + show + '" ng-click="' + click + '" title="' + esc(title) + '">' +
+          inside + '<md-icon class="rt-chip-x" aria-hidden="true">close</md-icon></button>';
+      };
+      var words = order.getAttribute('ng-bind');
+      var clear = english ? 'Show all messages' : say('Close');
+      name.parentNode.insertBefore(html('<div class="rt-list-chips">' +
+        chip(f + '.$unseenOnly', 'rtFilter.clear(' + f + ', \'unseen\')', '<span>' + esc(unread.textContent.trim()) + '</span>', clear) +
+        chip(f + '.$flaggedOnly', 'rtFilter.clear(' + f + ', \'flagged\')', '<span>' + esc(flagged.textContent.trim()) + '</span>', clear) +
+        chip(f + '.filteredByLabel()', 'rtFilter.clear(' + f + ', \'labels\')',
+          '<md-icon aria-hidden="true">label_outline</md-icon><span ng-bind="rtFilter.labels(' + f + ')"></span>', clear) +
+        // Words say the direction ("Subject A–Z"); SOGo's own label needs an arrow
+        chip('!rtFilter.usualOrder()', 'rtFilter.newestFirst(' + f + ')',
+          '<md-icon aria-hidden="true" ng-if="!rtSortText(mailbox.service.$query.sort, mailbox.ascending())">{{ mailbox.ascending() ? \'arrow_upward\' : \'arrow_downward\' }}</md-icon>' +
+          '<span ng-bind="' + esc(words) + '"></span>', english ? 'Back to newest first' : say('Close')) +
+        '</div>'), name.nextSibling);
+      // SOGo's count with thousands separators ("2,254 messages"), in the header and in
+      // advanced search's bar
+      number.setAttribute('ng-bind', 'mailbox.service.selectedFolder.getLength() | number');
+      total.classList.add('rt-list-count');
+      advanced.parentNode.insertBefore(total.cloneNode(true), advanced);
+      name.parentNode.insertBefore(total, name.nextSibling.nextSibling);
+      line.parentNode.removeChild(line);
+      return true;
+    };
     // One compose button on phones instead of SOGo's two-button menu
     var fab = function (box) {
       var dial = box.querySelector('md-fab-speed-dial.sg-fab-bottom-center');
@@ -1169,7 +1211,6 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
     // ---- compose, like Gmail's. SOGo fetches its window (UIxMailEditor) over HTTP; an $http
     // interceptor (mail.config below) runs these on it. actions runs first, so that if
     // composer can't apply, Send and Save stay where SOGo put them.
-    var english = window.UserLanguage === 'English';
     // The bottom bar: Send, formatting on and off, attach, the editor's link, emoji and image
     // buttons (rtComposer.ready puts them in .rt-compose-tools), and SOGo's options with Save draft
     var actions = function (box) {
@@ -1667,6 +1708,28 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
           var words = window.UserLanguage === 'English' && sortWords[key];
           return words ? words[Number(asc) === 1 ? 0 : 1] : '';
         };
+        // The list header's chips: what a filter shows, and undoing a filter or the order
+        $rootScope.rtFilter = {
+          labels: function (folder) {
+            var on = (folder && folder.$filteredLabels) || {};
+            return ((folder && folder.$labels) || []).filter(function (label) { return !!on[label.imapName]; })
+              .map(function (label) { return label.name || label.imapName; }).join(', ');
+          },
+          clear: function (folder, what) {
+            if (!folder || !Mailbox) return;
+            if (what === 'unseen') folder.$unseenOnly = 0;
+            if (what === 'flagged') folder.$flaggedOnly = 0;
+            if (what === 'labels') angular.forEach(folder.$filteredLabels, function (value, key) { folder.$filteredLabels[key] = 0; });
+            folder.$filter(Mailbox.$query);
+          },
+          // SOGo's usual order: by arrival, newest first
+          usualOrder: function () {
+            return !Mailbox || !Mailbox.$query || (Mailbox.$query.sort === 'arrival' && !Number(Mailbox.$query.asc));
+          },
+          newestFirst: function (folder) {
+            if (folder) folder.$filter({ sort: 'arrival', asc: 0 });
+          }
+        };
         $rootScope.rtCompose = function ($event) {
           var list = window.$mailboxController;
           if (list && list.newMessage) list.newMessage($event);
@@ -1678,7 +1741,7 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
       }]);
 
       rewrite('UIxMailMainFrame', [layout, ['brand', brand], ['compose', compose]]);
-      rewrite('UIxMailFolderTemplate', [layout, ['brand', brand], ['search', search], ['rows', rows], ['fab', fab], ['sort', sortLine]]);
+      rewrite('UIxMailFolderTemplate', [layout, ['brand', brand], ['search', search], ['rows', rows], ['fab', fab], ['sort', sortLine], ['count', count]]);
       rewrite('UIxMailViewTemplate', [['back', back]]);
     }
     root.classList.add('rt-gmail', 'rt-app-' + app);
@@ -2010,6 +2073,67 @@ html.rt-gmail .view-list > md-toolbar.advanced-search-clickable-toolbar md-input
 html.rt-gmail #messagesList > .md-subheader .md-subheader-inner { padding: 6px 16px; }
 html.rt-gmail #messagesList > .md-subheader { font-size: 12px; font-weight: 500; }
 html.rt-gmail #messagesList > .md-subheader md-icon { font-size: 16px; }
+/* Instead of that line (count): chips for a filter or order after the name, taking the free
+   space, then "30 messages" by the buttons */
+html.rt-gmail-count .view-list .sg-folder-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+html.rt-gmail-count .view-list .rt-list-chips {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+html.rt-gmail-count .view-list .rt-chip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 6px 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background-color: var(--rt-primary-soft);
+  color: var(--rt-primary-text);
+  font: 500 13px/28px var(--rt-font);
+  white-space: nowrap;
+  cursor: pointer;
+}
+html.rt-gmail-count .view-list .rt-chip:hover { background-color: var(--rt-primary-soft-2); }
+html.rt-gmail-count .view-list .rt-chip:focus-visible { outline: 2px solid var(--rt-ring); outline-offset: 1px; }
+html.rt-gmail-count .view-list .rt-chip md-icon {
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  min-height: 16px;
+  font-size: 16px;
+  line-height: 16px;
+  color: inherit;
+}
+html.rt-gmail-count .view-list .rt-chip .rt-chip-x { opacity: .7; }
+/* Angular Material centres menus in toolbars (margin: auto); here they sit with the count */
+html.rt-gmail-count .view-list > md-toolbar > .md-toolbar-tools > md-menu { margin: 0; }
+html.rt-gmail-count .view-list .rt-list-count {
+  flex: 0 4 auto;
+  min-width: 0;
+  padding: 0 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--rt-muted);
+}
+/* Phones: a chip says more than the count, and the folder's name keeps its room */
+@media (max-width: 599px) {
+  html.rt-gmail-count .view-list .rt-list-chips:has(.rt-chip:not(.ng-hide)) ~ .rt-list-count { display: none; }
+}
 
 /* SOGo's scrolling places rows 56px apart, so a row must stay 56px even on one line */
 html.rt-gmail md-list-item.sg-message-list-item { height: 56px; min-height: 56px; background-color: var(--rt-g-row); }
