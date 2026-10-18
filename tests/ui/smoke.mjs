@@ -628,10 +628,20 @@ if (webmail) {
     await page.click('.view-list .md-button[aria-label="Filter"]');
     await page.locator('.md-open-menu-container.md-active md-menu-item', { hasText: 'unread' }).first().click({ timeout: 5000 }).catch(() => {});
     await closeMenu(page);
-    const unreadOnly = await until(async () => JSON.stringify(await chips(page)) === '["Unread"]' && (await listCount(page)) !== inbox + ' messages');
+    const unreadOnly = await until(async () => JSON.stringify(await chips(page)) === '["Unread"]' && /^\d+ messages$/.test(await listCount(page)) &&
+      (await listCount(page)) !== inbox + ' messages');
     check('mail app: "unread only" shows an Unread chip and the unread count', unreadOnly, JSON.stringify(await chips(page)) + ' ' + await listCount(page));
     await page.locator('.view-list .rt-chip:visible').first().click({ timeout: 5000 }).catch(() => {});
     check('mail app: the Unread chip shows all messages again', await until(async () => (await chips(page)).length === 0 &&
+      (await listCount(page)) === inbox + ' messages'), JSON.stringify(await chips(page)) + ' ' + await listCount(page));
+    // A label: its name on the chip; one message is "1 message"
+    await page.click('.view-list .md-button[aria-label="Filter"]');
+    await page.locator('.md-open-menu-container.md-active md-menu-item', { hasText: 'Forwarded' }).first().click({ timeout: 5000 }).catch(() => {});
+    await closeMenu(page);
+    check('mail app: a label filter shows the label\'s name, and one message says "1 message"', await until(async () =>
+      JSON.stringify(await chips(page)) === '["Forwarded"]' && (await listCount(page)) === '1 message'), JSON.stringify(await chips(page)) + ' ' + await listCount(page));
+    await page.locator('.view-list .rt-chip:visible').first().click({ timeout: 5000 }).catch(() => {});
+    check('mail app: the label chip shows all messages again', await until(async () => (await chips(page)).length === 0 &&
       (await listCount(page)) === inbox + ' messages'), JSON.stringify(await chips(page)) + ' ' + await listCount(page));
 
     // Rows: one line, 56px apart (SOGo's scrolling relies on it)
@@ -729,12 +739,23 @@ if (webmail) {
     // The panel stays open for more, like Gmail's; its close button closes it
     await page.locator('.ck-dialog .ck-form__header .ck-button').click({ timeout: 5000 }).catch(() => {});
     check('mail compose: the emoji panel closes', await until(async () => !(await page.locator('.ck-special-characters').isVisible())));
-    // A recipient, a subject and some text
+    // Recipients: Enter adds what was typed, or the highlighted suggestion instead
     const to = page.locator('md-dialog.sg-mail-editor md-chips[ng-model="editor.message.editable.to"] input');
+    const toChips = () => page.locator('md-dialog.sg-mail-editor md-chips[ng-model="editor.message.editable.to"] md-chip').allInnerTexts();
     await to.waitFor({ state: 'visible' });
     await tap(to);
-    await to.pressSequentially('nisha.gurung@everestlogistics.example');
+    await to.pressSequentially('someone@example.org');
     await page.keyboard.press('Enter');
+    check('mail compose: Enter adds the address being typed', await until(async () => JSON.stringify(await toChips()) === '["someone@example.org"]'),
+      JSON.stringify(await toChips()));
+    await to.pressSequentially('nisha');
+    await page.locator('.md-autocomplete-suggestions-container li').first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
+    check('mail compose: Enter on a highlighted suggestion adds that contact only', await until(async () => {
+      const chips = await toChips();
+      return chips.length === 2 && /^Nisha Gurung <nisha\.gurung@everestlogistics\.example>$/.test(chips[1]);
+    }), JSON.stringify(await toChips()));
     await page.locator('md-dialog.sg-mail-editor input[name="subject"]').fill('Go-live on the 25th');
     await page.locator('.sg-mail-editor .ck-editor__editable').click({ timeout: 5000 }).catch(() => {});
     await page.keyboard.type(' The 25th works for us. See you then!');

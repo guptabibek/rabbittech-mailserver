@@ -1107,8 +1107,10 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
           '<span ng-bind="' + esc(words) + '"></span>', english ? 'Back to newest first' : say('Close')) +
         '</div>'), name.nextSibling);
       // SOGo's count with thousands separators ("2,254 messages"), in the header and in
-      // advanced search's bar
+      // advanced search's bar. SOGo only has the plural; in English one is "1 message".
       number.setAttribute('ng-bind', 'mailbox.service.selectedFolder.getLength() | number');
+      var none = total.querySelector(':scope > [ng-switch-when="0"]');
+      if (english && none) none.parentNode.insertBefore(html('<span ng-switch-when="1">1 message</span>'), none.nextSibling);
       total.classList.add('rt-list-count');
       advanced.parentNode.insertBefore(total.cloneNode(true), advanced);
       name.parentNode.insertBefore(total, name.nextSibling.nextSibling);
@@ -1296,6 +1298,12 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
         '<label class="pseudo-input-label">' + esc(say('From')) + '</label></div>').firstChild;
       fromLine.appendChild(from);
       lines.insertBefore(fromLine, lines.firstChild);
+      // Enter adds the address being typed, as in Gmail. SOGo swallows Enter in these fields
+      // (ignoreReturn, so it can't submit the form) before its chips see it; a highlighted
+      // suggestion still wins, as md-autocomplete takes that Enter for itself.
+      [].slice.call(lines.querySelectorAll('md-chips > md-autocomplete[ng-keydown="editor.ignoreReturn($event)"]')).forEach(function (field) {
+        field.setAttribute('ng-keydown', 'rtComposer.enterRecipient($event); editor.ignoreReturn($event)');
+      });
       // Cc and Bcc at the end of the To line
       var links = html('<span class="rt-cc-bcc"></span>').firstChild;
       links.appendChild(cc);
@@ -1571,6 +1579,15 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
           // Formatting on or off, as the user last left it
           formatOff: function () {
             try { return localStorage.getItem('rt_compose_format') === 'off'; } catch (e) { return false; }
+          },
+          enterRecipient: function ($event) {
+            var prevented = $event && ($event.isDefaultPrevented ? $event.isDefaultPrevented() : $event.defaultPrevented);
+            if (!$event || $event.keyCode !== 13 || prevented) return;
+            var chips = angular.element($event.target).controller('mdChips');
+            var text = chips && typeof chips.getChipBuffer === 'function' ? String(chips.getChipBuffer() || '').trim() : '';
+            if (!text || chips.requireMatch || (chips.hasMaxChipsReached && chips.hasMaxChipsReached())) return;
+            chips.appendChip(text);
+            chips.resetChipBuffer();
           },
           toggleFormat: function (editor) {
             editor.rtNoFormat = !editor.rtNoFormat;

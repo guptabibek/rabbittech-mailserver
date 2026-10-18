@@ -263,7 +263,7 @@ two supported hooks, both loaded on every SOGo page (`SOGoUIAdditionalJSFiles` i
     Archive); Delete is not offered in Trash, where SOGo deletes for good.
   - The list fills the width and an open message takes its place, with a back arrow and Archive.
   - No line above the list: the count sits in the list's header by its buttons ("2,254
-    messages"), like Gmail's. What changes the view shows after the folder name as a chip whose ×
+    messages", and "1 message" in English), like Gmail's. What changes the view shows after the folder name as a chip whose ×
     undoes it: "Unread" or "Flagged" only, the labels filtered on, or an order other than newest
     first, in words ("Subject A–Z", "Oldest first", "Largest first"). The usual view has no chips.
     On phones the count gives way to a chip. Other languages keep SOGo's translated sort label,
@@ -278,6 +278,8 @@ two supported hooks, both loaded on every SOGo page (`SOGoUIAdditionalJSFiles` i
       minimised window is just that bar at the bottom right; a click on it opens it again.
     - From shows only when the account has more than one identity. To is one line with Cc and
       Bcc at its right, and Subject is a plain line.
+    - Enter adds the address being typed as a recipient, as in Gmail (SOGo ignores Enter in
+      these fields); with a suggestion highlighted, Enter adds that contact instead.
     - The writing area fills the window and scrolls on its own.
     - CKEditor's toolbar is a rounded formatting bar under it, in Gmail's order: undo, redo,
       font, size, bold, italic, underline, text colour, alignment, numbered and bulleted lists,
@@ -463,8 +465,8 @@ server:
     in the usual view.
   - The order follows the Sort menu as a chip in words (subject, ascending, oldest first), sorted
     by the server, and goes back to newest first. The chip's × does the same.
-  - Unread only shows an Unread chip and the smaller count; its × shows all mail again. Other
-    languages keep SOGo's label on the order chip.
+  - Unread only shows an Unread chip and the smaller count, and a label its name and "1
+    message"; their × shows all mail again. Other languages keep SOGo's label on the order chip.
   - Star, read/unread, Archive and Delete reach the server and the message really moves.
   - An open message replaces the list, and back returns to it.
   - Compose opens as a window, and the mail behind it stays usable.
@@ -474,6 +476,7 @@ server:
     - The formatting bar is one row between the writing area and the bottom bar, and Aa hides
       and shows it.
     - The bottom bar's buttons come in order. Send is off without a recipient and on with one.
+    - Enter adds a typed address, or the highlighted suggestion alone.
     - Emoji inserts one; Save draft saves; minimise and full screen work.
     - Send sends the message and closes the window.
     - In dark mode the bars are dark around a white writing area. At phone width the bottom bar
