@@ -891,7 +891,6 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
 // Each app's templates are <script type="text/ng-template"> blocks in the page, which Angular
 // reads after this script. Before that, this section changes them. In all four apps:
 //   brand    a menu button and the logo at the left of the top bar
-//   layout   a top bar button to switch to SOGo's classic layout and back
 // Mail, Calendar and Contacts:
 //   search   SOGo's search moves into the top bar as a search box that is always there
 // Mail:
@@ -918,8 +917,6 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
 //   save     Save leaves the top bar for a bar under the page that shows while there are
 //            unsaved changes
 //   here     the settings button by the logo shows as the current place
-// The layout switch on Settings is a link (?rt-layout=classic|new) that SOGo's own
-// unsaved-changes prompt handles like its other top bar buttons.
 // The stylesheets (rabbittech-sogo-layout for all four, then one per app) do the rest:
 // sidebar items as pills, the list in a card, compose in a window at the bottom right, the
 // calendar's header, the contact card, each settings tab on a card. Each change first looks for
@@ -929,8 +926,8 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
 // behaviour. Other templates SOGo
 // fetches over HTTP (the calendar's views, the event and contact editors, the account and
 // filter dialogs of Settings) are only styled.
-// localStorage rt_webmail_layout = "classic" turns all of it off, in all four apps, except the
-// switch back.
+// There is no classic layout to switch to: the fail-safe above keeps SOGo's own markup for any
+// part a SOGo upgrade breaks.
 (function () {
   'use strict';
   var body = document.body;
@@ -940,20 +937,8 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
   try {
     if (!app) return;
     var root = document.documentElement;
-    var classic = false;
-    // Settings' layout switch is a link to the page with ?rt-layout=classic or ?rt-layout=new
-    var asked = /[?&]rt-layout=(classic|new)(?=&|$)/.exec(window.location.search);
-    if (asked) {
-      try {
-        if (asked[1] === 'classic') localStorage.setItem('rt_webmail_layout', 'classic');
-        else localStorage.removeItem('rt_webmail_layout');
-      } catch (e) {}
-      try {
-        var query = window.location.search.replace(/([?&])rt-layout=[^&]*(&|$)/, '$1').replace(/[?&]$/, '');
-        window.history.replaceState(window.history.state, '', window.location.pathname + query + window.location.hash);
-      } catch (e) {}
-    }
-    try { classic = localStorage.getItem('rt_webmail_layout') === 'classic'; } catch (e) {}
+    // The classic layout is gone; a browser that had switched to it gets this one
+    try { localStorage.removeItem('rt_webmail_layout'); } catch (e) {}
 
     // SOGo's own translation of a label (the l() function and labels of the page), or the label
     var say = function (key) {
@@ -963,14 +948,6 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
       return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     };
     var english = window.UserLanguage === 'English';
-
-    window.rtSetWebmailLayout = function (layout) {
-      try {
-        if (layout === 'classic') localStorage.setItem('rt_webmail_layout', 'classic');
-        else localStorage.removeItem('rt_webmail_layout');
-      } catch (e) {}
-      window.location.reload();
-    };
 
     // Templates are parsed the way Angular parses them (innerHTML of an element), in a document
     // that never loads or runs anything, changed, and written back only if a change was made.
@@ -1007,26 +984,9 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
       if (markup !== null) script.text = markup;
     };
 
-    // ---- top bar (every screen of the app). Settings' bar is found by its place, so the
-    // switch is there in the classic layout too, where it isn't a toolbar-main.
+    // ---- top bar (every screen of the app). Settings' bar is found by its place: it isn't a
+    // toolbar-main until the toolbar change makes it one.
     var topBar = app === 'prefs' ? 'form[name="preferencesForm"] > section > md-toolbar' : 'md-toolbar.toolbar-main';
-    var layoutSwitch = function (box) {
-      var last = box.querySelector(topBar + ' .sg-toolbar-group-last');
-      if (!last) return false;
-      var spacer = last.querySelector(':scope > div.hide-xs');
-      var title = classic ? 'Switch to the new layout' : 'Switch to the classic layout';
-      var to = classic ? 'new' : 'classic';
-      // On Settings, a link that SOGo's prompt about unsaved changes handles before it is followed
-      var action = app === 'prefs'
-        ? ' href="?rt-layout=' + to + '" onclick="this.href = \'?rt-layout=' + to + '\' + location.hash"' +
-          ' ng-click="app.confirmChanges($event, preferencesForm)"'
-        : ' onclick="rtSetWebmailLayout(\'' + to + '\')"';
-      last.insertBefore(html(
-        '<md-button class="md-icon-button rt-layout-switch" aria-label="' + title + '"' + action + '>' +
-        '<md-icon>' + (classic ? 'view_list' : 'view_column') + '</md-icon>' +
-        '<md-tooltip md-direction="bottom">' + title + '</md-tooltip></md-button>'), spacer);
-      return true;
-    };
     var brand = function (box) {
       var first = box.querySelector('md-toolbar.toolbar-main .sg-toolbar-group-1');
       var toggle = first && first.querySelector('md-button[ng-click="toggleLeft()"].show-gt-md md-icon');
@@ -1385,18 +1345,9 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
       return true;
     };
 
-    var layout = ['layout', layoutSwitch];
-    var mainTemplates = {
-      mail: ['UIxMailMainFrame', 'UIxMailFolderTemplate'], calendar: ['UIxCalMainView'], contacts: ['addressbook'], prefs: ['preferences.html']
-    }[app];
-    if (classic) {
-      mainTemplates.forEach(function (id) { rewrite(id, [layout]); });
-      return;
-    }
-
     if (app === 'prefs') {
       // The markup it adds uses SOGo's own controller (app.save, app.confirmChanges)
-      rewrite('preferences.html', [['toolbar', toolbar], layout, ['brand', brand], ['save', save], ['here', here]]);
+      rewrite('preferences.html', [['toolbar', toolbar], ['brand', brand], ['save', save], ['here', here]]);
     }
 
     if (app === 'calendar' || app === 'contacts') {
@@ -1460,10 +1411,10 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
         };
       }]);
       if (app === 'calendar') {
-        rewrite('UIxCalMainView', [layout, ['brand', brand], ['search', search], ['create', create], ['listref', listRef]]);
+        rewrite('UIxCalMainView', [['brand', brand], ['search', search], ['create', create], ['listref', listRef]]);
       } else {
         rewrite('UIxContactFoldersView', [['create', create]]);
-        rewrite('addressbook', [layout, ['brand', brand], ['search', search], ['listref', listRef]]);
+        rewrite('addressbook', [['brand', brand], ['search', search], ['listref', listRef]]);
       }
     }
 
@@ -1757,8 +1708,8 @@ md-sidenav md-toolbar.sg-toolbar-multiple input { color: var(--rt-text); }
         };
       }]);
 
-      rewrite('UIxMailMainFrame', [layout, ['brand', brand], ['compose', compose]]);
-      rewrite('UIxMailFolderTemplate', [layout, ['brand', brand], ['search', search], ['rows', rows], ['fab', fab], ['sort', sortLine], ['count', count]]);
+      rewrite('UIxMailMainFrame', [['brand', brand], ['compose', compose]]);
+      rewrite('UIxMailFolderTemplate', [['brand', brand], ['search', search], ['rows', rows], ['fab', fab], ['sort', sortLine], ['count', count]]);
       rewrite('UIxMailViewTemplate', [['back', back]]);
     }
     root.classList.add('rt-gmail', 'rt-app-' + app);

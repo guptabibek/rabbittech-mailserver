@@ -437,7 +437,7 @@ if (webmail) {
   // 2026, 10:20 in Kathmandu), the date their seeded events and views are built around.
   // allow404: requests whose 404 is SOGo's normal answer, not an error.
   const CLOCK = '2026-10-15T10:20:00+05:45';
-  const openApp = async (path, ready, { theme = 'light', width = 1366, height = 900, custom = true, pageFilter, editorFilter, clock, allow404 } = {}) => {
+  const openApp = async (path, ready, { theme = 'light', width = 1366, height = 900, custom = true, pageFilter, editorFilter, clock, allow404, storage = {} } = {}) => {
     const ctx = await browser.newContext({ viewport: { width, height }, timezoneId: 'Asia/Kathmandu' });
     const page = await ctx.newPage();
     if (clock) await page.clock.setFixedTime(new Date(clock));
@@ -451,6 +451,8 @@ if (webmail) {
       if (r.status() >= 400 && !fonts.test(r.url()) && !(r.status() === 404 && allow404 && allow404.test(r.url()))) errors.push(r.status() + ' ' + r.url());
     });
     await page.addInitScript(t => { try { localStorage.setItem('mailcow_theme', t); } catch (e) {} }, theme);
+    // storage: other localStorage entries the page finds when it loads
+    await page.addInitScript(entries => { try { for (const k in entries) localStorage.setItem(k, entries[k]); } catch (e) {} }, storage);
     const backend = await mailBackend(ctx, { custom, pageFilter, editorFilter, clock });
     await page.goto(webmail + path, { waitUntil: 'load' });
     await page.waitForSelector(ready, { timeout: 20000 });
@@ -459,7 +461,7 @@ if (webmail) {
   };
   const openMail = (options = {}) => openApp(PAGE, 'md-list-item.sg-message-list-item .sg-tile-subject', options);
   const classes = page => page.evaluate(() => document.documentElement.className.split(/\s+/));
-  const changes = ['layout', 'brand', 'compose', 'search', 'rows', 'fab', 'sort', 'count', 'back'].map(c => 'rt-gmail-' + c);
+  const changes = ['brand', 'compose', 'search', 'rows', 'fab', 'sort', 'count', 'back'].map(c => 'rt-gmail-' + c);
   // The compose window's changes, made when SOGo first fetches its template
   const composeChanges = ['actions', 'composer'].map(c => 'rt-gmail-' + c);
   // The open compose window's parts, as a person sees them
@@ -796,19 +798,17 @@ if (webmail) {
       await until(async () => !(await page.locator('md-dialog.sg-mail-editor').count()), 8000) &&
       backend.store.sent.some(m => m.subject === 'Go-live on the 25th'), JSON.stringify(backend.calls('send').map(c => c.status)));
     check('mail app light: no errors', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
 
-    // Classic layout and back
-    await Promise.all([page.waitForEvent('load'), page.click('.rt-layout-switch')]);
-    await page.waitForSelector('md-list-item.sg-message-list-item .sg-tile-subject');
-    const classic = await page.evaluate(() => ({
-      gmail: document.documentElement.classList.contains('rt-gmail'),
-      search: !!document.querySelector('.view-list form[sg-search]'),
-      button: !!document.querySelector('.rt-layout-switch'),
-    }));
-    check('mail app: the switch gives the classic layout, with a way back', !classic.gmail && classic.search && classic.button, JSON.stringify(classic));
-    await Promise.all([page.waitForEvent('load'), page.click('.rt-layout-switch')]);
-    await page.waitForSelector('md-list-item.sg-message-list-item .sg-tile-subject');
-    check('mail app: switching back restores the new layout', (await classes(page)).includes('rt-gmail-search'));
+  {
+    // There is no classic layout any more: a browser that had switched to it gets the new one
+    const { ctx, page, errors, warnings } = await openMail({ storage: { rt_webmail_layout: 'classic' } });
+    const cls = await classes(page);
+    const left = await page.evaluate(() => ({ setting: localStorage.getItem('rt_webmail_layout'), button: !!document.querySelector('.rt-layout-switch') }));
+    check('mail app: a browser left in the classic layout gets the new one, and the setting is cleared',
+      changes.every(c => cls.includes(c)) && left.setting === null && !left.button && warnings.length === 0 && errors.length === 0,
+      cls.join(' ') + ' ' + JSON.stringify(left) + ' ' + warnings.concat(errors).join(' | '));
     await ctx.close();
   }
 
@@ -939,7 +939,7 @@ if (webmail) {
   }
 
   // Calendar and Contacts
-  const appChanges = ['layout', 'brand', 'search', 'create', 'listref'].map(c => 'rt-gmail-' + c);
+  const appChanges = ['brand', 'search', 'create', 'listref'].map(c => 'rt-gmail-' + c);
   const textIconsIn = page => page.evaluate(() => [...document.querySelectorAll('md-icon')]
     .filter(i => i.offsetParent && i.getBoundingClientRect().width > 40).map(i => i.textContent.trim()));
   // The Create button's menu, then one of its items
@@ -970,7 +970,7 @@ if (webmail) {
       JSON.stringify(cutover) === JSON.stringify({ day: 'day20261015', hour: 10, hours: 1.5 }), JSON.stringify(cutover));
     await ctx.close();
   }
-  const calendarChanges = ['layout', 'brand', 'search', 'create', 'listref', 'colors'].map(c => 'rt-gmail-' + c);
+  const calendarChanges = ['brand', 'search', 'create', 'listref', 'colors'].map(c => 'rt-gmail-' + c);
   const listEvents = page => page.locator('[ui-view="calendars"] .view-list sg-calendar-list-event, [ui-view="calendars"] .view-list .sg-event');
   const header = page => page.locator('#detailView md-card > md-card-actions');
   {
@@ -1053,16 +1053,6 @@ if (webmail) {
     check('calendar app: switching a calendar off saves it and hides its events', await until(() =>
       backend.calls('saveFoldersActivation').some(c => c.body && Number(c.body.family) === 0)) && await until(async () => !(await block(page, 'Dentist'))));
     check('calendar app light: no errors', errors.length === 0, errors.join(' | '));
-
-    // Classic layout and back
-    await Promise.all([page.waitForEvent('load'), page.click('.rt-layout-switch')]);
-    await page.waitForSelector('[ui-view="calendars"] .view-list .sg-event');
-    const classic = await page.evaluate(() => ({ gmail: document.documentElement.classList.contains('rt-gmail'),
-      search: !!document.querySelector('.view-list form[sg-search]'), button: !!document.querySelector('.rt-layout-switch') }));
-    check('calendar app: the switch gives the classic layout, with a way back', !classic.gmail && classic.search && classic.button, JSON.stringify(classic));
-    await Promise.all([page.waitForEvent('load'), page.click('.rt-layout-switch')]);
-    await page.waitForSelector('[ui-view="calendars"] .view-list .sg-event');
-    check('calendar app: switching back restores the new layout', (await classes(page)).includes('rt-gmail-create'));
     await ctx.close();
   }
   {
@@ -1156,16 +1146,6 @@ if (webmail) {
     await page.click('md-sidenav md-list-item:has-text("Global Address Book")');
     check('contacts app: Create is disabled in a read-only address book', await until(() => page.locator('.rt-create[disabled]').count().then(n => n === 1)));
     check('contacts app light: no errors', errors.length === 0, errors.join(' | '));
-
-    // Classic layout and back
-    await Promise.all([page.waitForEvent('load'), page.click('.rt-layout-switch')]);
-    await page.waitForSelector('#contactsList md-list-item .sg-md-subhead');
-    const classic = await page.evaluate(() => ({ gmail: document.documentElement.classList.contains('rt-gmail'),
-      search: !!document.querySelector('.view-list form[sg-search]'), button: !!document.querySelector('.rt-layout-switch') }));
-    check('contacts app: the switch gives the classic layout, with a way back', !classic.gmail && classic.search && classic.button, JSON.stringify(classic));
-    await Promise.all([page.waitForEvent('load'), page.click('.rt-layout-switch')]);
-    await page.waitForSelector('#contactsList md-list-item .sg-md-subhead');
-    check('contacts app: switching back restores the new layout', (await classes(page)).includes('rt-gmail-create'));
     await ctx.close();
   }
   {
@@ -1210,7 +1190,7 @@ if (webmail) {
   console.log('Webmail: Settings');
   const openPrefs = (hash = '#!/general', options = {}) =>
     openApp(PREFS_PAGE + hash, 'md-tabs md-tab-item', { allow404: /\/activeExternalSieveScripts$/, ...options });
-  const prefsChanges = ['toolbar', 'layout', 'brand', 'save', 'here'].map(c => 'rt-gmail-' + c);
+  const prefsChanges = ['toolbar', 'brand', 'save', 'here'].map(c => 'rt-gmail-' + c);
   const openTab = async (page, name) => {
     await page.locator('md-tabs-canvas md-tab-item', { hasText: name }).click();
     await page.waitForTimeout(400);
@@ -1333,23 +1313,6 @@ if (webmail) {
     // default identity has none); stock SOGo does the same, and the signature saves (above)
     const ours = errors.filter(e => !/CKEditorError: Cannot convert undefined or null to object/.test(e));
     check('settings light: no errors', ours.length === 0, ours.join(' | '));
-
-    // The layout switch goes through SOGo's prompt about unsaved changes
-    await openTab(page, 'General');
-    await page.click('md-checkbox[ng-model="app.preferences.defaults.SOGoMailSortByThreads"]');
-    await page.click('.rt-layout-switch');
-    check('settings: with unsaved changes, the layout switch asks first (SOGo\'s prompt)',
-      await until(() => page.locator('md-dialog').filter({ hasText: 'Do you want to save your changes' }).count().then(n => n === 1)));
-    await Promise.all([page.waitForEvent('load'), page.click('md-dialog .md-button:has-text("Don\'t Save")')]);
-    await page.waitForSelector('md-tabs md-tab-item');
-    const classic = await page.evaluate(() => ({ gmail: document.documentElement.classList.contains('rt-gmail'),
-      tall: !!document.querySelector('form[name="preferencesForm"] > section > md-toolbar.md-tall'),
-      button: !!document.querySelector('.rt-layout-switch'), url: location.search + location.hash }));
-    check('settings: the switch gives SOGo\'s classic Settings, with a way back, on the same section',
-      !classic.gmail && classic.tall && classic.button && classic.url === '#!/mailer', JSON.stringify(classic));
-    await Promise.all([page.waitForEvent('load'), page.click('.rt-layout-switch')]);
-    await page.waitForSelector('md-tabs md-tab-item');
-    check('settings: switching back restores the new layout', (await classes(page)).includes('rt-gmail-toolbar'));
     await ctx.close();
   }
   {
@@ -1380,7 +1343,7 @@ if (webmail) {
     const { ctx, page, errors, warnings } = await openPrefs('#!/general', { pageFilter });
     const cls = await classes(page);
     check('settings fail-safe: an unmatched change is skipped with a warning, the rest apply',
-      !cls.includes('rt-gmail-toolbar') && cls.includes('rt-gmail-save') && cls.includes('rt-gmail-layout') && cls.includes('rt-gmail-here') &&
+      !cls.includes('rt-gmail-toolbar') && cls.includes('rt-gmail-save') && cls.includes('rt-gmail-here') &&
       warnings.some(w => /RabbitTech prefs layout: .*"toolbar" skipped/.test(w)), cls.join(' ') + ' ' + warnings.join(' | '));
     check('settings fail-safe: no errors', errors.length === 0, errors.join(' | '));
     await ctx.close();

@@ -343,11 +343,10 @@ two supported hooks, both loaded on every SOGo page (`SOGoUIAdditionalJSFiles` i
     layout: …"). The styles that depend on
     it don't apply either (`html.rt-gmail-<change>`), so that part stays as SOGo has it instead
     of breaking.
-  - **Classic layout:** a top bar button (columns icon) switches to SOGo's classic layout with the
-    RabbitTech look, and back, in all four apps at once. The choice is kept per browser
-    (`localStorage.rt_webmail_layout`). On Settings the button is a link (`?rt-layout=classic`
-    or `?rt-layout=new`), so SOGo first asks whether to save unsaved changes, as it does for its
-    other top bar buttons.
+  - **No classic layout:** there is no switch back to SOGo's own layout any more; it was easy to
+    land in by accident and then miss every change. A browser that had chosen it
+    (`localStorage.rt_webmail_layout`) gets the new layout on its next load. If a SOGo upgrade
+    breaks a part, the fail-safe above keeps SOGo's own markup for that part.
   - **Limits:** SOGo sends no preview text, so rows show the subject without Gmail's snippet.
     There are no inbox tabs, snooze or Gmail-style conversations. Rows stay 56px high, because
     SOGo's scrolling code relies on that height. Calendar has no mini month in the sidebar, and
@@ -483,7 +482,7 @@ server:
       is on screen. Plain text gets no formatting.
     - With the compose template broken on purpose, that part is skipped with a warning and the
       window still sends.
-  - The classic layout switch works both ways.
+  - A browser left in the old classic layout gets the new one, and the setting is cleared.
   - Dark mode works; at phone width the search box wraps, back is reachable, and compose is full
     screen.
   - Installable: the page links the manifest; its icons load at their stated sizes; the title bar
@@ -501,7 +500,7 @@ server:
   - Calendar: the header's Today pill and view group; agenda dots in each calendar's colour;
     back, forward, Today, month and day views; switching a calendar off; an event's dialog.
   - Contacts: 56px rows; the contact card; Create greyed out in a read-only address book.
-  - The classic switch, dark mode, phone width and the fail-safe, as in Mail.
+  - Dark mode, phone width and the fail-safe, as in Mail.
 - In live Settings:
   - Stock SOGo runs. Every change applies: the other apps' top bar with the title, the logo to
     Mail and the console button's name; no Save button in the bar; and no icon shows as its name.
@@ -509,8 +508,6 @@ server:
   - Vacation: turning it on and writing the reply shows the Save bar. Save sends both to the
     server, then the bar goes and "Preferences saved" shows. Forward: an added address is saved.
   - Create Filter and Edit account open SOGo's dialogs, restyled.
-  - With unsaved changes, the layout switch shows SOGo's prompt first. The classic layout keeps
-    the section and has a way back.
   - Dark mode, phone width (the Save bar spans the screen, the menu opens the sections) and the
     fail-safe.
 
